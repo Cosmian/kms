@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:927b79eb-385a-40c0-9ecd-fead435fe48d",
+  "serialNumber": "urn:uuid:bca20354-85b5-485c-9415-df2941fb77bd",
   "metadata": {
-    "timestamp": "2026-11-19T09:42:36.249234+00:00",
+    "timestamp": "2026-11-25T02:44:24.755904+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/08sbfa8fyziijd8x49wy8lny4447a1fv-cosmian-kms-server-dynamic-5.29.0.drv",
+      "bom-ref": "/nix/store/zrxzzx5rwwzkzqsvbkpk5rsf15m8jg9g-cosmian-kms-server-dynamic-5.29.0.drv",
       "name": "cosmian-kms-server-dynamic",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-server-dynamic@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/b9y58fyn5ykr22yqskid9ghv4n0f05ix-cosmian-kms-server-dynamic-5.29.0"
+          "value": "/nix/store/id6f2q7jggplaf632d17nrmqpzzcrhal-cosmian-kms-server-dynamic-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/08sbfa8fyziijd8x49wy8lny4447a1fv-cosmian-kms-server-dynamic-5.29.0.drv"
+          "value": "/nix/store/zrxzzx5rwwzkzqsvbkpk5rsf15m8jg9g-cosmian-kms-server-dynamic-5.29.0.drv"
         }
       ]
     }
@@ -304,35 +304,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/actix-identity@0.6.0",
-      "name": "actix-identity",
-      "version": "0.6.0",
-      "purl": "pkg:cargo/actix-identity@0.6.0",
-      "description": "Identity management for Actix Web",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Nikolay Kim, Luca Palmieri"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/actix/actix-extras.git"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:actix-identity:actix-identity:0.6.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/actix-macros@0.2.4",
       "name": "actix-macros",
       "version": "0.2.4",
@@ -475,35 +446,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:actix:actix-service:2.0.3:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/actix-session@0.8.0",
-      "name": "actix-session",
-      "version": "0.8.0",
-      "purl": "pkg:cargo/actix-session@0.8.0",
-      "description": "Session management for Actix We",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Nikolay Kim, Luca Palmieri"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/actix/actix-extras.git"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:actix-session:actix-session:0.8.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -1829,35 +1771,6 @@
         }
       ],
       "cpe": "cpe:2.3:a:base16ct:base16ct:1.0.0:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/base64@0.20.0",
-      "name": "base64",
-      "version": "0.20.0",
-      "purl": "pkg:cargo/base64@0.20.0",
-      "description": "encodes and decodes base64 as bytes or utf8",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Alice Maz, Marshall Pierce"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/marshallpierce/rust-base64"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "no-nvd-entry"
-        }
-      ],
-      "cpe": "cpe:2.3:a:base64:base64:0.20.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -3567,10 +3480,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/cookie@0.16.2",
+      "bom-ref": "pkg:cargo/cookie@0.18.3",
       "name": "cookie",
-      "version": "0.16.2",
-      "purl": "pkg:cargo/cookie@0.16.2",
+      "version": "0.18.3",
+      "purl": "pkg:cargo/cookie@0.18.3",
       "licenses": [
         {
           "expression": "MIT OR Apache-2.0"
@@ -3591,35 +3504,7 @@
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:cookie_project:cookie:0.16.2:*:*:*:*:*:*:*"
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/cookie@0.18.1",
-      "name": "cookie",
-      "version": "0.18.1",
-      "purl": "pkg:cargo/cookie@0.18.1",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "supplier": {
-        "name": "Sergio Benitez, Alex Crichton"
-      },
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/SergioBenitez/cookie-rs"
-        }
-      ],
-      "properties": [
-        {
-          "name": "cosmian:sbom:cpe_match",
-          "value": "verified-vendor-product"
-        }
-      ],
-      "cpe": "cpe:2.3:a:cookie_project:cookie:0.18.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:cookie_project:cookie:0.18.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -6572,10 +6457,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/form_urlencoded@1.2.2",
+      "bom-ref": "pkg:cargo/form_urlencoded@1.2.3",
       "name": "form_urlencoded",
-      "version": "1.2.2",
-      "purl": "pkg:cargo/form_urlencoded@1.2.2",
+      "version": "1.2.3",
+      "purl": "pkg:cargo/form_urlencoded@1.2.3",
       "description": "Parser and serializer for the application/x-www-form-urlencoded syntax, as used by HTML forms.",
       "licenses": [
         {
@@ -6597,7 +6482,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:form_urlencoded:form_urlencoded:1.2.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:form_urlencoded:form_urlencoded:1.2.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -13142,10 +13027,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/quinn-proto@0.11.16",
+      "bom-ref": "pkg:cargo/quinn-proto@0.11.19",
       "name": "quinn-proto",
-      "version": "0.11.16",
-      "purl": "pkg:cargo/quinn-proto@0.11.16",
+      "version": "0.11.19",
+      "purl": "pkg:cargo/quinn-proto@0.11.19",
       "description": "State machine for the QUIC transport protocol",
       "licenses": [
         {
@@ -13164,14 +13049,14 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:quinn-proto:quinn-proto:0.11.16:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:quinn-proto:quinn-proto:0.11.19:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/quinn-udp@0.5.15",
+      "bom-ref": "pkg:cargo/quinn-udp@0.5.16",
       "name": "quinn-udp",
-      "version": "0.5.15",
-      "purl": "pkg:cargo/quinn-udp@0.5.15",
+      "version": "0.5.16",
+      "purl": "pkg:cargo/quinn-udp@0.5.16",
       "description": "UDP sockets with ECN information for the QUIC transport protocol",
       "licenses": [
         {
@@ -13190,7 +13075,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:quinn-udp:quinn-udp:0.5.15:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:quinn-udp:quinn-udp:0.5.16:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -14374,10 +14259,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustix@1.1.4",
+      "bom-ref": "pkg:cargo/rustix@1.1.6",
       "name": "rustix",
-      "version": "1.1.4",
-      "purl": "pkg:cargo/rustix@1.1.4",
+      "version": "1.1.6",
+      "purl": "pkg:cargo/rustix@1.1.6",
       "description": "Safe Rust bindings to POSIX/Unix/Linux/Winsock-like syscalls",
       "licenses": [
         {
@@ -14399,7 +14284,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:rustix:rustix:1.1.4:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:rustix:rustix:1.1.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -18879,10 +18764,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/url@2.5.8",
+      "bom-ref": "pkg:cargo/url@2.5.9",
       "name": "url",
-      "version": "2.5.8",
-      "purl": "pkg:cargo/url@2.5.8",
+      "version": "2.5.9",
+      "purl": "pkg:cargo/url@2.5.9",
       "description": "URL library for Rust, based on the WHATWG URL Standard",
       "licenses": [
         {
@@ -18904,7 +18789,7 @@
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:url:url:2.5.8:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:url:url:2.5.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -21224,6 +21109,20 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:npm/brace-expansion@5.0.13",
+      "name": "brace-expansion",
+      "version": "5.0.13",
+      "purl": "pkg:npm/brace-expansion@5.0.13",
+      "properties": [
+        {
+          "name": "cosmian:sbom:cpe_match",
+          "value": "verified-vendor-product"
+        }
+      ],
+      "cpe": "cpe:2.3:a:juliangruber:brace-expansion:5.0.13:*:*:*:*:*:*:*"
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:npm/callsites@3.1.0",
       "name": "callsites",
       "version": "3.1.0",
@@ -21672,31 +21571,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.7",
+      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.8",
       "name": "eslint-plugin-react-refresh",
-      "version": "0.5.7",
-      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.7",
+      "version": "0.5.8",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.7:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.8:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.7(eslint@9.39.3(jiti@2.7.0))",
+      "bom-ref": "pkg:npm/eslint-plugin-react-refresh@0.5.8(eslint@9.39.3(jiti@2.7.0))",
       "name": "eslint-plugin-react-refresh",
-      "version": "0.5.7(eslint@9.39.3(jiti@2.7.0))",
-      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.7(eslint@9.39.3(jiti@2.7.0))",
+      "version": "0.5.8(eslint@9.39.3(jiti@2.7.0))",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.5.8(eslint@9.39.3(jiti@2.7.0))",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.7_eslint_9.39.3_jiti_2.7.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:eslint-plugin-react-refresh:eslint-plugin-react-refresh:0.5.8_eslint_9.39.3_jiti_2.7.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -22232,17 +22131,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/ignore@7.0.14",
+      "bom-ref": "pkg:npm/ignore@7.0.16",
       "name": "ignore",
-      "version": "7.0.14",
-      "purl": "pkg:npm/ignore@7.0.14",
+      "version": "7.0.16",
+      "purl": "pkg:npm/ignore@7.0.16",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:ignore:ignore:7.0.14:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:ignore:ignore:7.0.16:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -22778,17 +22677,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/minimatch@11.0.5",
+      "bom-ref": "pkg:npm/minimatch@11.0.9",
       "name": "minimatch",
-      "version": "11.0.5",
-      "purl": "pkg:npm/minimatch@11.0.5",
+      "version": "11.0.9",
+      "purl": "pkg:npm/minimatch@11.0.9",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:minimatch_project:minimatch:11.0.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:minimatch_project:minimatch:11.0.9:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23044,31 +22943,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/playwright@1.65.0",
+      "bom-ref": "pkg:npm/playwright@1.65.1",
       "name": "playwright",
-      "version": "1.65.0",
-      "purl": "pkg:npm/playwright@1.65.0",
+      "version": "1.65.1",
+      "purl": "pkg:npm/playwright@1.65.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:microsoft:playwright:1.65.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:microsoft:playwright:1.65.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/playwright-core@1.65.0",
+      "bom-ref": "pkg:npm/playwright-core@1.65.1",
       "name": "playwright-core",
-      "version": "1.65.0",
-      "purl": "pkg:npm/playwright-core@1.65.0",
+      "version": "1.65.1",
+      "purl": "pkg:npm/playwright-core@1.65.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:playwright-core:playwright-core:1.65.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:playwright-core:playwright-core:1.65.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23100,17 +22999,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/prettier@3.10.0",
+      "bom-ref": "pkg:npm/prettier@3.10.1",
       "name": "prettier",
-      "version": "3.10.0",
-      "purl": "pkg:npm/prettier@3.10.0",
+      "version": "3.10.1",
+      "purl": "pkg:npm/prettier@3.10.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:prettier:prettier:3.10.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:prettier:prettier:3.10.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24822,31 +24721,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/typescript-eslint@8.72.2",
+      "bom-ref": "pkg:npm/typescript-eslint@8.73.0",
       "name": "typescript-eslint",
-      "version": "8.72.2",
-      "purl": "pkg:npm/typescript-eslint@8.72.2",
+      "version": "8.73.0",
+      "purl": "pkg:npm/typescript-eslint@8.73.0",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.2:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.73.0:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/typescript-eslint@8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "bom-ref": "pkg:npm/typescript-eslint@8.73.0(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
       "name": "typescript-eslint",
-      "version": "8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
-      "purl": "pkg:npm/typescript-eslint@8.72.2(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "version": "8.73.0(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
+      "purl": "pkg:npm/typescript-eslint@8.73.0(eslint@9.39.3(jiti@2.7.0))(typescript@5.9.3)",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.72.2_eslint_9.39.3_jiti_2.7.0___typescript_5.9.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:typescript-eslint:typescript-eslint:8.73.0_eslint_9.39.3_jiti_2.7.0___typescript_5.9.3:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -25173,7 +25072,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/08sbfa8fyziijd8x49wy8lny4447a1fv-cosmian-kms-server-dynamic-5.29.0.drv",
+      "ref": "/nix/store/zrxzzx5rwwzkzqsvbkpk5rsf15m8jg9g-cosmian-kms-server-dynamic-5.29.0.drv",
       "dependsOn": [
         "/nix/store/x4i9mlbsphbychq40jk1vjjbn9hikxz3-openssl-3.6.5.drv"
       ]

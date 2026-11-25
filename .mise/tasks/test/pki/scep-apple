@@ -16,7 +16,7 @@ kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 
 REPO_ROOT="$(get_repo_root)"
-bash "${REPO_ROOT}/.mise/scripts/test/test_scep_apple.sh" \
+bash "${REPO_ROOT}/.mise/scripts/test/pki/test_scep_apple.sh" \
   --variant "${usage_variant:-fips}" --link "${usage_link:-static}"
 
 print_success "Apple SCEP interoperability capture completed"

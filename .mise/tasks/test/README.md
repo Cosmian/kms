@@ -28,7 +28,7 @@
 
 ## 1. Master Orchestrator
 
-Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one job per group in `.github/workflows/test_all.yml` (`mise run test:<group>`).
+Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<name>`. A leaf checks its own prerequisites and, when it cannot run on this machine, calls `skip_test "<reason>"` (`.mise/lib/common.sh`), which prints `SKIP: <reason>` and exits 77. Each group's `_default` task runs an explicit list of its adjacent leaves with `run_test_leaves` and counts exit 77 as a skip; leaves named `<group>:<leaf>` in `TEST_SKIP_LEAVES` are skipped without running. CI runs one leg per group and variant in `.github/workflows/test_all.yml` (`test-suites`, `mise run test:<group>`).
 
 | Command | Effect |
 |---------|--------|
@@ -62,7 +62,8 @@ Gates are one-liners such as `[ "$VARIANT" = non-fips ] || skip_test "non-fips o
 
 1. Create `.mise/tasks/test/<group>/<name>` (executable) with the standard header and the prologue above.
 2. Add `<name>` to the `run_test_leaves` line of `.mise/tasks/test/<group>/_default`.
-3. It then runs in CI with its group (`test-<group>` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
+3. A helper script the leaf calls goes in `.mise/scripts/test/<group>/` (see [`.mise/scripts/test/README.md`](../../scripts/test/README.md)).
+4. It then runs in CI with its group (a unit of `.github/ci-paths.toml`, hence a leg of `test-suites` in `.github/workflows/test_all.yml`); the leaf must declare `-v --variant`. A leaf no group lists runs locally only.
 
 ### Sequence Diagram
 
@@ -85,7 +86,7 @@ sequenceDiagram
 
 ## 2. Database Backends
 
-**Tasks:** `test:db:sqlite`, `test:db:psql`, `test:db:mysql`, `test:db:mariadb`, `test:db:percona`, `test:db:redis`
+**Tasks:** `test:db:sqlite`, `test:db:psql`, `test:db:mysql`, `test:db:mariadb`, `test:db:percona`, `test:db:redis`, `test:db:pgedge`, `test:db:galera`, `test:db:multi-region-guards`
 **Orchestrator:** `test:db`
 
 All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → run `cargo test` against the KMS server and database crates with the target backend configured via environment variables.
@@ -93,11 +94,14 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 | Task | Backend | FIPS? | Notes |
 |------|---------|-------|-------|
 | `sqlite` | SQLite (file) | yes | Default. Also tests workspace binaries on CI. |
-| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. |
+| `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. Runs `test_db_postgresql_state_event_merge` (lifecycle event-log merge and startup reconcile). |
 | `mysql` | MySQL | yes | CI: non-FIPS on pull requests, both variants otherwise. |
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |
 | `redis` | Redis + Findex | **no** | Non-FIPS only. |
+| `pgedge` | Two PostgreSQL nodes with Spock | yes | Lifecycle, grants, GCM counter and local-heartbeat convergence; CRL leader gating; ceremony gating in non-FIPS mode. |
+| `galera` | Two Percona XtraDB Cluster nodes (Galera) | yes | Lifecycle-state merge, Destroyed payload guard, exact GCM counter and grants across two multi-primary nodes. |
+| `multi-region-guards` | Two PostgreSQL nodes with Spock, two Galera nodes | yes | Replays the behavioral proofs, then checks primary keys, lifecycle triggers, replication sets and counter delta-apply (PostgreSQL); Galera wiring and InnoDB primary keys (MySQL). CI runs non-FIPS only. |
 
 ### Architecture Overview
 
@@ -116,6 +120,8 @@ graph TB
         MariaDB[("MariaDB<br/>:3306")]
         Percona[("Percona XtraDB<br/>:3306")]
         Redis[("Redis<br/>+ Findex")]
+        PGEdgeA[("pgEdge region A")]
+        PGEdgeB[("pgEdge region B")]
     end
 
     Nix --> Cargo
@@ -125,6 +131,8 @@ graph TB
     Cargo --> MariaDB
     Cargo --> Percona
     Cargo --> Redis
+    Cargo --> PGEdgeA & PGEdgeB
+    PGEdgeA <-.->|"Spock replication<br/>excluding cluster_nodes"| PGEdgeB
     SoftHSM --> Cargo
 ```
 
@@ -148,6 +156,9 @@ sequenceDiagram
     DB-->>Cargo: key material
     Cargo-->>Script: test results
     alt PostgreSQL only
+        Script->>Cargo: test_db_postgresql_state_event_merge
+        Cargo->>DB: event-log merge, reopen, startup reconcile
+        DB-->>Cargo: derived states and event counts
         Script->>DB: docker compose up pg-failover-1 / pg-failover-2
         Script->>Cargo: test_db_postgresql_failover (background)
         Cargo->>DB: warm pool on pg1
@@ -156,6 +167,79 @@ sequenceDiagram
         DB-->>Cargo: success
     end
 ```
+
+### `test:db:pgedge`
+
+[Task](db/pgedge): accepts `--variant fips|non-fips` and `--link static|dynamic`, starts the `pgedge` Compose profile, runs the database and CRL proofs, and adds the ceremony proof in non-FIPS mode. Its exit trap stops both containers.
+
+### `test:db:galera`
+
+[Task](db/galera): accepts `--variant fips|non-fips` and `--link static|dynamic`, starts the `galera` Compose profile (two Percona XtraDB Cluster nodes), waits until both are synced and runs `test_db_galera_active_active`. Its exit trap removes both containers and their data, so a rerun always bootstraps a fresh cluster.
+
+```mermaid
+sequenceDiagram
+    participant Task as test:db:galera
+    participant Docker as docker compose (galera profile)
+    participant G1 as galera1
+    participant G2 as galera2
+    participant Cargo as cargo test
+
+    Task->>Task: generate shared TLS certificates (target/galera-certs)
+    Task->>Docker: up galera-1
+    Docker-->>G1: bootstrap cluster
+    Task->>G1: wait wsrep_ready = ON
+    Task->>Docker: up galera-2
+    G2->>G1: join (SST)
+    Task->>G1: wait wsrep_cluster_size = 2
+    Task->>G2: wait wsrep_local_state_comment = Synced
+    Task->>Cargo: test_db_galera_active_active
+    Cargo->>G1: writes (node 1)
+    Cargo->>G2: writes (node 2)
+    Cargo-->>Task: state merge, payload guard, GCM, grants verdict
+    Task->>Docker: rm -fsv galera-1 galera-2 (EXIT trap)
+```
+
+### `test:db:multi-region-guards`
+
+[Task](db/multi-region-guards), backed by [multi_region_guards.sh](../../lib/multi_region_guards.sh): accepts the same variant/link flags plus `--configs` (space-separated complete server TOML fixtures), `--skip-live` and `--backend postgresql|mysql|all` (default `all`). It validates source/configuration invariants, prebuilds the test binaries before starting the containers, runs the behavioral proofs and checks each node's primary keys, `ENABLE ALWAYS` triggers, Spock wiring, local-only `cluster_nodes` and delta-apply GCM counter (pgEdge), and Galera wiring, InnoDB primary keys and the lifecycle/payload/GCM/grants proof (Galera). Without `--configs` it exercises synthetic detector cases. Missing Docker or `--skip-live` produces an incomplete result and exits with failure, never a passing live proof.
+
+```mermaid
+sequenceDiagram
+    participant Task as test:db:multi-region-guards
+    participant Static as static guards
+    participant Cargo as cargo (behavioral tests)
+    participant Docker as docker compose
+    participant PG as pgedge1 and pgedge2
+    participant Galera as galera1 and galera2
+
+    Task->>Static: source model wiring (leader gating)
+    alt --configs given
+        Task->>Static: topology, backend, clear_database, ceremony keys, incompatible features
+    else no --configs
+        Task->>Static: detector self-test on synthetic configs
+    end
+    alt --skip-live, or Docker unavailable
+        Task-->>Task: live checks skipped, result INCOMPLETE (exit 1)
+    else live checks
+        Task->>Cargo: prebuild the behavioral test binaries (containers still down)
+        opt backend is postgresql or all
+            Task->>Docker: up pgedge-1 pgedge-2
+            Task->>Cargo: state merge and grants, CRL gating, ceremony gating (non-FIPS only)
+            Cargo->>PG: create the schema, wire Spock full-mesh, write on both nodes
+            Task->>PG: primary keys, lifecycle triggers, cluster tables, Spock wiring
+        end
+        opt backend is mysql or all
+            Task->>Docker: up galera-1 galera-2 (wait until synced)
+            Task->>Cargo: state merge, payload guard, GCM, grants
+            Cargo->>Galera: writes on both nodes
+            Task->>Galera: wsrep wiring, InnoDB primary keys
+        end
+        Task->>Docker: stop pgedge, remove galera (EXIT trap)
+    end
+    Task-->>Task: exit 1 if any guard failed, else all guards passed
+```
+
+Schema invariants are checked against the running databases, not the location of SQL text in the source tree. The live guards verify primary keys, replica identity and lifecycle trigger definitions on both nodes.
 
 ---
 
@@ -167,12 +251,12 @@ sequenceDiagram
 
 | Task | HSM Model | Platform | DB param |
 |------|-----------|----------|----------|
-| `softhsm2` | SoftHSM2 (software) | All | configurable |
-| `utimaco` | Utimaco simulator | Linux only | passthrough |
+| `softhsm2` | SoftHSM2 (software); the server `test_hsm_all` includes keyset rotation (re-key, retirement, all-generation processing; SoftHSM2 stores no key dates, so scheduling is asserted refused) | All | configurable |
+| `utimaco` | Utimaco simulator: loader tests, KMS startup with an HSM KEK and the server keyset rotation test, whose scheduler pass relies on the simulator storing `CKA_START_DATE` / `CKA_END_DATE` | Linux only | passthrough |
 | `proteccio` | Proteccio | Linux only | passthrough |
 | `crypt2pay` | Crypt2Pay | Linux only | passthrough |
 | `crypt2pay-simulator` | Crypt2Pay simulator (local `bnt`; `CRYPT2PAY_SIM_PASSWORD` = PIN, default empty) | Linux only | passthrough |
-| `idemia-sphere-simulator` | Idemia SPHERE simulator (Windows, SoftHSM2 backend); `fips` variant = FIPS-level simulator + OpenSSL FIPS provider + IV shim | Windows only (CI: `test_windows.yml`) | — |
+| `idemia-sphere-simulator` | Idemia SPHERE simulator (Windows, SoftHSM2 backend); `fips` variant = FIPS-level simulator + OpenSSL FIPS provider + IV shim | Windows only (CI: the `windows-hsm-idemia` leg of `test-group.yml`) | — |
 | `other` | Generic PKCS#11 shim over SoftHSM2 (v2/v3 message API, caller-IV policy per variant) | All (Windows: `.mise/scripts/windows/test_hsm_other.ps1`) | — |
 | `nix-helpers` | nix-shell re-entry secret-handling regression test (no HSM) | All | — |
 | `luna` | Thales Luna (`LUNA_PASSWORD`, `LUNA_SLOT`; not in `test:hsm`) | Linux only | — |
@@ -228,12 +312,13 @@ sequenceDiagram
 
 ## 4. Cloud Provider Integrations
 
-**Tasks:** `test:cloud:azure-ekm`, `test:cloud:google-cse`, `test:cloud:gcp-cmek`, `test:cloud:xks`, `test:cloud:xks-remote`
+**Tasks:** `test:cloud:azure-ekm`, `test:cloud:google-cse`, `test:cloud:google-cse-remote`, `test:cloud:gcp-cmek`, `test:cloud:xks`, `test:cloud:xks-remote`
 
 | Task | Cloud | FIPS? | Credential requirement |
 |------|-------|-------|------------------------|
 | `azure-ekm` | Azure EKM | no | Nix shell; runs the plain + mTLS scripts against a local KMS |
 | `google-cse` | Google CSE | yes | OAuth client + service account key |
+| `google-cse-remote` | Google CSE (cse.cosmian.com, cse.test.cosmian.com) | no | Local only, skipped in CI: `~/.cosmian/cse.cosmian.com.toml` or `CKMS_CSE_CONF` (KMS OAuth `refresh_token` + `gmail_api_conf`) |
 | `gcp-cmek` | GCP CMEK wrapping | yes | Nix shell; `cargo test tests::gcp_cmek --ignored` against a local KMS |
 | `xks` | AWS XKS (local) | no | KMS build + SigV4 test script |
 | `xks-remote` | AWS XKS (remote) | no | Nix shell (`WITH_XKS=1`), `KMS_XKS_SIGV4_ACCESS_KEY_ID` / `KMS_XKS_SIGV4_SECRET_ACCESS_KEY`, no build |
@@ -343,7 +428,9 @@ sequenceDiagram
 
 **Description:** SPIRE + Mistral client full integration (non-FIPS only). Multi-tenant topology with two independent SPIRE deployments against the same KMS.
 
-After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18) and `test:spire:kmip` (19).
+After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18), `test:spire:kmip` (19) and `test:spire:vault-transit-seal` (20).
+
+Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin` = `default_username`, signed by the test CA; trusted via `[tls] clients_ca_cert_file` in `test_data/spire/config/kms.toml`), passed to `kms_write_ckms_conf`. With the Vault token verifier as the only auth method the KMS answers 401 to token-less requests, so the default-user fallback no longer applies.
 
 #### Architecture Overview
 
@@ -370,7 +457,7 @@ graph TB
     SSA --> |X.509-SVID + JWT-SVID| Mistral
     SBA --> |X.509-SVID + JWT-SVID| Mistral
     Mistral --> |mTLS + JWT-SVID| KMS3
-    CKMS --> |certify, provision| KMS3
+    CKMS -- "certify, provision<br/>mTLS admin" --> KMS3
 ```
 
 #### Sequence Diagram
@@ -460,7 +547,7 @@ sequenceDiagram
     CKMS->>CKMS: build KMS (no insecure feature), ckms, auth-verifier
     CKMS->>Auth: start auth-verifier on :8443
     CKMS->>K0: start KMS bootstrap
-    CKMS->>K0: certify vault_pki_ca_cert
+    CKMS->>K0: certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>Auth: provision AppRoles
     Auth-->>CKMS: ROLE_ID_A, SECRET_ID_A
     CKMS->>SP: docker compose up spire-server-a
@@ -596,7 +683,7 @@ graph TB
     end
 
     AuthVrf3 --> |AppRole provisioning| KMS6
-    CKMS4 --> |certify, keys create| KMS6
+    CKMS4 -- "certify, keys create<br/>mTLS admin" --> KMS6
     TestScript --> CKMS4
     TestScript --> AuthVrf3
 ```
@@ -617,7 +704,7 @@ sequenceDiagram
     Test->>Cargo: build ckms CLI
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -659,7 +746,7 @@ graph TB
     SP_Agt2 --> |SDS delivery| Envoy_D2
     Envoy_D2 --> |mTLS| Envoy_U2
     AuthVrf4 --> |AppRole provisioning| KMS7
-    CKMS5 --> |certify, provision| KMS7
+    CKMS5 -- "certify, provision<br/>mTLS admin" --> KMS7
     TestSDS2 --> |orchestrates| DockerCompose
 ```
 
@@ -681,7 +768,7 @@ sequenceDiagram
     Test->>Cargo: build KMS server, auth-verifier, ckms
     Test->>Auth: start auth-verifier :8443
     Test->>KMS: start KMS :9998
-    Test->>CKMS: certificates certify vault_pki_ca_cert
+    Test->>CKMS: certificates certify vault_pki_ca_cert (mTLS admin cert)
     CKMS->>KMS: create root CA key + cert
     Test->>Auth: provision AppRoles
     Auth-->>Test: ROLE_ID_A, SECRET_ID_A
@@ -707,13 +794,41 @@ sequenceDiagram
 
 ---
 
+### `test:spire:vault-transit-seal`
+
+**Description:** HashiCorp Vault OSS (Docker, `hashicorp/vault:1.21` pinned by digest) auto-unseals with `seal "transit"` against the KMS Transit engine (`/v1/transit/encrypt|decrypt`). Non-FIPS only. Checks init + unseal, auto-unseal after restart (KV secret readable), auto-unseal after KMS key rotation, and that Vault stays sealed once the KMS key is deleted. See `documentation/docs/integrations/hashicorp_vault_auto_unseal.md`.
+
+```mermaid
+sequenceDiagram
+    participant Test as vault-transit-seal
+    participant AV as auth-verifier :8443
+    participant KMS as KMS :9998
+    participant Vault as Vault OSS<br/>(dynamic host port)
+
+    Test->>AV: ckms vault approle create-role vault-seal
+    Test->>KMS: POST /v1/auth/approle/login
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker run (seal "transit")
+    Test->>Vault: PUT /v1/sys/init
+    Vault->>KMS: encrypt root key
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt root key
+    Test->>Vault: read KV secret
+    Test->>KMS: POST /v1/transit/keys/vault-autounseal/rotate
+    Test->>Vault: docker restart
+    Vault->>KMS: decrypt v1 root key
+    Test->>KMS: DELETE /v1/transit/keys/vault-autounseal
+    Test->>Vault: docker restart
+    Vault-->>Test: remains sealed
+```
+
 ### `test:interop:openbao`
 
 **Description:** The real OpenBao CLI (`bao kv`, container image `ghcr.io/openbao/openbao`) against the KMS Vault KV v2-compatible secret store. Runs in both FIPS and non-FIPS variants and needs only Docker and no submodule. The KMS validates `X-Vault-Token` directly against a throw-away OpenBao dev server (two `userpass` logins, `alice` and `bob`, each mapped to its own entity) through OpenBao's own `/v1/auth/token/lookup-self`; no proxy sits in between.
 
 By default the KMS uses SQLite; CI also runs the scenario on PostgreSQL and MySQL through `test:db:openbao` (starts the `postgres` and `mysql` compose services in turn and sets `OPENBAO_DATABASE_URL`; `--db psql` or `--db mysql` runs only one). Set `OPENBAO_DATABASE_URL` (`postgresql://…` or `mysql://…`, e.g. `postgresql://kms:kms@127.0.0.1:5432/kms` after `docker compose up -d postgres`) to replay the whole scenario on that backend by hand; the scenario also checks the 219-character path limit.
 
-The CLI always prefixes requests with `/v1/`, writes with `PUT` and first calls `GET /v1/sys/internal/ui/mounts/<path>` to detect KV v2; the KMS serves the KV routes on both `/<kv_mount>` and `/v1/<kv_mount>` for that reason. The scenario ([`test_openbao_kv.sh`](../../scripts/test/openbao/test_openbao_kv.sh)) covers put/get, versioning (`-version=1`), nested `list`, metadata, soft delete (including retained older versions), hard delete (including older versions and path recreation), and the `options.ttl` sweep (`kv_ttl_check_interval_secs = 1`). Unit tests verify that users without grants cannot write, read metadata, delete, or discover paths through `list`; the CLI scenario also checks, against the authenticated KMS, that eight concurrent writes yield only 200 or 409 with one version per success, that an invalid token is rejected and that `bob` gets 403 on read, write and hard delete of `alice`'s secret.
+The CLI always prefixes requests with `/v1/`, writes with `PUT` and first calls `GET /v1/sys/internal/ui/mounts/<path>` to detect KV v2; the KMS serves the KV routes on both `/<kv_mount>` and `/v1/<kv_mount>` for that reason. The scenario ([`test_openbao_kv.sh`](../../scripts/test/interop/openbao/test_openbao_kv.sh)) covers put/get, versioning (`-version=1`), nested `list`, metadata, soft delete (including retained older versions), hard delete (including older versions and path recreation), and the `options.ttl` sweep (`kv_ttl_check_interval_secs = 1`). Unit tests verify that users without grants cannot write, read metadata, delete, or discover paths through `list`; the CLI scenario also checks, against the authenticated KMS, that eight concurrent writes yield only 200 or 409 with one version per success, that an invalid token is rejected and that `bob` gets 403 on read, write and hard delete of `alice`'s secret.
 
 #### Architecture Overview
 
@@ -754,7 +869,7 @@ sequenceDiagram
 
 **Description:** The real OpenBao CLI against the KMS Vault KV v2-compatible store, with the Cosmian Auth Verifier (not OpenBao) issuing the tokens: the deployment with only the KMS and the Auth Verifier. Runs in both variants; needs Docker, `cargo` and the `authentication` submodule. The task builds and starts the Auth Verifier from [`test_data/configs/auth_verifier/vault_kv.toml`](../../../test_data/configs/auth_verifier/vault_kv.toml) (plain HTTP, SQLite, `vault_userpass_realm = "kv-users"`), provisions a realm, users `alice` and `bob` and an AppRole with `curl`, then starts the KMS with `vault_auth_verifier_url` set to it.
 
-Every login goes through the KMS, which forwards `/v1/auth/*` to the Auth Verifier: `bao login -method=userpass` for both users, a wrong password (must fail), `bao login <token>` (exercises `/v1/auth/token/lookup-self`) and `bao write auth/approle/login`. [`test_openbao_kv.sh`](../../scripts/test/openbao/test_openbao_kv.sh) then runs the KV scenario with the two userpass tokens, and the AppRole token puts and reads back a secret. The CLI runs through [`bao_cli.sh`](../../scripts/test/openbao/bao_cli.sh).
+Every login goes through the KMS, which forwards `/v1/auth/*` to the Auth Verifier: `bao login -method=userpass` for both users, a wrong password (must fail), `bao login <token>` (exercises `/v1/auth/token/lookup-self`) and `bao write auth/approle/login`. [`test_openbao_kv.sh`](../../scripts/test/interop/openbao/test_openbao_kv.sh) then runs the KV scenario with the two userpass tokens, and the AppRole token puts and reads back a secret. The CLI runs through [`bao_cli.sh`](../../scripts/test/interop/openbao/bao_cli.sh).
 
 #### Architecture Overview
 
@@ -798,7 +913,7 @@ To run it by hand: `mise run test:interop:openbao-auth-verifier --variant non-fi
 
 **Description:** OpenBao auto-unseal through the KMS binary KMIP listener: the reverse direction of `test:interop:openbao`, with OpenBao as a KMIP consumer. Runs in both variants and needs only Docker. The task generates a throw-away CA, a KMS server certificate and an OpenBao client certificate (`CN=openbao-seal`), starts the KMS with mTLS HTTPS and `[socket_server]` (KMIP over TCP/TLS), then creates and activates an AES-256 wrapping key as the OpenBao identity through `POST /kmip/2_1`. OpenBao (image `ghcr.io/openbao/openbao`, override with `BAO_IMAGE`) is configured with `seal "kmip"` (`endpoint`, `kms_key_id`, `client_cert`, `client_key`, `ca_cert`, `encrypt_alg = "AES_GCM"`).
 
-The scenario checks that `bao operator init` completes with seal type `kmip` (no software seal fallback), that OpenBao is unsealed, and that after a container restart it unseals itself again. OpenBao connects straight to the KMS KMIP socket. The KMS runs with `cosmian_kms_server=debug`, which logs each KMIP request's operation, protocol version, target key identifier, cryptographic algorithm and block cipher mode (never the data, the IV or key material). [`check_kmip_seal_audit.py`](../../scripts/test/openbao/check_kmip_seal_audit.py) reads only the KMS log and asserts that KMIP `Encrypt` and `Decrypt` were served for the `openbao-seal` client certificate identity only, and that the requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode.
+The scenario checks that `bao operator init` completes with seal type `kmip` (no software seal fallback), that OpenBao is unsealed, and that after a container restart it unseals itself again. OpenBao connects straight to the KMS KMIP socket. The KMS runs with `cosmian_kms_server=debug`, which logs each KMIP request's operation, protocol version, target key identifier, cryptographic algorithm and block cipher mode (never the data, the IV or key material). [`check_kmip_seal_audit.py`](../../scripts/test/interop/openbao/check_kmip_seal_audit.py) reads only the KMS log and asserts that KMIP `Encrypt` and `Decrypt` were served for the `openbao-seal` client certificate identity only, and that the requests are KMIP 1.4, target the wrapping key, and use AES in GCM mode.
 
 In the `fips` variant the scenario cannot succeed by design: OpenBao picks the AES-GCM IV itself and ignores the one the server returns, and a FIPS KMS refuses a caller-supplied AES-GCM IV (FIPS 140-3 IG C.H). The task then asserts that `bao operator init` fails and that the KMS log holds that refusal for the `openbao-seal` identity, and stops before the unseal and audit steps.
 
@@ -863,8 +978,8 @@ sequenceDiagram
 
 **Description:** Runs two scenarios one after the other, both variants, and reports every failure. The scripts keep their own names so each can also be run directly.
 
-1. SSH certificates ([`test_ssh_certificates.sh`](../../scripts/test/test_ssh_certificates.sh)): KMS-issued OpenSSH user certificates checked by a real, unprivileged `sshd` (`TrustedUserCAKeys`); needs `sshd` and `ssh-keygen` on the host. It creates an ECDSA P-256 CA and then an RSA-3072 CA with `ckms`, configures the CA and a role, and issues a 6-second certificate. It asserts that `ssh-keygen -L` parses the certificate and that its signing key is the published CA key; that `sshd` accepts it before expiry, refuses a principal different from the login and refuses it after expiry; and that a principal outside the role (401), a TTL above the role maximum (422) and an RSA-2048 subject key (422) are rejected. The HSM-resident CA path is covered by `tests::hsm::ssh_ca` in `test:hsm:softhsm2`.
-2. Secret rotation ([`test_secret_rotation.sh`](../../scripts/test/test_secret_rotation.sh)): database password rotation published to the KV store, run once per engine (`--db postgres`, `--db mysql`; the task runs both). Needs Docker (`postgres:16-alpine`, `mysql:8.4` and the OpenBao image used as token verifier, as in `test:interop:openbao`). The KMS side is identical for every engine: only the `db_*` helper functions at the top of the script differ. It generates a password with `POST /v1/secrets/password`, changes the account password, and writes it to KV. It asserts that the new password works, the old one is refused, and a KV consumer reads the new value. In a second scenario the KV write is refused (invalid token): the pending value is kept, the rotation is not reported complete, and publishing the same value again succeeds.
+1. SSH certificates ([`test_ssh_certificates.sh`](../../scripts/test/interop/test_ssh_certificates.sh)): KMS-issued OpenSSH user certificates checked by a real, unprivileged `sshd` (`TrustedUserCAKeys`); needs `sshd` and `ssh-keygen` on the host. It creates an ECDSA P-256 CA and then an RSA-3072 CA with `ckms`, configures the CA and a role, and issues a 6-second certificate. It asserts that `ssh-keygen -L` parses the certificate and that its signing key is the published CA key; that `sshd` accepts it before expiry, refuses a principal different from the login and refuses it after expiry; and that a principal outside the role (401), a TTL above the role maximum (422) and an RSA-2048 subject key (422) are rejected. The HSM-resident CA path is covered by `tests::hsm::ssh_ca` in `test:hsm:softhsm2`.
+2. Secret rotation ([`test_secret_rotation.sh`](../../scripts/test/interop/test_secret_rotation.sh)): database password rotation published to the KV store, run once per engine (`--db postgres`, `--db mysql`; the task runs both). Needs Docker (`postgres:16-alpine`, `mysql:8.4` and the OpenBao image used as token verifier, as in `test:interop:openbao`). The KMS side is identical for every engine: only the `db_*` helper functions at the top of the script differ. It generates a password with `POST /v1/secrets/password`, changes the account password, and writes it to KV. It asserts that the new password works, the old one is refused, and a KV consumer reads the new value. In a second scenario the KV write is refused (invalid token): the pending value is kept, the rotation is not reported complete, and publishing the same value again succeeds.
 
 #### Architecture Overview
 
@@ -1674,7 +1789,7 @@ sequenceDiagram
 
 **Orchestrator:** `test:ui` runs the five suites above, each on its own (they are also separate CI legs). The auth and SAML suites are non-FIPS only (the auth-verifier is not FIPS-aware) and are skipped when the `authentication` submodule is absent; the SAML suite also needs a running Docker daemon; the OIDC suite needs Auth0 secrets and skips cleanly without them.
 
-**SAML single sign-on:** `test:ui:saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
+**SAML single sign-on:** `test:ui:saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/ui/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
 
 ### Architecture Overview
 
@@ -1745,11 +1860,11 @@ sequenceDiagram
 
 ## 13. Docker, Helm & Packaging
 
-**Tasks:** `test:pkg:docker`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
+**Tasks:** `test:pkg:docker`, `test:upgrade-db`, `test:db:upgrade-sqlite`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
 ### `test:pkg:docker`
 
-**Description:** Docker image smoke tests. Does **not** build an image: it exports `KMS_TLS_CONFIG_FLAVOR` (`fips` or `non_fips`, derived from `--variant`) and runs `.mise/scripts/test/test_docker_image.sh`, which starts the already-built and already-loaded image named by `DOCKER_IMAGE_NAME` through `docker compose -f .mise/scripts/docker-compose.yml up -d --wait`, probes TLS with `openssl s_client`, drives the stack with `ckms` (run through `cargo run -p ckms`), and checks the FIPS/non-FIPS variant reported by `/version`. The image itself is produced beforehand (Nix build via `mise run build:docker --load`, or the packaging CI workflow).
+**Description:** Docker image smoke tests. Does **not** build an image: it exports `KMS_TLS_CONFIG_FLAVOR` (`fips` or `non_fips`, derived from `--variant`) and runs `.mise/scripts/test/pkg/test_docker_image.sh`, which starts the already-built and already-loaded image named by `DOCKER_IMAGE_NAME` through `docker compose -f .mise/scripts/docker-compose.yml up -d --wait`, probes TLS with `openssl s_client`, drives the stack with `ckms` (run through `cargo run -p ckms`), and checks the FIPS/non-FIPS variant reported by `/version`. The image itself is produced beforehand (Nix build via `mise run build:docker --load`, or the packaging CI workflow).
 
 #### Architecture Overview
 
@@ -1943,6 +2058,19 @@ sequenceDiagram
     Test->>Nginx: poll GET /health (up to 20 s)
     Nginx-->>Test: 200 (recovered)
 ```
+
+---
+
+### `test:upgrade-db` and `test:db:upgrade-sqlite`
+
+**Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification.
+
+- `test:db:upgrade-sqlite` runs two local KMS binaries (`--old-kms` and `--new-kms`) against a SQLite directory.
+- `test:upgrade-db` runs published release Docker images (`ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) against the candidate image (`--new-image` / `DOCKER_IMAGE_NAME`) across SQLite, PostgreSQL, MySQL, and (in `non-fips` mode) Redis-findex. When `--old-version nightly` is used, it tests `5.20.0`, the latest release (`N-1`), and 2 deterministic round-robin middle releases.
+
+Each cell seeds the database through `/kmip/2_1` and `/access/grant` over mTLS. `verify_db_upgrade.py seed` uses the same recipes for the deterministic `mig_*`/`bulk_*` set and seeded-random `rnd_*` layer, validates the old server, and writes one snapshot containing attributes, user tags, material digests, grants, Locate results, ciphertexts, signatures, and explicit optional-feature skips. `verify` checks the candidate and its restart; post-upgrade canary data is added to that snapshot without changing the pre-upgrade expectations. The old server then checks the untouched cold backup, including the canary's absence.
+
+`--seed` and `--random-count` retain reproducible population. A missing response field, malformed tag, transport failure, or HTTP 500 fails the gate rather than reducing coverage. The serial-tag API assertion remains SQL-only; Redis serial-tag backfills are covered by the Redis migration fixture tests in the following stack layer.
 
 ---
 

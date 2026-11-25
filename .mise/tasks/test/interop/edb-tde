@@ -31,6 +31,6 @@ if [ -z "${EDB_SUBSCRIPTION_TOKEN:-}" ]; then
   exit 1
 fi
 
-bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/test_edb_tde.sh" --variant "$VARIANT" --link "$LINK"
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/interop/test_edb_tde.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "EDB TDE tests completed"

@@ -341,6 +341,24 @@ const baseMenu: MenuItem[] = [
         collapsedlabel: "KV",
     },
     {
+        key: "ssh-certificate",
+        label: "SSH Certificate",
+        icon: <SafetyCertificateOutlined />,
+        collapsedlabel: "SSH",
+    },
+    {
+        key: "ssh-ca",
+        label: "SSH CA & Roles",
+        icon: <SafetyCertificateOutlined />,
+        collapsedlabel: "CA",
+    },
+    {
+        key: "generate-password",
+        label: "Generate Password",
+        icon: <LockOutlined />,
+        collapsedlabel: "PWD",
+    },
+    {
         key: "hyperscalers",
         label: "Hyperscalers",
         icon: <CloudOutlined />,

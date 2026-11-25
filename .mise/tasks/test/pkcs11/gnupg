@@ -26,9 +26,9 @@ ensure_nix_shell
 
 print_header "Running GnuPG OpenPGP interoperability tests"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_gnupg.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/pkcs11/test_gnupg.sh" --variant "$VARIANT" --link "$LINK"
 
 print_header "Running GnuPG smartcard (gnupg-pkcs11-scd) PKCS#11 tests"
-bash "${REPO_ROOT}/.mise/scripts/test/test_gnupg_smartcard.sh" --variant "$VARIANT" --link "$LINK"
+bash "${REPO_ROOT}/.mise/scripts/test/pkcs11/test_gnupg_smartcard.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "GnuPG OpenPGP and smartcard tests completed"

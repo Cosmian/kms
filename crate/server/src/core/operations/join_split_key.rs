@@ -27,7 +27,10 @@ use super::create_split_key::{
     CRYPTO_OFFICER_CEREMONY_ATTR, extract_key_bytes_ref, requested_share_attributes,
 };
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
+    core::{
+        KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
+        wrapping::wrap_and_cache,
+    },
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -184,7 +187,9 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
     // the DB and unwrap before feeding the plaintext bytes into the XOR reconstruction.
     let mut raw_shares: Vec<Zeroizing<Vec<u8>>> = Vec::with_capacity(owms.len());
     for owm in &owms {
-        if let Object::SplitKey(sk) = owm.object() {
+        // Shares are stored wrapped by the server key encryption key when one is configured.
+        let share_object = kms.get_unwrapped(owm.id(), owm.object(), user).await?;
+        if let Object::SplitKey(sk) = &share_object {
             let stored_bytes = extract_share_bytes(&sk.key_block)?;
 
             // Check for an AES-KW wrapping key UID stamped by CreateSplitKey.
@@ -211,7 +216,10 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
                                  wrapped shares."
                             ))
                         })?;
-                    let wkb = extract_key_bytes_ref(wrap_owm.object())?;
+                    let wrap_object = kms
+                        .get_unwrapped(wrap_owm.id(), wrap_owm.object(), user)
+                        .await?;
+                    let wkb = extract_key_bytes_ref(&wrap_object)?;
                     cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_unwrap(
                         &stored_bytes,
                         wkb,
@@ -340,6 +348,12 @@ pub(crate) async fn join_split_key(
         }
     }
 
+    // The ceremony activation below is leader-only: refuse before storing (and replicating) the
+    // reconstructed key instead of relying on the compensating delete.
+    if reconstructed.all_ceremony_tagged && kms.params.crypto_officer.require_ceremony {
+        crate::core::require_leader_region(kms, "JoinSplitKey ceremony reconstruction")?;
+    }
+
     // Build the reconstructed key object.
     // For ceremony splits, the source key was destroyed after splitting — so we can
     // safely reuse its UID by stripping the `#<part>` suffix from the first share UID
@@ -356,7 +370,7 @@ pub(crate) async fn join_split_key(
     };
     let now = time::OffsetDateTime::now_utc();
 
-    let (reconstructed_object, mut reconstructed_attrs) = build_reconstructed_object(
+    let (mut reconstructed_object, mut reconstructed_attrs) = build_reconstructed_object(
         &request,
         reconstructed.secret,
         reconstructed.cryptographic_algorithm,
@@ -387,6 +401,16 @@ pub(crate) async fn join_split_key(
 
     // Session ID for audit-log correlation of this JoinSplitKey invocation.
     let join_session_id = Uuid::new_v4();
+
+    // Apply the server key encryption key (and any requested wrapping) before storage.
+    Box::pin(wrap_and_cache(
+        kms,
+        user,
+        &UniqueIdentifier::TextString(reconstructed_uid.clone()),
+        &mut reconstructed_object,
+    ))
+    .await?;
+    reconstructed_object.copy_wrapping_key_link_to(&mut reconstructed_attrs);
 
     kms.database
         .create(
@@ -500,6 +524,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
     share_ids: &[String],
     user: &UserId,
 ) -> KResult<()> {
+    crate::core::require_leader_region(kms, "Crypto Officer ceremony activation")?;
     let co_cfg = &kms.params.crypto_officer;
 
     if co_cfg.users.is_empty() {
@@ -590,7 +615,7 @@ fn build_reconstructed_object(
         key_format_type: KeyFormatType::Opaque,
         key_compression_type: None,
         key_value: Some(KeyValue::Structure {
-            key_material: KeyMaterial::ByteString(secret),
+            key_material: KeyMaterial::ByteString(secret.into()),
             attributes: None,
         }),
         cryptographic_algorithm: effective_algo,
@@ -631,7 +656,6 @@ mod tests {
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     };
-    use zeroize::Zeroizing;
 
     use super::*;
 
@@ -640,7 +664,7 @@ mod tests {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(raw)),
+                key_material: KeyMaterial::ByteString(raw.into()),
                 attributes: None,
             }),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -676,7 +700,7 @@ mod tests {
         let kb = KeyBlock {
             key_format_type: KeyFormatType::Opaque,
             key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![0_u8; 8]))),
+            key_value: Some(KeyValue::ByteString(vec![0_u8; 8].into())),
             cryptographic_algorithm: None,
             cryptographic_length: None,
             key_wrapping_data: None,

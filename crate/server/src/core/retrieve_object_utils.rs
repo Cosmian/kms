@@ -18,9 +18,6 @@ use crate::{
     result::KResult,
 };
 
-// TODO This function should probably not be a free-standing function KMS side,
-// and should be refactored as part of the Database,
-
 /// Retrieve a single object for a given operation type
 /// or the Get operation if not found.
 ///
@@ -38,9 +35,10 @@ pub(crate) async fn retrieve_object_for_operation(
     kms: &KMS,
     user: &UserId,
 ) -> KResult<Arc<ObjectWithMetadata>> {
+    // The handle can be a literal PKCS#12 password (see `resolve_pkcs12_password`): log its size only.
     trace!(
-        "object_handle: {object_handle}, user: {user}, \
-         operation_type: {operation_type:?}",
+        "object_handle: <{} chars>, user: {user}, operation_type: {operation_type:?}",
+        object_handle.as_str().len()
     );
 
     let mut candidates = kms

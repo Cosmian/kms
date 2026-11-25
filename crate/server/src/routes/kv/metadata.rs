@@ -36,13 +36,14 @@ use std::collections::{BTreeMap, HashSet};
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
+        SensitiveBytes,
         kmip_0::kmip_types::{SecretDataType, State},
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
             kmip_data_structures::{KeyMaterial, KeyValue},
             kmip_objects::{Object, ObjectType},
-            kmip_types::KeyFormatType,
+            kmip_types::{KeyFormatType, UniqueIdentifier},
             requests::create_secret_data_kmip_object,
         },
         time_normalize,
@@ -54,11 +55,10 @@ use openssl::{hash::MessageDigest, pkey::PKey, sign::Signer};
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use super::error::{KvApiError, KvResult};
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission},
+    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
     middlewares::UserId,
 };
 
@@ -301,7 +301,7 @@ pub(crate) async fn find_metadata(
 
 /// Decode `owm` as KV metadata; `None` when it holds anything else.
 fn parse_path_metadata(owm: &ObjectWithMetadata) -> Option<PathMetadata> {
-    serde_json::from_slice(secret_bytes(owm).ok()?).ok()
+    serde_json::from_slice(secret_bytes(owm.object()).ok()?).ok()
 }
 
 /// Build a `SecretData` object holding opaque `bytes`, tagged with `tags`.
@@ -326,7 +326,7 @@ fn kv_tags(extra_tags: &[String]) -> HashSet<String> {
         .collect()
 }
 
-/// Persist a brand-new KV-managed `SecretData` object (metadata or version), owned by `owner`.
+/// Persist a brand-new KV-managed `SecretData` object (metadata), owned by `owner`.
 pub(crate) fn create_object_operation(
     kms: &KMS,
     uid: &str,
@@ -340,6 +340,38 @@ pub(crate) fn create_object_operation(
         .attributes()
         .map_err(|e| KvApiError::InternalError(format!("failed to read attributes: {e}")))?
         .clone();
+    Ok(AtomicOperation::Create((
+        uid.to_owned(),
+        owner.clone(),
+        object,
+        attributes,
+        tags,
+    )))
+}
+
+/// Like [`create_object_operation`] for a version object: the secret is wrapped by the
+/// server key encryption key, when one is configured, before it is stored.
+pub(crate) async fn create_version_operation(
+    kms: &KMS,
+    uid: &str,
+    owner: &UserId,
+    bytes: &[u8],
+    extra_tags: &[String],
+) -> KvResult<AtomicOperation> {
+    let tags = kv_tags(extra_tags);
+    let mut object = build_secret_object(kms.vendor_id(), bytes, &tags)?;
+    let mut attributes = object
+        .attributes()
+        .map_err(|e| KvApiError::InternalError(format!("failed to read attributes: {e}")))?
+        .clone();
+    Box::pin(wrap_and_cache(
+        kms,
+        owner,
+        &UniqueIdentifier::TextString(uid.to_owned()),
+        &mut object,
+    ))
+    .await?;
+    object.copy_wrapping_key_link_to(&mut attributes);
     Ok(AtomicOperation::Create((
         uid.to_owned(),
         owner.clone(),
@@ -371,8 +403,8 @@ fn stored_version(owm: &ObjectWithMetadata) -> KvResult<u64> {
 }
 
 /// Extract the raw opaque bytes stored in a KV `SecretData` object, without copying them.
-pub(crate) fn secret_bytes(owm: &ObjectWithMetadata) -> KvResult<&[u8]> {
-    let Object::SecretData(sd) = owm.object() else {
+pub(crate) fn secret_bytes(object: &Object) -> KvResult<&[u8]> {
+    let Object::SecretData(sd) = object else {
         return Err(KvApiError::InternalError(
             "KV object is not a SecretData object".to_owned(),
         ));
@@ -470,8 +502,9 @@ pub(crate) fn destroy_version_operations(
         .key_block_mut()
         .map_err(|e| KvApiError::InternalError(format!("KV object has no key block: {e}")))?;
     key_block.key_format_type = KeyFormatType::Raw;
+    key_block.key_wrapping_data = None;
     key_block.key_value = Some(KeyValue::Structure {
-        key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
+        key_material: KeyMaterial::ByteString(SensitiveBytes::default()),
         attributes: Some(Box::new(attributes.clone())),
     });
     Ok([

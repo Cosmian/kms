@@ -345,9 +345,6 @@ impl<'de> Deserialize<'de> for Attribute {
                 }
                 let attribute_name_value = map.next_value::<String>()?;
 
-                // TODO: Special case of Notify for which there is no attribute value
-                // This server cannot handle Notify for now
-
                 // Some clients include an optional AttributeIndex (and/or VendorIdentification)
                 // between AttributeName and AttributeValue. Tolerate and skip these fields
                 // before reading the actual AttributeValue.

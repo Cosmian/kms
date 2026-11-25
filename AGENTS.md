@@ -32,7 +32,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `middlewares.instructions.md` | `crate/server/src/middlewares/**/*.rs`, `crate/server/src/config/wizard/auth_wizard.rs` | Sync rule 4.9 — auth config ⇔ wizard ⇔ middleware ⇔ scope wiring |
 | `test-vectors.instructions.md` | `test_data/vectors/**`, `crate/test_kms_server/**/*.rs` | Sync rule 4.10 — test vector directory ⇔ runner ⇔ README |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Sync rule 4.20 — KMS / Auth Verifier configs are complete fixtures in `test_data`, never partial inline configs |
-| `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` | Sync rule 4.11 — Nix vendor hashes ⇔ lock files |
+| `lockfile-hashes.instructions.md` | `Cargo.lock`, `ui/pnpm-lock.yaml` | Sync rule 4.11 — do not renew Nix vendor hashes after lock file changes (nightly does it) |
 | `cloud-providers.instructions.md` | `crate/server/src/routes/aws_xks/**`, `crate/server/src/routes/azure_ekm/**`, `crate/server/src/routes/google_cse/**`, `crate/server/src/routes/ms_dke/**` | Sync rule 4.12 — cloud provider routes ⇔ config ⇔ wizard ⇔ CLI ⇔ UI |
 | `hsm.instructions.md` | `crate/hsm/**/*.rs` | Sync rule 4.13 — PKCS#11 loader ⇔ HSM model enum ⇔ wizard ⇔ test vectors ⇔ CI matrix |
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` | Sync rule 4.17 — OpenSSL build script ⇔ provider init ⇔ CBOM/SBOM |
@@ -49,7 +49,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `markdown.instructions.md` | `**/*.md` | README, CHANGELOG, skill/instruction docs |
 | `docs.instructions.md` | `documentation/**/*.md`, `README.md` | mdBook site (Diátaxis framework); sync rule 4.14 — documentation ⇔ mdBook ⇔ README |
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
-| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `docker-compose.yml`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
+| `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `docker-compose.yml`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/pkg/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
 | `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, label width limits (no right-edge clipping), supported Markdown subset, no keyword ids, mmdc render check |
 | `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
@@ -595,8 +595,9 @@ Deb and RPM packages are built via Nix. Vendor hash files live in `nix/expected-
 
 > **AI agent note — Nix hash mismatch**: When CI reports a hash mismatch, first verify
 > that `Cargo.lock` or `ui/pnpm-lock.yaml` actually changed intentionally in this PR.
-> If not, revert the lock file. If the dependency change is intentional, retrieve the
-> correct hash from the CI log (`got: sha256-...`) and update `nix/expected-hashes/`.
+> If not, revert the lock file. If the change is intentional, **do not renew the hashes**
+> and do not edit `nix/expected-hashes/`: the nightly workflow (`nix-update-hashes.yml`)
+> recomputes them. Only a nightly run or an explicit user request may renew them.
 
 ---
 

@@ -241,12 +241,12 @@ pub(crate) async fn encrypt_inner(
             Encrypt {
                 unique_identifier: Some(UniqueIdentifier::TextString(key_id_or_tags.clone())),
                 cryptographic_parameters: Some(cryptographic_parameters),
-                data: Some(data),
+                data: Some(data.into()),
                 i_v_counter_nonce: None,
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: aead,
+                authenticated_encryption_additional_data: aead.map(Into::into),
             },
             &user,
         )

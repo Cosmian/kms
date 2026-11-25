@@ -42,8 +42,8 @@ const WARNING_THRESHOLDS_DAYS: [i64; 3] = [1, 7, 30];
 /// Each key is rotated independently: a failure on one key never blocks the others.
 /// A key whose rotation fails with `Conflict` (modified concurrently) is skipped without a metric;
 /// if it is still due, the next check rotates it.
-/// HSM-resident keys (UID prefix `hsm::`) are skipped — the KMS cannot generate
-/// key material inside an HSM.
+/// HSM-resident keys (UID prefix `hsm::`) are rotated on the HSM: AES keys via
+/// `C_GenerateKey`, key pairs via `C_GenerateKeyPair`; the scheduler acts as the HSM admin.
 ///
 /// # Metrics
 ///
@@ -93,12 +93,6 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
 /// Errors are also logged as `warn!` here so the caller loop can continue.
 async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> KResult<()> {
     let uid = handle.as_str();
-    // HSM keys: the KMS cannot generate new key material inside an HSM
-    if handle.is_hsm() {
-        debug!("[auto-rotate] Skipping HSM key {uid}");
-        return Ok(());
-    }
-
     // Retrieve the object to determine its type, algorithm, and rotation policy.
     // We capture `old_interval` here so the replacement can be re-armed after rotation.
     let owm = match kms.database.retrieve_object_arc(uid).await {
@@ -120,7 +114,13 @@ async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> 
         .map_or_else(|| "unknown".to_owned(), |a| format!("{a:?}"));
 
     // Capture the rotation policy before dispatching so we can re-arm the replacement.
-    let old_interval = owm.attributes().rotate_interval.filter(|&i| i > 0);
+    // The HSM re-key re-stamps CKA_START_DATE/CKA_END_DATE on the replacement itself;
+    // HsmStore::update_object cannot persist a re-armed policy.
+    let old_interval = if handle.is_hsm() {
+        None
+    } else {
+        owm.attributes().rotate_interval.filter(|&i| i > 0)
+    };
 
     // Dispatch to the appropriate KMIP rotation operation and return the new key's UID.
     let new_uid_result: KResult<String> = match object_type {
@@ -273,8 +273,6 @@ async fn rearm_rotation_policy(kms: &KMS, handle: ObjectHandle<'_>, interval: i6
 /// old UID is deactivated and disappears from future query results, so stale
 /// entries never cause problems.  On server restart the map is empty; at most one
 /// extra warning fires per key per restart, which is harmless.
-///
-/// Full notification delivery (SMTP, webhook) is wired in a follow-up PR.
 pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<String, i64>) {
     let now = time::OffsetDateTime::now_utc();
     let max_horizon = WARNING_THRESHOLDS_DAYS.iter().copied().max().unwrap_or(30);
@@ -290,11 +288,6 @@ pub(crate) async fn dispatch_renewal_warnings(kms: &KMS, warned: &mut HashMap<St
     };
 
     for (uid, owner) in &approaching {
-        // HSM keys are excluded from auto-rotation, skip warnings too
-        if ObjectHandle::from(uid).is_hsm() {
-            continue;
-        }
-
         let Ok(Some(owm)) = kms.database.retrieve_object_arc(uid).await else {
             continue;
         };
@@ -599,62 +592,6 @@ mod tests {
             replacement_linked,
             "original key must have a ReplacementObjectLink to the new key"
         );
-
-        Ok(())
-    }
-
-    /// Verify that `run_auto_rotation` skips HSM-resident keys (uid prefix `hsm::`).
-    #[tokio::test]
-    async fn test_auto_rotation_skips_hsm_keys() -> KResult<()> {
-        let kms = test_kms().await?;
-        let owner = UserId::from("auto_rotate_hsm_test@example.com");
-        let now = time::OffsetDateTime::now_utc();
-
-        // Store a key with an HSM-style UID (bypasses database-level HSM routing
-        // because no real HSM is configured; we just verify the scheduler skips it)
-        let hsm_uid = format!("hsm::softhsm2::0::{}", uuid::Uuid::new_v4());
-        let key_object = make_aes256_key();
-        let key_attrs = Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            state: Some(State::Active),
-            rotate_automatic: Some(true),
-            rotate_interval: Some(3600),
-            initial_date: Some(now - time::Duration::hours(2)),
-            ..Default::default()
-        };
-
-        // Create in the SQL store directly (the Database will route to the
-        // default SQL backend since the HSM routes are not configured in tests)
-        if kms
-            .database
-            .create(
-                Some(hsm_uid.clone()),
-                &owner,
-                &key_object,
-                &key_attrs,
-                &HashSet::new(),
-            )
-            .await
-            .is_ok()
-        {
-            // If the key was created, verify run_auto_rotation does NOT rotate it
-            run_auto_rotation(&kms).await;
-
-            let owm = kms
-                .database
-                .retrieve_object_arc(&hsm_uid)
-                .await
-                .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
-                .expect("HSM key must still exist");
-            // State must remain Active (not rotated, not deactivated)
-            assert_eq!(
-                owm.state(),
-                State::Active,
-                "HSM key must remain Active — scheduler must not rotate it"
-            );
-        }
-        // If create() rejected the HSM uid (routing error), the test trivially passes
-        // because there is nothing to be accidentally rotated.
 
         Ok(())
     }

@@ -53,8 +53,8 @@ use crate::{
             rekey::versioned_update_op,
         },
         uid_utils::{
-            KeysetVersion, ObjectHandle, as_keyset_ref, resolve_keyset_to_single_uid, resolve_uids,
-            walk_keyset_chain,
+            KeysetVersion, ObjectHandle, as_keyset_ref, parse_keyset_identifier,
+            resolve_keyset_to_single_uid, resolve_uids, walk_keyset_chain,
         },
     },
     error::KmsError,
@@ -187,6 +187,19 @@ pub(crate) trait CryptoOpSpec {
         KeysetMode::SingleLatest
     }
 
+    /// Refuse a request that cannot be run by walking a keyset ([`KeysetMode::TryEach`]):
+    /// the walk keeps the first key that succeeds, so the operation must fail with a wrong
+    /// key. Default: every request may walk.
+    fn check_keyset_walk(_owm: &ObjectWithMetadata, _request: &Self::Request) -> KResult<()> {
+        Ok(())
+    }
+
+    /// `true` when `response` means "not this key" without being an error (a verification
+    /// answering `Invalid`): a keyset walk then tries the next, older key.
+    fn is_wrong_key(_response: &Self::Response) -> bool {
+        false
+    }
+
     /// Compute the data length for `UsageLimits` enforcement.
     ///
     /// The meaning varies per operation:
@@ -262,7 +275,17 @@ pub(crate) trait CryptoOpSpec {
         request: &Self::Request,
         uid: &str,
         prefix: &str,
-    ) -> impl std::future::Future<Output = KResult<Self::Response>> + Send;
+    ) -> impl Future<Output = KResult<Self::Response>> + Send;
+
+    /// Execute one oracle member of a keyset walk without unauthenticated default fallbacks.
+    fn execute_oracle_for_keyset(
+        kms: &KMS,
+        request: &Self::Request,
+        owm: &ObjectWithMetadata,
+        prefix: &str,
+    ) -> impl Future<Output = KResult<Self::Response>> + Send {
+        Self::execute_oracle(kms, request, owm.id(), prefix)
+    }
 }
 
 /// Every `CryptoOpSpec` implementor automatically satisfies `KeySelectionSpec`.
@@ -523,15 +546,8 @@ impl KMS {
             .await?
         {
             ResolvedKey::Oracle { uid, prefix } => {
-                let result = Op::execute_oracle(self, &request, &uid, &prefix).await?;
-                if let Some(ref metrics) = self.metrics {
-                    let model = crate::core::uid_utils::hsm_model_from_prefix(
-                        &self.params.hsm_instances,
-                        &prefix,
-                    );
-                    metrics.record_hsm_operation(Op::OP_NAME, model);
-                }
-                Ok(result)
+                self.execute_oracle_recorded::<Op>(&request, &uid, &prefix, None)
+                    .await
             }
             ResolvedKey::Local(owm) => {
                 self.execute_local_with_limits::<Op>(&owm, &request, user)
@@ -610,6 +626,27 @@ impl KMS {
         Op::execute_local(self, key, request, user)
     }
 
+    /// Run the operation on the HSM / crypto oracle owning `prefix` and count it in the
+    /// HSM metrics.
+    async fn execute_oracle_recorded<Op: CryptoOpSpec>(
+        &self,
+        request: &Op::Request,
+        uid: &str,
+        prefix: &str,
+        keyset_member: Option<&ObjectWithMetadata>,
+    ) -> KResult<Op::Response> {
+        let result = match keyset_member {
+            None => Op::execute_oracle(self, request, uid, prefix).await?,
+            Some(owm) => Op::execute_oracle_for_keyset(self, request, owm, prefix).await?,
+        };
+        if let Some(metrics) = &self.metrics {
+            let model =
+                crate::core::uid_utils::hsm_model_from_prefix(&self.params.hsm_instances, prefix);
+            metrics.record_hsm_operation(Op::OP_NAME, model);
+        }
+        Ok(result)
+    }
+
     /// Try each key in a keyset chain (newest→oldest) until one succeeds.
     ///
     /// The traversal is unbounded: `walk_keyset_chain` already guarantees termination
@@ -622,6 +659,8 @@ impl KMS {
         user: &UserId,
     ) -> KResult<Op::Response> {
         let mut last_err: Option<KmsError> = None;
+        // First (newest) member's `Invalid` verdict, returned when no member verifies.
+        let mut invalid: Option<Op::Response> = None;
 
         for (depth, uid) in chain.iter().enumerate() {
             let Some(owm) = self.database.retrieve_object_arc(uid).await? else {
@@ -643,8 +682,11 @@ impl KMS {
                 continue;
             }
 
-            // Eligibility check
-            if !Op::is_key_eligible(&owm, self.vendor_id()) {
+            // Eligibility check. Like on the standard oracle path, HSM members skip it: their
+            // usage mask is derived from the key type, not read from the token, and the HSM
+            // enforces key usage itself.
+            let hsm = ObjectHandle::from(uid.as_str());
+            if !hsm.is_hsm() && !Op::is_key_eligible(&owm, self.vendor_id()) {
                 continue;
             }
 
@@ -653,10 +695,30 @@ impl KMS {
                 continue;
             }
 
-            match self
-                .execute_local_with_limits::<Op>(&owm, request, user)
+            Op::check_keyset_walk(&owm, request)?;
+
+            let result = if let ObjectHandle::Hsm { prefix, .. } = hsm {
+                // Same algorithm policy as for the local path (metadata only).
+                async {
+                    enforce_kmip_algorithm_policy_for_retrieved_key(
+                        &self.params,
+                        Op::OP_NAME,
+                        owm.id(),
+                        &owm,
+                    )?;
+                    self.execute_oracle_recorded::<Op>(request, uid, prefix, Some(&owm))
+                        .await
+                }
                 .await
-            {
+            } else {
+                self.execute_local_with_limits::<Op>(&owm, request, user)
+                    .await
+            };
+            match result {
+                // A verification with the wrong generation answers `Invalid`: try older ones.
+                Ok(response) if Op::is_wrong_key(&response) => {
+                    invalid.get_or_insert(response);
+                }
                 Ok(response) => {
                     let depth_u32 = u32::try_from(depth).unwrap_or(u32::MAX);
                     let warn_threshold = self.params.keyset_warn_depth;
@@ -684,6 +746,9 @@ impl KMS {
             }
         }
 
+        if let Some(response) = invalid {
+            return Ok(response);
+        }
         Err(last_err.unwrap_or_else(|| {
             KmsError::Kmip21Error(
                 ErrorReason::Item_Not_Found,
@@ -905,7 +970,18 @@ impl KMS {
         }
         owm.check_process_window()?;
         // KMIP §4.57: enforce state requirements for keyset-addressed keys
-        let effective = owm.effective_state();
+        let mut effective = owm.effective_state();
+        // PKCS#11 has no KMIP state. Validate the live head, including for cached bare-name
+        // resolutions: another KMS node can have rotated it since it entered the cache.
+        if effective == State::Active
+            && !Op::accepted_states().contains(&State::Deactivated)
+            && ObjectHandle::from(uid).is_hsm()
+            && !self
+                .hsm_protection_key_is_latest(&owm, unique_identifier, user)
+                .await?
+        {
+            effective = State::Deactivated;
+        }
         if !Op::accepted_states().contains(&effective) {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Wrong_Key_Lifecycle_State,
@@ -917,6 +993,51 @@ impl KMS {
             ));
         }
         Ok(owm)
+    }
+
+    /// Check the live HSM keyset, not cached attributes that can predate enrollment.
+    async fn hsm_protection_key_is_latest(
+        &self,
+        owm: &ObjectWithMetadata,
+        requested: &UniqueIdentifier,
+        user: &UserId,
+    ) -> KResult<bool> {
+        // A generated public-key id is `base@N_pk`, not `base_pk@N`.
+        let (private_uid, public_suffix) = owm
+            .id()
+            .strip_suffix("_pk")
+            .map_or_else(|| (owm.id(), ""), |id| (id, "_pk"));
+        let parsed = ObjectHandle::from(private_uid).hsm_parts()?;
+        let fallback_name = format!("{}{public_suffix}", parsed.full_base_uid());
+        let name = owm
+            .attributes()
+            .rotate_name
+            .as_deref()
+            .unwrap_or(&fallback_name);
+        let members = self
+            .database
+            .find_by_rotate_name_uncached(name, None, user)
+            .await?;
+        let Some((_, current)) = members.iter().find(|(id, _)| id == owm.id()) else {
+            // A genuinely unenrolled, unversioned key has no keyset yet.
+            if members.is_empty()
+                && owm.attributes().rotate_name.is_none()
+                && requested.as_str().is_some_and(|id| !id.contains('@'))
+            {
+                return Ok(true);
+            }
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!(
+                    "HSM key '{}' is absent from its live keyset '{name}'",
+                    owm.id()
+                ),
+            ));
+        };
+        let generation = current.rotate_generation.unwrap_or(parsed.generation);
+        Ok(!members
+            .iter()
+            .any(|(_, attrs)| attrs.rotate_generation.unwrap_or(0) > generation))
     }
 
     /// Resolve the key for a cryptographic operation using the [`CryptoOpSpec`] trait.
@@ -938,30 +1059,19 @@ impl KMS {
             .context("The unique identifier must be a string")?;
         let object_handle = ObjectHandle::from(uid_str);
 
-        // ── Fast-path for explicit HSM generation UIDs ───────────────────────────
-        // Only skip keyset resolution for HSM UIDs with an explicit `@N` generation
-        // suffix (e.g., `hsm::5::my-key@1`). Bare HSM UIDs (without `@`) are keyset
-        // names that need rotation resolution: Encrypt/Sign→latest, Decrypt/Verify→chain-walk.
-        if let ObjectHandle::Hsm { prefix, .. } = &object_handle
+        // ── Single member: explicit HSM generation or keyset reference ───────────
+        // An HSM UID with an explicit `@N` generation suffix, N >= 1 (e.g. `hsm::5::my-key@1`)
+        // is a direct handle on that generation. Bare HSM UIDs and `@latest`/`@first`/`@0`
+        // are keyset names that need rotation resolution: Encrypt/Sign→latest,
+        // Decrypt/Verify→chain-walk. Both end up checked as keyset members, so a retired
+        // generation is refused for protection operations however it is addressed.
+        let explicit_hsm_generation = object_handle.is_hsm()
             && uid_str.contains('@')
-        {
-            // Explicit generation handle: skip keyset resolution, go direct to oracle
-            if self
-                .is_user_authorized_with_get_wildcard(uid_str, user, Op::KMIP_OP)
-                .await?
-            {
-                return Ok(ResolvedKey::Oracle {
-                    uid: uid_str.to_owned(),
-                    prefix: prefix.to_string(),
-                });
-            }
-            // Authorization check failed; fall through to standard error handling below
-        }
-        // Bare HSM UID (no `@`): fall through to keyset resolution for rotation handling
-
-        // ── Keyset detection ─────────────────────────────────────────────────────
-        if let Some(keyset_ref) = as_keyset_ref(object_handle) {
-            let single_uid = match (&keyset_ref.version, Op::keyset_mode()) {
+            && parse_keyset_identifier(uid_str).is_none();
+        let single_uid = if explicit_hsm_generation {
+            Some(uid_str.to_owned())
+        } else if let Some(keyset_ref) = as_keyset_ref(object_handle) {
+            match (&keyset_ref.version, Op::keyset_mode()) {
                 (KeysetVersion::Bare, KeysetMode::TryEach) => {
                     let chain = walk_keyset_chain(&keyset_ref.name, self, user).await?;
                     if !chain.is_empty() {
@@ -970,15 +1080,31 @@ impl KMS {
                     None
                 }
                 _ => resolve_keyset_to_single_uid(&keyset_ref, self, user).await?,
-            };
-            if let Some(uid) = single_uid {
-                return Ok(ResolvedKey::Local(
-                    self.load_keyset_member::<Op>(&uid, unique_identifier, user)
-                        .await?,
-                ));
             }
-            // Not a keyset → fall through to normal UID resolution
+        } else {
+            None
+        };
+        if let Some(uid) = single_uid {
+            let owm = self
+                .load_keyset_member::<Op>(&uid, unique_identifier, user)
+                .await?;
+            // The HSM key material never leaves the token: run on the HSM, under the
+            // same algorithm policy as the local path.
+            if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(uid.as_str()) {
+                enforce_kmip_algorithm_policy_for_retrieved_key(
+                    &self.params,
+                    Op::OP_NAME,
+                    owm.id(),
+                    &owm,
+                )?;
+                return Ok(ResolvedKey::Oracle {
+                    uid: uid.clone(),
+                    prefix: prefix.to_owned(),
+                });
+            }
+            return Ok(ResolvedKey::Local(owm));
         }
+        // Not a keyset → fall through to normal UID resolution
 
         // ── Standard UID / tag resolution ────────────────────────────────────────
         let uids = resolve_uids(object_handle, self)
@@ -990,6 +1116,15 @@ impl KMS {
             .select_eligible_oracle_uid(Op::KMIP_OP, Op::OP_NAME, &uids, unique_identifier, user)
             .await?
         {
+            let owm = self
+                .load_keyset_member::<Op>(&uid, unique_identifier, user)
+                .await?;
+            enforce_kmip_algorithm_policy_for_retrieved_key(
+                &self.params,
+                Op::OP_NAME,
+                owm.id(),
+                &owm,
+            )?;
             return Ok(ResolvedKey::Oracle { uid, prefix });
         }
 
@@ -1038,7 +1173,6 @@ mod tests {
         cosmian_kms_interfaces::ObjectWithMetadata,
     };
     use time::Duration;
-    use zeroize::Zeroizing;
 
     use super::ObjectLifecycleExt;
     use crate::result::KResult;
@@ -1048,7 +1182,7 @@ mod tests {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3, 4])),
+                    key_material: KeyMaterial::ByteString(vec![1, 2, 3, 4].into()),
                     attributes: Some(Box::new(Attributes::default())),
                 }),
                 key_compression_type: None,

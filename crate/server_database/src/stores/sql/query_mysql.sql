@@ -25,6 +25,33 @@ DELETE
 FROM parameters
 WHERE name = ?;
 
+-- name: has-table-parameters
+SELECT 1
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name = 'parameters';
+
+-- Startup migrations hold row 1 FOR UPDATE NOWAIT in a transaction on a dedicated connection.
+-- name: create-table-migration-lock
+CREATE TABLE IF NOT EXISTS kms_migration_lock
+(
+    id TINYINT NOT NULL PRIMARY KEY
+);
+
+-- name: has-migration-lock-row
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1;
+
+-- name: insert-migration-lock-row
+INSERT IGNORE INTO kms_migration_lock (id)
+VALUES (1);
+
+-- name: select-migration-lock
+SELECT id
+FROM kms_migration_lock
+WHERE id = 1 FOR UPDATE NOWAIT;
+
 
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
@@ -115,7 +142,26 @@ FROM objects
 WHERE objects.id = ?
 FOR UPDATE;
 
+-- A Destroyed row keeps its zeroized payload (PostgreSQL: objects_state_derive).
 -- name: update-object-with-object
+UPDATE objects
+SET object=IF(state IN ('Destroyed', 'Destroyed_Compromised'), object, ?),
+    attributes=?,
+    wrapping_key_id=IF(state IN ('Destroyed', 'Destroyed_Compromised'), wrapping_key_id, ?),
+    version=version + 1
+WHERE id = ?;
+
+-- name: update-object-with-object-if-version
+UPDATE objects
+SET object=IF(state IN ('Destroyed', 'Destroyed_Compromised'), object, ?),
+    attributes=?,
+    wrapping_key_id=IF(state IN ('Destroyed', 'Destroyed_Compromised'), wrapping_key_id, ?),
+    version=version + 1
+WHERE id = ?
+  AND version = ?;
+
+-- Import replace may overwrite a Destroyed row (PostgreSQL: Upsert tombstones first).
+-- name: replace-object-with-object
 UPDATE objects
 SET object=?,
     attributes=?,
@@ -123,14 +169,8 @@ SET object=?,
     version=version + 1
 WHERE id = ?;
 
--- name: update-object-with-object-if-version
-UPDATE objects
-SET object=?,
-    attributes=?,
-    wrapping_key_id=?,
-    version=version + 1
-WHERE id = ?
-  AND version = ?;
+-- name: select-object-state-for-update
+SELECT state FROM objects WHERE id = ? FOR UPDATE;
 
 -- name: update-object-with-state
 UPDATE objects
@@ -244,6 +284,9 @@ FROM objects
 LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
 WHERE (objects.owner = ? OR read_access.userid = ?)
   AND objects.wrapping_key_id = ?;
+
+-- name: has-objects
+SELECT 1 FROM objects LIMIT 1;
 
 -- name: select-objects-null-wrapping-key
 SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
@@ -366,8 +409,11 @@ CREATE TABLE IF NOT EXISTS gcm_invocations
 -- name: clean-table-gcm_invocations
 DELETE FROM gcm_invocations;
 
+-- Explicit binary collation avoids ERROR 1267 when objects predates a server collation change.
 -- name: purge-orphan-gcm-invocations
-DELETE FROM gcm_invocations WHERE object_id NOT IN (SELECT id FROM objects);
+DELETE FROM gcm_invocations
+WHERE CONVERT(object_id USING utf8mb4) COLLATE utf8mb4_bin
+    NOT IN (SELECT CONVERT(id USING utf8mb4) COLLATE utf8mb4_bin FROM objects);
 
 -- name: init-gcm-invocations
 INSERT IGNORE INTO gcm_invocations (object_id, `count`) VALUES (?, 0);
@@ -380,3 +426,60 @@ UPDATE gcm_invocations SET `count` = `count` + ? WHERE object_id = ?;
 
 -- name: delete-gcm-invocations
 DELETE FROM gcm_invocations WHERE object_id = ?;
+
+-- name: create-table-cluster-nodes
+CREATE TABLE IF NOT EXISTS cluster_nodes (
+    node_id         VARCHAR(64) NOT NULL PRIMARY KEY,
+    version         VARCHAR(64) NOT NULL,
+    last_heartbeat  BIGINT      NOT NULL,
+    is_leader       BOOLEAN     NOT NULL DEFAULT FALSE
+);
+
+-- name: clear-cluster-leader
+UPDATE cluster_nodes SET is_leader = FALSE;
+
+-- name: upsert-cluster-node
+INSERT INTO cluster_nodes (node_id, version, last_heartbeat, is_leader)
+VALUES (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+    version = VALUES(version),
+    last_heartbeat = VALUES(last_heartbeat),
+    is_leader = VALUES(is_leader);
+
+-- name: delete-stale-cluster-nodes
+DELETE FROM cluster_nodes WHERE last_heartbeat < ?;
+
+-- name: select-live-cluster-nodes
+SELECT node_id, version, last_heartbeat, is_leader
+FROM cluster_nodes WHERE last_heartbeat >= ? ORDER BY node_id;
+
+-- Named lock scoped to the current database (SHA2 hex = 64 chars, the GET_LOCK name limit).
+-- Returns 1 when acquired, 0 when held elsewhere, NULL on error.
+-- name: try-cron-lock
+SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256), 0);
+
+-- name: release-cron-lock
+SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ':', ?), 256));
+
+-- Scheduled-job row locks, used when the server refuses GET_LOCK (Galera). A row lock
+-- excludes connections to the same database node only.
+-- name: create-table-cron-locks
+CREATE TABLE IF NOT EXISTS kms_cron_locks
+(
+    name VARCHAR(128) NOT NULL PRIMARY KEY
+);
+
+-- name: has-cron-lock-row
+SELECT name FROM kms_cron_locks WHERE name = ?;
+
+-- name: insert-cron-lock-row
+INSERT IGNORE INTO kms_cron_locks (name) VALUES (?);
+
+-- name: select-cron-lock-nowait
+SELECT name FROM kms_cron_locks WHERE name = ? FOR UPDATE NOWAIT;
+
+-- name: start-transaction
+START TRANSACTION;
+
+-- name: rollback
+ROLLBACK;

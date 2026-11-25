@@ -410,7 +410,8 @@ where
 /// exactly once rather than twice.
 ///
 /// Behaviour:
-/// - **Header absent** → pass through to the next middleware (native auth takes over).
+/// - **Header absent** → pass through to the next middleware (native auth takes over). When
+///   no other method authenticates the request, the scope's `ensure_auth` answers `401`.
 /// - **Header present, token valid** → inject [`AuthenticatedUser`]; subsequent native-auth
 ///   middlewares detect the already-present extension and skip their own checks.
 /// - **Header present, token invalid** → `403 Forbidden` (fail closed — do not fall through

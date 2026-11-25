@@ -74,12 +74,12 @@ pub(super) fn decrypt(
                         ..Default::default()
                     }),
                     data: Some(data.to_vec()),
-                    i_v_counter_nonce: Some(nonce.to_vec()),
+                    i_v_counter_nonce: Some(nonce.to_vec().into()),
                     correlation_value: None,
                     init_indicator: None,
                     final_indicator: None,
-                    authenticated_encryption_additional_data: aad.map(Vec::from),
-                    authenticated_encryption_tag: Some(tag.to_vec()),
+                    authenticated_encryption_additional_data: aad.map(Vec::from).map(Into::into),
+                    authenticated_encryption_tag: Some(tag.to_vec().into()),
                 })),
                 message_extension: None,
             },
@@ -113,5 +113,5 @@ pub(super) fn decrypt(
     assert_eq!(response.unique_identifier, key_id.to_owned());
     assert!(response.data.is_some());
     let data = response.data.as_ref().unwrap();
-    data.clone()
+    data.to_vec()
 }

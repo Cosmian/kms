@@ -174,7 +174,7 @@ print_success "KMS server ready on port 9998."
 # Both the root CA and any signed intermediate must have basicConstraints=CA:TRUE
 # so that Go's x509 path validation accepts them as signers.
 print_status "Creating self-signed PKI CA key and certificate in KMS (tag: vault_pki_ca)..."
-CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key")"
 
 # Write a temp extensions file for the root CA
 _VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
@@ -219,7 +219,7 @@ print_success "AppRoles provisioned."
 
 # sign-intermediate requires an explicit `certify` grant on the CA private key.
 CKMS_BIN="$(get_ckms_bin)" CKMS_CONF="${CKMS_CONF}" \
-  bash "${REPO_ROOT}/.mise/scripts/test/grant_spire_pki_certify.sh"
+  bash "${REPO_ROOT}/.mise/scripts/test/spire/grant_spire_pki_certify.sh"
 
 # ── Step 6b: Vault API conformance tests ──────────────────────────────────────
 # Prove that every HTTP contract SPIRE relies on (§3 auth, §4 PKI, §5 transit)
@@ -600,4 +600,9 @@ print_success "Step 18: SPIFFE JWT-SVID authentication tests passed."
 print_header "Step 19: SPIRE KMIP plugins (mise run test:spire:kmip)"
 mise run test:spire:kmip --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
 print_success "Step 19: SPIRE KMIP plugins tests passed."
+
+# ── Step 20: HashiCorp Vault transit auto-unseal (test:spire:vault-transit-seal) ─
+print_header "Step 20: Vault transit auto-unseal (mise run test:spire:vault-transit-seal)"
+mise run test:spire:vault-transit-seal --variant "${usage_variant:-non-fips}" --link "${usage_link:-static}"
+print_success "Step 20: Vault transit auto-unseal tests passed."
 print_success "SPIRE integration tests completed successfully!"

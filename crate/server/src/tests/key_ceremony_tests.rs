@@ -24,9 +24,9 @@ use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation,
     extra::tagging::VENDOR_ID_COSMIAN,
-    kmip_attributes::Attributes,
+    kmip_attributes::{Attribute, Attributes},
     kmip_objects::ObjectType,
-    kmip_operations::{CreateSplitKey, Get, JoinSplitKey},
+    kmip_operations::{CreateSplitKey, Get, JoinSplitKey, SetAttribute},
     kmip_types::{
         CryptographicAlgorithm, SplitKeyMethod, UniqueIdentifier, UsageLimits, UsageLimitsUnit,
     },
@@ -39,7 +39,10 @@ use crate::{
     error::KmsError,
     middlewares::UserId,
     result::KResult,
-    tests::test_utils::{get_tmp_sqlite_path, test_kms_with_config},
+    tests::test_utils::{
+        assert_stored_wrapped_by_kek, get_tmp_sqlite_path, test_kms_follower, test_kms_with_config,
+        test_kms_with_kek, unwrapped_key_bytes,
+    },
 };
 
 // A fixed 32-byte secret used for all ceremony tests.
@@ -1186,6 +1189,59 @@ async fn test_join_split_key_stores_reconstructed_key() -> KResult<()> {
     Ok(())
 }
 
+/// On a follower region, `JoinSplitKey` over ceremony shares is refused with the leader-region
+/// error and activates no Crypto Officer (the gate runs before the reconstructed key is stored).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_join_split_key_on_follower_stores_nothing() -> KResult<()> {
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let provisioner = "admin";
+
+    let conf = base_ceremony_conf(
+        vec![alice.to_owned(), bob.to_owned(), carol.to_owned()],
+        true,
+        None,
+    );
+    let kms = test_kms_follower(conf).await?;
+
+    let key_uid = "ceremony-key-follower-join";
+    let no_tags: &[&str] = &[];
+    let mut req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
+        256,
+        CryptographicAlgorithm::AES,
+        no_tags,
+        false,
+        None,
+    )?;
+    req.attributes.activation_date = None;
+    kms.create(req, &UserId::from(provisioner)).await?;
+    let shares = Box::pin(split_key(&kms, provisioner, key_uid, 3)).await?;
+    for share in &shares[1..] {
+        kms.database
+            .grant_operations(
+                share,
+                &UserId::from(alice),
+                std::collections::HashSet::from([KmipOperation::Get]),
+            )
+            .await?;
+    }
+
+    let err = join_shares(&kms, alice, &shares, ObjectType::SymmetricKey)
+        .await
+        .expect_err("JoinSplitKey must be refused on a follower");
+    assert!(
+        err.to_string()
+            .contains("JoinSplitKey ceremony reconstruction"),
+        "unexpected error: {err}"
+    );
+    assert!(!kms.is_crypto_officer(&UserId::from(alice)).await?);
+    Ok(())
+}
+
 /// Per-user model: each CO candidate activates independently. Multiple CO users
 /// can be simultaneously active. When Carol activates after Alice, Alice remains
 /// an active CO — Carol's activation does NOT demote Alice.
@@ -1448,7 +1504,7 @@ async fn test_active_co_can_perform_crypto_operations() -> KResult<()> {
     );
 
     let iv = enc_resp.i_v_counter_nonce;
-    let ciphertext = enc_resp.data.unwrap_or_default();
+    let ciphertext = enc_resp.data.unwrap_or_default().to_vec();
     let tag = enc_resp.authenticated_encryption_tag;
 
     assert!(
@@ -2301,5 +2357,97 @@ async fn test_undo_keeps_ceremony_split_key_shares() -> KResult<()> {
             "share {share} must be kept"
         );
     }
+    Ok(())
+}
+
+/// With a server key encryption key configured, split-key shares and the reconstructed key
+/// are stored wrapped, and the join still rebuilds the source key.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_split_and_join_store_keys_wrapped_by_server_kek() -> KResult<()> {
+    let alice = "alice@example.com";
+    let (kms, kek_id) = test_kms_with_kek(alice, || {
+        base_ceremony_conf(vec![alice.to_owned()], false, None)
+    })
+    .await?;
+    let owner = UserId::from(alice);
+
+    let source_uid = create_key(&kms, alice).await?;
+    let share_uids = split_key(&kms, alice, &source_uid, 2).await?;
+    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
+
+    for uid in share_uids.iter().chain([&source_uid, &reconstructed_uid]) {
+        assert_stored_wrapped_by_kek(&kms, uid, &kek_id).await;
+    }
+    assert_eq!(
+        unwrapped_key_bytes(&kms, &reconstructed_uid, &owner).await?,
+        unwrapped_key_bytes(&kms, &source_uid, &owner).await?
+    );
+
+    // Once its owner clears `Sensitive`, a Get of a share with `NotWrapped` returns it unwrapped.
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+            new_attribute: Attribute::Sensitive(false),
+        },
+        &owner,
+    )
+    .await?;
+    let share = kms
+        .get(
+            Get {
+                unique_identifier: Some(UniqueIdentifier::TextString(share_uids[0].clone())),
+                key_wrap_type: Some(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::KeyWrapType::NotWrapped,
+                ),
+                ..Default::default()
+            },
+            &owner,
+        )
+        .await?;
+    assert!(!share.object.is_wrapped(), "share must come back unwrapped");
+    Ok(())
+}
+
+/// Multi-region regression: a Crypto Officer activation record written on one node
+/// (simulating the "leader" region) that lands — via replication in a real multi-region
+/// deployment, simulated here by pointing a second `KMS` instance at the same `SQLite` file —
+/// on a node configured with a **different** `ceremony_secret` (simulating a misconfigured
+/// "follower" region) must NOT hard-fail `is_crypto_officer()`. It must fail secure and report
+/// the user as not-currently-active, per
+/// `database_permissions.rs::verify_ceremony_record`.
+#[tokio::test]
+async fn test_ceremony_verification_fails_secure_on_ceremony_keys_mismatch() -> KResult<()> {
+    let alice = "alice@example.com";
+    let bob = "bob@example.com";
+    let carol = "carol@example.com";
+    let co_users = vec![alice.to_owned(), bob.to_owned(), carol.to_owned()];
+    let shared_db_path = get_tmp_sqlite_path();
+
+    // "Leader": activates alice's ceremony with the default TEST_CEREMONY_SECRET.
+    let mut conf_a = base_ceremony_conf(co_users.clone(), true, None);
+    conf_a.db.sqlite_path = shared_db_path.clone();
+    let kms_a = test_kms_with_config(conf_a).await?;
+    kms_a
+        .database
+        .activate_crypto_officer_ceremony(alice, &["p1".to_owned(), "p2".to_owned()], "somehash")
+        .await?;
+    assert!(
+        kms_a.is_crypto_officer(&UserId::from(alice)).await?,
+        "alice must be CO on the node that sealed the record"
+    );
+
+    // "Follower": same DB file (simulating a replicated row), but configured with a
+    // *different* ceremony_secret — as if the operator misconfigured the two regions.
+    let mut conf_b = base_ceremony_conf(co_users, true, None);
+    conf_b.db.sqlite_path = shared_db_path;
+    conf_b.roles.ceremony_secret = Some("0".repeat(64));
+    let kms_b = test_kms_with_config(conf_b).await?;
+
+    // Must fail secure: Ok(false), never Err.
+    assert!(
+        !kms_b.is_crypto_officer(&UserId::from(alice)).await?,
+        "a ceremony_keys mismatch must be treated as 'not an active CO', not a hard error"
+    );
     Ok(())
 }

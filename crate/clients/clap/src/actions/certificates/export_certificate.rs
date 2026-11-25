@@ -87,7 +87,16 @@ pub struct ExportCertificateAction {
 impl ExportCertificateAction {
     /// Export a certificate from the KMS
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
-        trace!("{self:?}");
+        // never log `self`: it holds the PKCS#12 password
+        trace!(
+            "certificate_file: {:?}, certificate_id: {:?}, tags: {:?}, output_format: {:?}, \
+             allow_revoked: {}",
+            self.certificate_file,
+            self.certificate_id,
+            self.tags,
+            self.output_format,
+            self.allow_revoked
+        );
 
         let id = get_key_uid(
             self.certificate_id.as_ref(),

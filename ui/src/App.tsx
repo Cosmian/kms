@@ -47,6 +47,9 @@ import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
 import HsmStatus from "./actions/Objects/HsmStatus";
 import KvSecrets from "./actions/Secrets/KvSecrets";
+import GeneratePassword from "./actions/Secrets/GeneratePassword";
+import SshCa from "./actions/Secrets/SshCa";
+import SshCertificate from "./actions/Secrets/SshCertificate";
 import ActivateForm from "./actions/Objects/ObjectsActivate";
 import DestroyForm from "./actions/Objects/ObjectsDestroy";
 import ObjectsReKeyForm from "./actions/Objects/ObjectsReKey";
@@ -461,6 +464,9 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         </Route>
                         <Route path="hsm-status" element={<HsmStatus />} />
                         <Route path="kv-secrets" element={<KvSecrets />} />
+                        <Route path="ssh-certificate" element={<SshCertificate />} />
+                        <Route path="ssh-ca" element={<SshCa />} />
+                        <Route path="generate-password" element={<GeneratePassword />} />
                         <Route path="certificates">
                             <Route path="certs/import" element={<CertificateImportForm />} />
                             <Route path="certs/export" element={<CertificateExportForm />} />

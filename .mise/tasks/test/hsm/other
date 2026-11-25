@@ -41,7 +41,7 @@ POLICY=()
 [ "${VARIANT}" = "non-fips" ] && POLICY=(-DACCEPT_CALLER_IV)
 SHIM_DIR="$(mktemp -d)"
 trap 'rm -rf -- "${SHIM_DIR:?}"' EXIT
-SHIM_SRC="${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_fips_iv_shim.c"
+SHIM_SRC="${MISE_CONFIG_ROOT}/.mise/scripts/test/hsm/pkcs11_fips_iv_shim.c"
 cc -shared -fPIC -O2 -Wno-cast-function-type-mismatch \
   ${POLICY[@]+"${POLICY[@]}"} -o "${SHIM_DIR}/shim-v2.so" "${SHIM_SRC}"
 cc -shared -fPIC -O2 -DV3_MESSAGE -Wno-cast-function-type-mismatch \
@@ -74,13 +74,13 @@ for mode in v2 v3 v3-stubs; do
     -- --ignored --exact hsm_startup_tests::test_startup_with_hsm_kek_other
   if [ "${mode}" = "v2" ]; then
     # The standalone probes given to HSM vendors (C and Python) must both report what this shim does.
-    cc -O2 -o "${SHIM_DIR}/probe" "${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_gcm_iv_probe.c" -ldl
+    cc -O2 -o "${SHIM_DIR}/probe" "${MISE_CONFIG_ROOT}/.mise/scripts/test/hsm/pkcs11_gcm_iv_probe.c" -ldl
     require_cmd python3
     for probe_kind in c python; do
       if [ "${probe_kind}" = "c" ]; then
         PROBE_CMD=("${SHIM_DIR}/probe")
       else
-        PROBE_CMD=(python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/pkcs11_gcm_iv_probe.py")
+        PROBE_CMD=(python3 "${MISE_CONFIG_ROOT}/.mise/scripts/test/hsm/pkcs11_gcm_iv_probe.py")
       fi
       PROBE_OUT="$(env LD_LIBRARY_PATH="${LIB_PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
         SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" PKCS11_PIN="${HSM_USER_PASSWORD}" \

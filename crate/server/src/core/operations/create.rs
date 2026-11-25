@@ -10,7 +10,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
-use super::{key_ops::ObjectLifecycleExt, pgp_ops};
+use super::{
+    attributes::policy::reject_hsm_rotation_attributes, key_ops::ObjectLifecycleExt, pgp_ops,
+};
 use crate::{
     core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
@@ -122,24 +124,24 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
             .clone_from(&attributes.usage_limits);
     }
 
-    // Keyset validation (SQL keys only): if rotate_name is present, the UID must equal it.
-    // HSM keys (those with a prefix such as "hsm::") manage keyset membership differently —
-    // the UID is an opaque PKCS#11 handle; rotate_name is set independently via SetAttribute.
-    if let Some(rotate_name) = &request.attributes.rotate_name {
-        let uid_str = unique_identifier.as_str().ok_or_else(|| {
-            KmsError::InvalidRequest("Create: unique_identifier must be a TextString".to_owned())
-        })?;
-        if !ObjectHandle::from(uid_str).is_hsm() && rotate_name.as_str() != uid_str {
+    // HSM keys get keyset membership and a rotation schedule only through SetAttribute after
+    // creation (the UID is an opaque PKCS#11 handle), so rotation attributes are refused
+    // rather than silently dropped. SQL keys: if rotate_name is present, the UID must equal it.
+    let uid_str = unique_identifier.as_str().ok_or_else(|| {
+        KmsError::InvalidRequest("Create: unique_identifier must be a TextString".to_owned())
+    })?;
+    if ObjectHandle::from(uid_str).is_hsm() {
+        reject_hsm_rotation_attributes("Create", &request.attributes)?;
+    } else if let Some(rotate_name) = &request.attributes.rotate_name {
+        if rotate_name.as_str() != uid_str {
             return Err(KmsError::InvalidRequest(format!(
                 "Create: rotate_name ('{rotate_name}') must equal the key's unique_identifier \
                  ('{uid_str}') — set the key ID to the keyset name at creation time"
             )));
         }
-        // Initialise keyset metadata for SQL keys: generation 0, the current (only) member.
-        if !ObjectHandle::from(uid_str).is_hsm() {
-            attributes.rotate_generation = Some(0);
-            attributes.rotate_latest = Some(true);
-        }
+        // Initialise keyset metadata: generation 0, the current (only) member.
+        attributes.rotate_generation = Some(0);
+        attributes.rotate_latest = Some(true);
     }
 
     let object_type = object.object_type();

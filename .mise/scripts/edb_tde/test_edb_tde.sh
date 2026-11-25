@@ -3,7 +3,7 @@
 # Tests Cosmian KMS compatibility with EDB Postgres Advanced Server TDE.
 #
 # Expects the EDB container to already be running (lifecycle owned by the nix
-# wrapper .mise/scripts/test/test_edb_tde.sh and test_all.yml in CI).
+# wrapper .mise/scripts/test/interop/test_edb_tde.sh and test_all.yml in CI).
 # Requires CONTAINER_NAME and EDB_MASTER_KEY_UID to be exported by the caller.
 #
 # Flow:

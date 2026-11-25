@@ -71,7 +71,11 @@ nav:
               - Re-Key Key Pair: kmip_support/key_rotation/_re-key_key_pair.md
               - Re-Certify: kmip_support/key_rotation/_re-certify.md
               - Key Rotation: kmip_support/key_rotation/index.md
-              - HSM Key Rotation: kmip_support/key_rotation/hsm.md
+              - HSM Key Rotation:
+                  - Overview: kmip_support/key_rotation/hsm.md
+                  - How to rotate HSM keys: kmip_support/key_rotation/hsm_keysets_how_to.md
+                  - HSM keysets reference: kmip_support/key_rotation/hsm_keysets_reference.md
+                  - HSM keysets explained: kmip_support/key_rotation/hsm_keysets_explanation.md
               - Auto-Rotation Policy: kmip_support/key_rotation/auto_rotation_policy.md
               - Concurrent Re-Key and Conflicts: kmip_support/key_rotation/concurrent_rekey.md
           - Revoke: kmip_support/_revoke.md
@@ -81,6 +85,7 @@ nav:
           - API Endpoints: integrations/api.md
           - OpenAPI Specification and Swagger UI: integrations/openapi.md
       - PKCS#11 provider module: integrations/pkcs11_provider.md
+      - Ansible collection: integrations/ansible.md
       - JOSE (JWS, JWE, JWKS):
           - JOSE API: integrations/jose/jose_api.md
           - JWE Key Unwrap: integrations/jose/jwe_decryption.md
@@ -137,6 +142,7 @@ nav:
           - Kubernetes Operator: integrations/kubernetes/operator.md
       - Other:
           - FortiGate / FortiOS: integrations/fortigate.md
+          - HashiCorp Vault auto-unseal: integrations/hashicorp_vault_auto_unseal.md
           - OpenSSH: integrations/openssh.md
           - SSH certificates and external secret rotation: integrations/ssh_certificates_and_secret_rotation.md
           - OpenBao (auto-unseal and KV store): integrations/openbao.md
@@ -156,14 +162,20 @@ nav:
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
-      - High-availability: installation/high_availability_mode.md
-      - Upgrading from 5.x to 6.0: installation/upgrade_5_to_6.md
+      - High availability:
+          - High availability and deployment profiles: installation/high_availability_mode.md
+          - HAProxy and Keepalived: installation/haproxy_keepalived.md
+          - Cluster coordination: installation/cluster_coordination.md
+      - Upgrading:
+          - Database Migrations: installation/upgrading/database_migrations.md
+          - Upgrading from 5.x to 6.0: installation/upgrading/upgrade_5_to_6.md
   - Configuration:
       - Configuration file: configuration/server_configuration_file.md
       - Configuration examples: configuration/configurations.md
       - Command line arguments: configuration/server_cli.md
       - Databases:
           - Configuration: configuration/database/configuration.md
+          - Multi-region active-active: configuration/database/multi_region.md
           - Tables: configuration/database/tables.md
           - Redis with Findex: configuration/database/redis.md
       - Cache mechanisms: configuration/object-cache.md

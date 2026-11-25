@@ -47,7 +47,6 @@ use futures::future::join_all;
 use test_kms_server::{
     TestClientOptions, init_test_logging, start_test_server_with_patch, test_config_path,
 };
-use zeroize::Zeroizing;
 
 /// Number of concurrent HTTP tasks dispatched per Criterion iteration.
 /// High enough to saturate the server workers; low enough to avoid OS thread exhaustion.
@@ -146,7 +145,7 @@ async fn ec_sign(client: &KmsClient, sk_id: &str) -> Result<(), KmsClientError> 
             digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
             ..Default::default()
         }),
-        data: Some(Zeroizing::new(vec![0x42_u8; 32])),
+        data: Some(vec![0x42_u8; 32].into()),
         ..Sign::default()
     };
     client.sign(req).await.map(|_| ())
@@ -168,6 +167,7 @@ async fn rsa_encrypt_sample(client: &KmsClient, pk_id: &str) -> Vec<u8> {
         .expect("RSA OAEP encrypt (setup)")
         .data
         .unwrap()
+        .to_vec()
 }
 
 // ── Bench entry point ─────────────────────────────────────────────────────────

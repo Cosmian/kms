@@ -24,10 +24,11 @@ mod kmip_policy;
 #[cfg(feature = "non-fips")]
 mod kmip_server_tests;
 mod locate;
-#[cfg(feature = "non-fips")]
-mod migrate;
 mod ms_dke;
 mod mtls_db;
+#[cfg(feature = "non-fips")]
+mod pgedge_ceremony_tests;
+mod pgedge_crl_tests;
 #[cfg(feature = "non-fips")]
 mod pqc_import_tests;
 mod revocation_authority_tests;

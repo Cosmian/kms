@@ -47,9 +47,97 @@ pub(crate) async fn test_kms_with_config(clap_config: ClapConfig) -> KResult<Arc
     ))
 }
 
+/// Like `test_kms_with_config`, but the node runs as a `region_role = follower`. `SQLite` stands
+/// in for a replicated database; `ServerParams::try_from` rejects a follower on `SQLite`.
+pub(crate) async fn test_kms_follower(clap_config: ClapConfig) -> KResult<Arc<KMS>> {
+    crate::openssl_providers::init_openssl_providers_for_tests();
+    let mut params = ServerParams::try_from(clap_config)?;
+    params.region_role = crate::config::RegionRole::Follower;
+    Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
+}
+
 /// Create a test KMS instance from the default HTTPS config.
 pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
     test_kms_with_config(https_clap_config()).await
+}
+
+/// Create a test KMS whose `key_encryption_key` is an AES-256 key created beforehand, by
+/// `kek_owner`, on the same database. `make_config` is called twice and must return a fresh
+/// config each time. Returns the KMS and the UID of the KEK.
+pub(crate) async fn test_kms_with_kek(
+    kek_owner: &str,
+    make_config: impl Fn() -> ClapConfig,
+) -> KResult<(Arc<KMS>, String)> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_types::CryptographicAlgorithm,
+        requests::symmetric_key_create_request,
+    };
+
+    let first = make_config();
+    let sqlite_path = first.db.sqlite_path.clone();
+    let kms = test_kms_with_config(first).await?;
+    let request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms
+        .create(request, &crate::middlewares::UserId::from(kek_owner))
+        .await?
+        .unique_identifier
+        .to_string();
+    drop(kms);
+
+    let mut second = make_config();
+    second.db.sqlite_path = sqlite_path;
+    second.key_encryption_key = Some(kek_id.clone());
+    Ok((test_kms_with_config(second).await?, kek_id))
+}
+
+/// Assert that `uid` is stored wrapped by `kek_id`: the object is wrapped and its stored
+/// attributes carry the Wrapping Key Link.
+pub(crate) async fn assert_stored_wrapped_by_kek(kms: &KMS, uid: &str, kek_id: &str) {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::LinkType;
+
+    let owm = kms
+        .database
+        .retrieve_object(uid)
+        .await
+        .expect("retrieve stored object")
+        .unwrap_or_else(|| panic!("{uid} must exist"));
+    assert!(owm.object().is_wrapped(), "{uid} must be stored wrapped");
+    assert_eq!(
+        owm.attributes()
+            .get_link(LinkType::WrappingKeyLink)
+            .map(|link| link.to_string())
+            .as_deref(),
+        Some(kek_id),
+        "{uid} must point at the KEK"
+    );
+}
+
+/// Key material of `uid` as the server unwraps it from its stored (possibly KEK-wrapped) form.
+pub(crate) async fn unwrapped_key_bytes(
+    kms: &KMS,
+    uid: &str,
+    user: &crate::middlewares::UserId,
+) -> KResult<zeroize::Zeroizing<Vec<u8>>> {
+    let stored = kms
+        .database
+        .retrieve_object(uid)
+        .await?
+        .unwrap_or_else(|| panic!("{uid} must exist"));
+    kms.get_unwrapped(uid, stored.object(), user)
+        .await?
+        .key_block()
+        .and_then(cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_data_structures::KeyBlock::key_bytes)
+        .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))
 }
 
 pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConfig {
@@ -228,6 +316,16 @@ pub(crate) async fn test_app(
             .expect("cannot instantiate KMS server"),
     );
 
+    // This in-process app starts no KMIP socket server: a stand-in task keeps `/health` from
+    // reporting the enabled socket server as stopped.
+    if server_params.start_socket_server {
+        drop(
+            kms_server
+                .socket_server_task
+                .set(tokio::spawn(std::future::pending::<()>())),
+        );
+    }
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -239,6 +337,7 @@ pub(crate) async fn test_app(
         .app_data(Data::new(kms_server.clone()))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
+        .service(routes::cluster::get_cluster_status)
         .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
         .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)
@@ -351,6 +450,7 @@ pub(crate) async fn test_app_with_kms(
         .app_data(Data::new(kms_server.clone()))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
+        .service(routes::cluster::get_cluster_status)
         .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
         .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)
@@ -727,4 +827,130 @@ where
         status,
         serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
     )
+}
+
+/// Wire bidirectional Spock logical replication between two pgEdge `PostgreSQL` nodes, for
+/// live 2-node multi-region integration tests. Idempotent (checks `IF NOT EXISTS` before every
+/// create) — safe to call on every test run against long-lived containers. Mirrors the exact SQL
+/// sequence already proven by
+/// `cosmian_kms_server_database`'s `test_db_pgedge_active_active`
+/// (`crate/server_database/src/tests/mod.rs`), using a direct `tokio_postgres` connection instead
+/// of a `PgPool`, since this crate does not have access to that crate's private `PgPool` type.
+///
+/// `url1`/`url2` are the connection URLs this test process uses to reach each node (typically
+/// `127.0.0.1:<mapped-port>`); the Spock node DSNs registered on each side use the Docker Compose
+/// service hostnames (`pgedge1`/`pgedge2`) since that is how the two Postgres containers reach
+/// each other for replication traffic.
+pub(crate) async fn wire_spock_bidirectional(url1: &str, url2: &str) -> KResult<()> {
+    async fn admin_client(url: &str) -> KResult<tokio_postgres::Client> {
+        let (client, connection) = tokio_postgres::connect(url, tokio_postgres::NoTls)
+            .await
+            .map_err(|e| {
+                crate::error::KmsError::ServerError(format!("pgedge admin connect failed: {e}"))
+            })?;
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                cosmian_logger::warn!("pgedge admin connection error: {e}");
+            }
+        });
+        Ok(client)
+    }
+
+    let c1 = admin_client(url1).await?;
+    let c2 = admin_client(url2).await?;
+
+    // Node + repset setup on n1 (pgedge1).
+    c1.batch_execute("CREATE EXTENSION IF NOT EXISTS spock;")
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+    let n1_exists: bool = c1
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM spock.node WHERE node_name = 'n1');",
+            &[],
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
+        .get(0);
+    if !n1_exists {
+        c1.batch_execute(
+            "SELECT spock.node_create(node_name := 'n1', dsn := 'host=pgedge1 port=5432 dbname=kms user=kms password=kms');",
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+    }
+    c1.batch_execute(
+            "SELECT spock.repset_add_all_tables('default', ARRAY['public']); \
+SELECT spock.repset_remove_table('default', 'cluster_nodes'); \
+ALTER TABLE gcm_invocations ALTER COLUMN count SET (log_old_value = true, delta_apply_function = spock.delta_apply);",
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+
+    // Node + repset setup on n2 (pgedge2).
+    c2.batch_execute("CREATE EXTENSION IF NOT EXISTS spock;")
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+    let n2_exists: bool = c2
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM spock.node WHERE node_name = 'n2');",
+            &[],
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
+        .get(0);
+    if !n2_exists {
+        c2.batch_execute(
+            "SELECT spock.node_create(node_name := 'n2', dsn := 'host=pgedge2 port=5432 dbname=kms user=kms password=kms');",
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+    }
+    c2.batch_execute(
+            "SELECT spock.repset_add_all_tables('default', ARRAY['public']); \
+SELECT spock.repset_remove_table('default', 'cluster_nodes'); \
+ALTER TABLE gcm_invocations ALTER COLUMN count SET (log_old_value = true, delta_apply_function = spock.delta_apply);",
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+
+    // Subscriptions both directions, then wait for initial sync.
+    let sub1_exists: bool = c1
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM spock.subscription WHERE sub_name = 'sub_n1_n2');",
+            &[],
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
+        .get(0);
+    if !sub1_exists {
+        c1.batch_execute(
+            "SELECT spock.sub_create(subscription_name := 'sub_n1_n2', provider_dsn := 'host=pgedge2 port=5432 dbname=kms user=kms password=kms');",
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+    }
+    c1.batch_execute("SELECT spock.sub_wait_for_sync('sub_n1_n2');")
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+
+    let sub2_exists: bool = c2
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM spock.subscription WHERE sub_name = 'sub_n2_n1');",
+            &[],
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?
+        .get(0);
+    if !sub2_exists {
+        c2.batch_execute(
+            "SELECT spock.sub_create(subscription_name := 'sub_n2_n1', provider_dsn := 'host=pgedge1 port=5432 dbname=kms user=kms password=kms');",
+        )
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+    }
+    c2.batch_execute("SELECT spock.sub_wait_for_sync('sub_n2_n1');")
+        .await
+        .map_err(|e| crate::error::KmsError::ServerError(e.to_string()))?;
+
+    Ok(())
 }

@@ -1,5 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
+        LenDisplay,
         kmip_0::kmip_types::State,
         kmip_2_1::{
             extra::VENDOR_ATTR_X509_EXTENSION,
@@ -28,6 +29,7 @@ use crate::{
             },
             key_ops::ObjectLifecycleExt,
         },
+        wrapping::wrap_and_cache,
     },
     middlewares::UserId,
     result::KResult,
@@ -103,13 +105,10 @@ pub(crate) async fn certify_for_owner(
 ) -> KResult<CertifyResponse> {
     // The CSR is not logged: a SCEP PKCSReq carries the enrollment challengePassword in it.
     trace!(
-        "Certify: unique_identifier={:?}, request type={:?}, request value: {} bytes",
+        "Certify: unique_identifier={:?}, request type={:?}, request value: {}",
         request.unique_identifier,
         request.certificate_request_type,
-        request
-            .certificate_request_value
-            .as_ref()
-            .map_or(0, Vec::len)
+        request.certificate_request_value.len_display()
     );
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
@@ -252,8 +251,30 @@ pub(crate) async fn certify_for_owner(
             } else {
                 trace!("Certificate attributes links: None");
             }
-            let private_key_attrs = keypair_data.private_key_object.attributes()?.clone();
-            let public_key_attrs = keypair_data.public_key_object.attributes()?.clone();
+            let mut private_key_attrs = keypair_data.private_key_object.attributes()?.clone();
+            let mut public_key_attrs = keypair_data.public_key_object.attributes()?.clone();
+            // Apply the server key encryption key, as `CreateKeyPair` does, and record the
+            // resulting WrappingKeyLink in the stored attributes.
+            Box::pin(wrap_and_cache(
+                kms,
+                owner,
+                &keypair_data.private_key_id,
+                &mut keypair_data.private_key_object,
+            ))
+            .await?;
+            keypair_data
+                .private_key_object
+                .copy_wrapping_key_link_to(&mut private_key_attrs);
+            Box::pin(wrap_and_cache(
+                kms,
+                owner,
+                &keypair_data.public_key_id,
+                &mut keypair_data.public_key_object,
+            ))
+            .await?;
+            keypair_data
+                .public_key_object
+                .copy_wrapping_key_link_to(&mut public_key_attrs);
             (
                 vec![
                     // upsert the private key

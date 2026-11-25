@@ -104,7 +104,7 @@ print_success "KMS ready (PID=${KMS_PID})."
 
 # ── Step 6: PKI CA key + AppRoles ─────────────────────────────────────────────
 print_header "Step 6: PKI CA key + AppRoles"
-CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key")"
 
 _VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
 cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'
@@ -136,7 +136,7 @@ print_success "AppRoles provisioned."
 
 # sign-intermediate requires an explicit `certify` grant on the CA private key.
 CKMS_BIN="$(get_ckms_bin)" CKMS_CONF="${CKMS_CONF}" \
-  bash "${REPO_ROOT}/.mise/scripts/test/grant_spire_pki_certify.sh"
+  bash "${REPO_ROOT}/.mise/scripts/test/spire/grant_spire_pki_certify.sh"
 
 # ── Step 7: Start SPIRE Server + Agent (tenant a) ──────────────────────────────
 print_header "Step 7: SPIRE Server + Agent (tenant a)"

@@ -3,7 +3,11 @@ name: Build all
 
 on:
   workflow_call:
-  workflow_dispatch:
+    inputs:
+      suites-matrix:
+        description: JSON include list of the legs to run, built by ci_changes.py from .github/ci-paths.toml
+        required: true
+        type: string
 
 jobs:
   # Builds the source-built Nix inputs of shell.nix (OpenSSL 3.1.2 / 3.6.5, FIPS bootstrap, SoftHSM2,
@@ -73,327 +77,76 @@ jobs:
           key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
             'nix/utimaco.nix', '.mise/lib/common.sh') }}
 
-  # One job per group of .mise/tasks/test (`mise run test:<group>`, i.e. its `_default`), each cell run by
-  # test-group.yml. `skip` lists `<group>:<leaf>` ids a job must not run. `k8s` and `pkg` run in
-  # packaging-docker.yml; a leaf no group lists runs locally only.
-  # Upstream only (not on forks or fork pull requests): the Google, AWS and Azure secrets are withheld there.
-  test-cloud:
-    name: Test cloud (${{ matrix.variant }})
+  # Every CI unit of .github/ci-paths.toml is a leg of this one matrix job, run by test-group.yml: ci_changes.py builds
+  # the matrix and filters it by event, secrets and Dependabot, so a leg that does not run has no row at all.
+  # `skip` lists `<group>:<leaf>` ids a leg must not run. `k8s` and `pkg` run in packaging-docker.yml; a leaf no group
+  # lists runs locally only. The `secrets:` table scopes each secret to its legs (cloud, XKS and HSM credentials never
+  # reach the JS toolchain of `ui` or the interop legs).
+  test-suites:
+    name: ${{ matrix.suite }}${{ matrix.variant != '' && format(' ({0})', matrix.variant) || '' }}${{ matrix.runner != 'ubuntu-24.04' && format(' [{0}]',
+      matrix.runner) || '' }}
     needs:
       - nix-dev-shell-cache
-    if: >-
-      github.repository == 'Cosmian/kms' &&
-      (github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository)
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [fips, non-fips]
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: cloud
-      variant: ${{ matrix.variant }}
-    secrets:
-      TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
-      TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
-      TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
-      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
-      CSE_CKMS_CONF_TOML: ${{ secrets.CSE_CKMS_CONF_TOML }}
-      KMS_CI_AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
-      KMS_CI_AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
-      KMS_CI_AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
-      KMS_CI_AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
-      KMS_CI_AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
-      KMS_CI_AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
-      KMS_CI_AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
-
-  test-db:
-    name: Test db
-    needs:
-      - nix-dev-shell-cache
-    uses: ./.github/workflows/test-db.yml
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  test-hsm:
-    name: Test hsm (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {variant: fips, bench: softhsm2 utimaco crypt2pay-simulator}
-          - {variant: non-fips, bench: softhsm2 utimaco crypt2pay-simulator kryoptic}
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: hsm
-      variant: ${{ matrix.variant }}
-      # real HSMs: test-hsm-hardware
-      skip: hsm:crypt2pay hsm:proteccio
-      bench: ${{ matrix.bench }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  test-interop:
-    name: Test interop
-    needs:
-      - nix-dev-shell-cache
-    uses: ./.github/workflows/test-interop.yml
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
-      IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
-
-  test-obs:
-    name: Test obs (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [fips, non-fips]
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: obs
-      variant: ${{ matrix.variant }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      AUDIT_COMPAT_SPLUNK_PASSWORD: ${{ secrets.AUDIT_COMPAT_SPLUNK_PASSWORD }}
-
-  # Every pkcs11 leaf is non-FIPS only.
-  test-pkcs11:
-    name: Test pkcs11 (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [non-fips]
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: pkcs11
-      variant: ${{ matrix.variant }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  test-pki:
-    name: Test pki (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [fips, non-fips]
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: pki
-      variant: ${{ matrix.variant }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  # Only spire pulls images among the JS-toolchain groups, so it alone gets the Docker Hub login.
-  test-spire:
-    name: Test spire (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [non-fips]
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: spire
-      variant: ${{ matrix.variant }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  # Runs pnpm install and the JS toolchain (vite, vitest, playwright): any npm dependency can read the
-  # job's environment, so it gets no cloud/test secrets.
-  test-ui:
-    name: Test ui (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [fips, non-fips]
-    uses: ./.github/workflows/test-group.yml
-    with:
-      suite: ui
-      variant: ${{ matrix.variant }}
-
-  # The real hardware HSMs, reached over the network or OpenVPN. Never on pull requests: nightly, tag and
-  # dispatch runs only; pull requests cover the HSM code with the software simulators of `test-hsm`. Upstream
-  # repository only, where the secrets exist. The HSMs refuse concurrent connections from several CI runs:
-  # each cell's `lock` is one concurrency group shared by all runs, queued (test-k8s-hsm in packaging-docker.yml
-  # uses the same groups). A task fails, never skips, when an `env:` need is unset: a green cell proves its
-  # suite ran.
-  # Not in CI: aws-cloudhsm, azure-cloud-hsm and gcp-cloud-hsm (clusters torn down to limit cloud costs) and
-  # Luna (no reachable partition). To bring one back, add its cell to `test-hsm-hardware` with its `suite`
-  # and its `lock`, make its task fail loudly on a missing secret when `CI=true` (upstream `env:` gate), and
-  # pass its secrets through test-group.yml (names in crate/hsm/<name>/README.md).
-  test-hsm-hardware:
-    name: Test ${{ matrix.suite }} (${{ matrix.variant }})
-    needs:
-      - nix-dev-shell-cache
-    if: github.repository == 'Cosmian/kms' && github.event_name != 'pull_request'
+    # A leg's `lock` is one concurrency group shared by all runs (real HSMs, XKS server), queued; the other legs
+    # get a group of their own, so they never wait.
     concurrency:
-      group: ${{ matrix.lock }}
+      group: ${{ matrix.lock || format('ci-leg-{0}-{1}-{2}-{3}', github.run_id, matrix.suite, matrix.variant, matrix.runner) }}
       queue: max
       cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {suite: hsm:crypt2pay, variant: non-fips, lock: hsm-crypt2pay}
-          - {suite: hsm:proteccio, variant: non-fips, lock: hsm-proteccio}
+        include: ${{ fromJSON(inputs.suites-matrix) }}
     uses: ./.github/workflows/test-group.yml
     with:
       suite: ${{ matrix.suite }}
       variant: ${{ matrix.variant }}
+      runner: ${{ matrix.runner }}
+      setup: ${{ matrix.setup }}
+      timeout: ${{ matrix.timeout }}
+      environment: ${{ matrix.environment }}
+      # real HSMs: the hsm:* legs
+      skip: ${{ matrix.suite == 'hsm' && 'hsm:crypt2pay hsm:proteccio' || '' }}
+      bench: ${{ matrix.bench }}
     secrets:
-      PROTECCIO_IP: ${{ secrets.PROTECCIO_IP }}
-      PROTECCIO_PASSWORD: ${{ secrets.PROTECCIO_PASSWORD }}
-      PROTECCIO_SLOT: ${{ secrets.PROTECCIO_SLOT }}
-      CRYPT2PAY_PASSWORD: ${{ secrets.CRYPT2PAY_PASSWORD }}
-      OVPN_CONF: ${{ secrets.OVPN_CONF }}
+      DOCKERHUB_USERNAME: ${{ matrix.setup == 'nix' && !contains(fromJSON('["ui","cloud","xks-remote","hsm:crypt2pay","hsm:proteccio"]'), matrix.suite)
+        && secrets.DOCKERHUB_USERNAME || '' }}
+      DOCKERHUB_TOKEN: ${{ matrix.setup == 'nix' && !contains(fromJSON('["ui","cloud","xks-remote","hsm:crypt2pay","hsm:proteccio"]'), matrix.suite) &&
+        secrets.DOCKERHUB_TOKEN || '' }}
+      EDB_SUBSCRIPTION_TOKEN: ${{ startsWith(matrix.suite, 'interop:') && secrets.EDB_SUBSCRIPTION_TOKEN || '' }}
+      IRIS_LICENSE_KEY: ${{ startsWith(matrix.suite, 'interop:') && secrets.IRIS_LICENSE_KEY || '' }}
+      AUDIT_COMPAT_SPLUNK_PASSWORD: ${{ matrix.suite == 'obs' && secrets.AUDIT_COMPAT_SPLUNK_PASSWORD || '' }}
+      TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ matrix.suite == 'cloud' && secrets.TEST_GOOGLE_OAUTH_CLIENT_ID || '' }}
+      TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ matrix.suite == 'cloud' && secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET || '' }}
+      TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ matrix.suite == 'cloud' && secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN || '' }}
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ matrix.suite == 'cloud' && secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '' }}
+      KMS_CI_AWS_ACCESS_KEY_ID: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AWS_ACCESS_KEY_ID || '' }}
+      KMS_CI_AWS_SECRET_ACCESS_KEY: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AWS_SECRET_ACCESS_KEY || '' }}
+      KMS_CI_AWS_REGION: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AWS_REGION || '' }}
+      KMS_CI_AZURE_TENANT_ID: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AZURE_TENANT_ID || '' }}
+      KMS_CI_AZURE_CLIENT_ID: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AZURE_CLIENT_ID || '' }}
+      KMS_CI_AZURE_CLIENT_SECRET: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AZURE_CLIENT_SECRET || '' }}
+      KMS_CI_AZURE_KV_NAME: ${{ matrix.suite == 'cloud' && secrets.KMS_CI_AZURE_KV_NAME || '' }}
+      PROTECCIO_IP: ${{ contains(fromJSON('["hsm:crypt2pay","hsm:proteccio"]'), matrix.suite) && secrets.PROTECCIO_IP || '' }}
+      PROTECCIO_PASSWORD: ${{ contains(fromJSON('["hsm:crypt2pay","hsm:proteccio"]'), matrix.suite) && secrets.PROTECCIO_PASSWORD || '' }}
+      PROTECCIO_SLOT: ${{ contains(fromJSON('["hsm:crypt2pay","hsm:proteccio"]'), matrix.suite) && secrets.PROTECCIO_SLOT || '' }}
+      CRYPT2PAY_PASSWORD: ${{ contains(fromJSON('["hsm:crypt2pay","hsm:proteccio"]'), matrix.suite) && secrets.CRYPT2PAY_PASSWORD || '' }}
+      OVPN_CONF: ${{ contains(fromJSON('["hsm:crypt2pay","hsm:proteccio"]'), matrix.suite) && secrets.OVPN_CONF || '' }}
+      KMS_XKS_SSH_PRIVATE_KEY: ${{ matrix.suite == 'xks-remote' && secrets.KMS_XKS_SSH_PRIVATE_KEY || '' }}
+      KMS_XKS_SSH_KNOWN_HOSTS: ${{ matrix.suite == 'xks-remote' && secrets.KMS_XKS_SSH_KNOWN_HOSTS || '' }}
+      KMS_XKS_SSH_USER: ${{ matrix.suite == 'xks-remote' && secrets.KMS_XKS_SSH_USER || '' }}
+      KMS_XKS_SIGV4_ACCESS_KEY_ID: ${{ matrix.suite == 'xks-remote' && secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID || '' }}
+      KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ matrix.suite == 'xks-remote' && secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY || '' }}
+      AWS_XKS_ACCESS_KEY_ID: ${{ matrix.suite == 'xks-remote' && secrets.AWS_XKS_ACCESS_KEY_ID || '' }}
+      AWS_XKS_SECRET_ACCESS_KEY: ${{ matrix.suite == 'xks-remote' && secrets.AWS_XKS_SECRET_ACCESS_KEY || '' }}
+      AWS_XKS_KEY_ARN: ${{ matrix.suite == 'xks-remote' && secrets.AWS_XKS_KEY_ARN || '' }}
+      PAT_TOKEN: ${{ matrix.suite == 'build-documentation' && github.event_name == 'pull_request' && secrets.PAT_TOKEN || '' }}
 
-  xks-remote:
-    name: AWS XKS — remote server
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    concurrency:
-      group: xks-remote
-      cancel-in-progress: false
-    permissions:
-      contents: read
-    environment: xks-remote-approval
-    # Upstream only: needs the XKS test server and its secrets, which forks do not have.
-    if: >-
-      github.repository == 'Cosmian/kms' &&
-      github.event_name != 'schedule' &&
-      github.actor != 'dependabot[bot]' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/install-rust
-
-      - uses: ./.github/actions/cache-openssl-buildrs
-        with:
-          variant: non-fips
-
-      - uses: ./.github/actions/setup-nix-mise
-        with:
-          cleanup-runner: 'true'
-
-      - name: Build KMS binary (non-fips, release)
-        run: cargo build --bin cosmian_kms --features non-fips --release
-
-      - name: Deploy binary to XKS test server
-        env:
-          KMS_XKS_SSH_PRIVATE_KEY: ${{ secrets.KMS_XKS_SSH_PRIVATE_KEY }}
-          KMS_XKS_SSH_KNOWN_HOSTS: ${{ secrets.KMS_XKS_SSH_KNOWN_HOSTS }}
-          KMS_XKS_SSH_USER: ${{ secrets.KMS_XKS_SSH_USER }}
-          KMS_BIN: target/release/cosmian_kms
-        run: bash .mise/scripts/test/deploy_xks_remote.sh
-
-      - name: Run XKS tests against remote server
-        env:
-          KMS_XKS_HOST: aws-xks-kms.cosmian.dev
-          KMS_XKS_URI_PREFIX: aws
-          KMS_XKS_REGION: eu-west-1
-          KMS_XKS_SIGV4_ACCESS_KEY_ID: ${{ secrets.KMS_XKS_SIGV4_ACCESS_KEY_ID }}
-          KMS_XKS_SIGV4_SECRET_ACCESS_KEY: ${{ secrets.KMS_XKS_SIGV4_SECRET_ACCESS_KEY }}
-        run: |
-          bash .mise/scripts/test/test_xks_remote.sh
-
-      - name: Run AWS KMS XKS end-to-end test
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_XKS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_XKS_SECRET_ACCESS_KEY }}
-          AWS_XKS_KEY_ARN: ${{ secrets.AWS_XKS_KEY_ARN }}
-        run: bash .mise/scripts/test/test_xks_aws_e2e.sh
-
-  # PKI group (EST / SCEP third-party clients, OCSP, revocation) on macOS; Linux runs it in `test-pki`.
-  # Inline, not test-group.yml: macOS has no Nix.
-  interop-macos:
-    name: Test pki (macOS)
-    runs-on: macos-15
-    timeout-minutes: 60
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/install-rust
-
-      - uses: ./.github/actions/cache-openssl-buildrs
-        with:
-          variant: fips
-
-      - uses: ./.github/actions/install-mise
-
-      # estclient / scepclient are Go programs built by the interop scripts
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: .mise/scripts/kmip-go/go.mod
-
-      - name: Test
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          SUITE: pki
-          VARIANT: fips
-        run: |
-          st=0
-          mise run "test:${SUITE}" --variant "$VARIANT" || st=$?
-          if [ "$st" -eq 77 ]; then echo "::warning::test:${SUITE} skipped (see its SKIP line)"; st=0; fi
-          exit "$st"
-
-  # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.).
-  # cargo-publish.yml does a dry run off-tag and a real publish on tags, so it is called twice:
-  # the (long) dry run starts immediately, the real publish only once every test job passed.
-  cargo-publish-dry-run:
-    if: >-
-      !startsWith(github.ref, 'refs/tags/') &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
-    uses: ./.github/workflows/cargo-publish.yml
-    secrets:
-      token: ${{ secrets.CRATES_IO }}
-
+  # Real publish, tags only (cargo-publish-dry-run is a leg of `test-suites`).
   cargo-publish:
     needs:
-      - test-cloud
-      - test-db
-      - test-hsm
-      - test-hsm-hardware
-      - test-interop
-      - test-obs
-      - test-pkcs11
-      - test-pki
-      - test-spire
-      - test-ui
-    # Real publish, tags only: a skipped dependency (upstream-only jobs on forks) must not skip
-    # it, but any failed or cancelled dependency blocks it.
+      - test-suites
+    # A skipped dependency (no legs) must not skip it, but any failed or cancelled dependency blocks it.
     if: >-
       startsWith(github.ref, 'refs/tags/') && !failure() && !cancelled()
     uses: ./.github/workflows/cargo-publish.yml
-    secrets:
-      token: ${{ secrets.CRATES_IO }}

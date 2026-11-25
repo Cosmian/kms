@@ -78,10 +78,10 @@ curl -fsSk -u "admin:${SPLUNK_PASSWORD}" \
 
 PYTHON_BIN=$(audit_compat_python "${REPO_ROOT}")
 
-"${PYTHON_BIN}" "${REPO_ROOT}/.mise/scripts/test/validate_audit_compat.py" \
+"${PYTHON_BIN}" "${REPO_ROOT}/.mise/scripts/test/obs/validate_audit_compat.py" \
   --backend splunk \
   --file "${AUDIT_FILE}" \
-  --fields-file "${REPO_ROOT}/.mise/scripts/test/fixtures/schemas/kms-audit-fields.json" \
+  --fields-file "${REPO_ROOT}/.mise/scripts/test/obs/fixtures/schemas/kms-audit-fields.json" \
   --scheme https \
   --insecure \
   --host "${SPLUNK_HOST}" \

@@ -134,6 +134,9 @@ pub struct OtelMetrics {
     /// Current number of active keys in Active state (gauge — records absolute count directly)
     pub active_keys_count: Gauge<i64>,
 
+    /// Number of nodes with a recent cluster heartbeat.
+    pub cluster_nodes_count: Gauge<i64>,
+
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
 
@@ -280,6 +283,13 @@ impl OtelMetrics {
             "Number of non-destroyed key objects across all backends",
             "{key}"
         );
+        let cluster_nodes_count = metric!(
+            meter,
+            i64_gauge,
+            "kms.cluster.nodes",
+            "Number of nodes with a recent cluster heartbeat",
+            "{node}"
+        );
         let cache_operations_total = metric!(
             meter,
             u64_counter,
@@ -320,6 +330,7 @@ impl OtelMetrics {
 
         // Seed the time series so it is visible in the backend from server start.
         active_keys_count.record(0, &[]);
+        cluster_nodes_count.record(0, &[]);
 
         Ok(Self {
             meter,
@@ -341,6 +352,7 @@ impl OtelMetrics {
             active_connections,
             kms_objects_total,
             active_keys_count,
+            cluster_nodes_count,
             cache_operations_total,
             hsm_operations_total,
             key_auto_rotation_total,
@@ -550,6 +562,11 @@ impl OtelMetrics {
     /// every `metrics_count_interval_secs` by the metrics cron task (0 disables both).
     pub fn update_objects_total(&self, absolute_count: i64) {
         self.kms_objects_total.record(absolute_count, &[]);
+    }
+
+    /// Set `kms.cluster.nodes` to the number of nodes with recent heartbeats.
+    pub fn update_cluster_nodes_count(&self, count: i64) {
+        self.cluster_nodes_count.record(count, &[]);
     }
 
     /// Record cache operation
@@ -933,6 +950,14 @@ mod tests {
         metrics.update_objects_total(42);
         provider.force_flush().expect("flush");
         assert_eq!(last_gauge_i64(&exporter, "kms.objects.total"), 42);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_cluster_nodes_count_sets_gauge() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.update_cluster_nodes_count(3);
+        provider.force_flush().expect("flush");
+        assert_eq!(last_gauge_i64(&exporter, "kms.cluster.nodes"), 3);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

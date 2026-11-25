@@ -229,7 +229,10 @@ impl DecryptAction {
             .await
             .context("Can't execute the query on the kms server")?;
 
-        decrypt_response.data.context("the plain text is empty")
+        decrypt_response
+            .data
+            .map(Into::into)
+            .context("the plain text is empty")
     }
 
     async fn client_side_decrypt_with_file(
@@ -375,7 +378,7 @@ impl DecryptAction {
             },
         )?;
         let dek_key_block = dek_object.key_block_mut()?;
-        dek_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(encapsulation)));
+        dek_key_block.key_value = Some(KeyValue::ByteString(encapsulation.into()));
         dek_key_block.key_wrapping_data = Some(KeyWrappingData {
             encoding_option: Some(EncodingOption::NoEncoding),
             ..Default::default()

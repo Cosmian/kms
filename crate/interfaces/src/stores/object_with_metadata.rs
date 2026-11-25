@@ -288,6 +288,7 @@ impl Display for ObjectWithMetadata {
 )]
 mod tests {
     use cosmian_kmip::{
+        SensitiveBytes,
         kmip_0::kmip_types::State,
         kmip_2_1::{
             kmip_attributes::Attributes,
@@ -298,7 +299,6 @@ mod tests {
         time_normalize,
     };
     use time::Duration;
-    use zeroize::Zeroizing;
 
     use super::ObjectWithMetadata;
 
@@ -308,7 +308,7 @@ mod tests {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
+                    key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![0_u8; 32])),
                     attributes: Some(Box::new(Attributes::default())),
                 }),
                 key_compression_type: None,
@@ -415,7 +415,7 @@ mod tests {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
+                    key_material: KeyMaterial::ByteString(SensitiveBytes::from(vec![0_u8; 32])),
                     attributes: Some(Box::new(kb_attrs)),
                 }),
                 key_compression_type: None,

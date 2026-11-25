@@ -3,15 +3,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ckms::{
     config::{CKMS_CONF_ENV, ClientConfig},
     reexport::cosmian_kms_cli_actions::reexport::{
-        cosmian_kmip::kmip_2_1::{
-            extra::VENDOR_ID_COSMIAN,
-            kmip_attributes::Attributes,
-            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-            kmip_objects::{Object, PrivateKey},
-            kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
-            requests::{
-                self, create_ec_key_pair_request, create_rsa_key_pair_request,
-                create_symmetric_key_kmip_object, import_object_request,
+        cosmian_kmip::{
+            kmip_0::kmip_types::State,
+            kmip_2_1::{
+                extra::VENDOR_ID_COSMIAN,
+                kmip_attributes::Attributes,
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+                kmip_objects::{Object, PrivateKey},
+                kmip_operations::GetAttributes,
+                kmip_types::{
+                    AttributeReference, CryptographicAlgorithm, KeyFormatType, RecommendedCurve,
+                    Tag, UniqueIdentifier,
+                },
+                requests::{
+                    self, create_ec_key_pair_request, create_rsa_key_pair_request,
+                    create_symmetric_key_kmip_object, import_object_request,
+                },
             },
         },
         cosmian_kms_client::{
@@ -58,7 +65,8 @@ use crate::{
     error::{Pkcs11Error, result::Pkcs11Result},
     kms_object::{
         batch_export_skipping_denied, get_kms_disk_encryption_data_objects,
-        get_kms_disk_encryption_data_objects_async,
+        get_kms_disk_encryption_data_objects_async, kms_import_object_async,
+        kms_import_symmetric_key_async,
     },
 };
 
@@ -171,7 +179,7 @@ async fn load_p12(disk_encryption_tag: &str) -> Result<String, Pkcs11Error> {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(zeroize::Zeroizing::new(p12_bytes.to_vec())),
+                key_material: KeyMaterial::ByteString(p12_bytes.to_vec().into()),
                 attributes: None,
             }),
             // According to the KMIP spec, the cryptographic algorithm is not required
@@ -339,6 +347,49 @@ fn test_disk_encryption_listing_skips_non_exportable_keys() -> Result<(), Pkcs11
     ));
     assert!(missing.is_err(), "a missing object must be an error");
     Ok(())
+}
+
+#[test]
+#[serial]
+fn test_oracle_tde_objects_are_active_on_creation() -> Pkcs11Result<()> {
+    log_init(None);
+    tokio::runtime::Runtime::new()?.block_on(async {
+        let ctx = start_default_test_kms_server().await;
+        let client = ctx.get_owner_client();
+        let key = kms_import_symmetric_key_async(
+            &client,
+            VENDOR_ID_COSMIAN,
+            KeyAlgorithm::Aes256,
+            32,
+            true,
+            Some("ORACLE.TDE.HSM.MK.ACTIVE_ON_CREATION_TEST"),
+            MacUsage::default(),
+        )
+        .await?;
+        let data = kms_import_object_async(
+            &client,
+            VENDOR_ID_COSMIAN,
+            "ORACLE.SECURITY.KM.ENCRYPTION.ACTIVE_ON_CREATION_TEST",
+            b"oracle tde data object",
+        )
+        .await?;
+        for id in [key.remote_id, data.remote_id] {
+            let state = client
+                .get_attributes(GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
+                    attribute_reference: Some(vec![AttributeReference::Standard(Tag::State)]),
+                })
+                .await?
+                .attributes
+                .state;
+            assert_eq!(
+                state,
+                Some(State::Active),
+                "{id} must be Active right after creation"
+            );
+        }
+        Ok(())
+    })
 }
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);

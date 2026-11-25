@@ -35,7 +35,7 @@ sequenceDiagram
 
 | Product | Tested path | Test entry point |
 | --- | --- | --- |
-| IBM Db2 LUW 12.1+ | GSKit to KMS KMIP socket, KMIP 1.1 | `.mise/scripts/test/test_db2_tde.sh` |
+| IBM Db2 LUW 12.1+ | GSKit to KMS KMIP socket, KMIP 1.1 | `.mise/scripts/test/interop/test_db2_tde.sh` |
 
 ## Configuration
 
@@ -92,4 +92,4 @@ The test verifies:
 - **Keystore / client label error:** If Db2 cannot create the database, verify that `gsk9certutil_64` created the client label `db2kmip_client`, that `libicu` is installed, and that `KEYSTORE_LOCATION` references `ekeystore.cfg`.
 - **TLS negotiation failure:** Verify the CA, server certificate hostname / SANs, client certificate, and the KMS KMIP socket configuration.
 
-The complete reproducible procedure is in `.mise/scripts/test/test_db2_tde.sh`.
+The complete reproducible procedure is in `.mise/scripts/test/interop/test_db2_tde.sh`.

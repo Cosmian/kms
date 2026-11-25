@@ -30,7 +30,7 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $CspScript = Join-Path $PSScriptRoot "scep_windows_csp.ps1"
-$ProxyScript = Join-Path $RepoRoot ".mise\scripts\test\scep_capture_proxy.py"
+$ProxyScript = Join-Path $RepoRoot ".mise\scripts\test\pki\scep_capture_proxy.py"
 $ProfileDir = "debug"
 $TargetDir = Join-Path $RepoRoot "target\$ProfileDir"
 $FeatureArgs = if ($Variant -eq "non-fips") { @("--features", "non-fips") } else { @() }

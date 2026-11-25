@@ -15,6 +15,6 @@ REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
 
 print_header "Running CEF format validation test (${VARIANT_NAME})"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_cef_format.sh" --variant "${VARIANT}"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/test_cef_format.sh" --variant "${VARIANT}"
 
 print_success "CEF format validation test completed"

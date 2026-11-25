@@ -27,6 +27,6 @@ print_header "Running IRIS mTLS integration tests (${VARIANT_NAME})"
 
 require_cmd docker "Docker is required to run the IRIS container."
 
-bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/test_iris.sh" --variant "$VARIANT" --link "$LINK"
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/test/interop/test_iris.sh" --variant "$VARIANT" --link "$LINK"
 
 print_success "IRIS tests completed"

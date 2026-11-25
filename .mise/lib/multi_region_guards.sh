@@ -1,0 +1,791 @@
+#!/usr/bin/env bash
+# .mise/lib/multi_region_guards.sh — guards validating the multi-region active-active
+# PostgreSQL or MySQL (Galera) deployment model (issue #1187).
+#
+# The guard layers are:
+#   * static source guards  — the leader-gating wiring
+#   * static config guards  — operator TOML topology/backend/ceremony checks, including
+#                             detectors for features incompatible with multi-region mode
+#   * live DB guards        — PRIMARY KEY/REPLICA IDENTITY, ENABLE ALWAYS trigger, Spock wiring
+#   * behavioral guards     — the existing live 2-node pgEdge proofs (state conflict merge,
+#                             grants LWW, CRL gating, CO ceremony gating)
+#
+# Provides:
+#   mr_toml_get                            — extract a top-level scalar from a KMS server TOML
+#   mr_config_set_is_multi_region          — true when a config set declares multi-region
+#   mr_run_guard                           — run one guard, recording (not aborting on) failure
+#   mr_guard_source_model                  — static source-level guards
+#   mr_guard_config_topology               — exactly one leader region across the config set
+#   mr_guard_config_backend                — postgresql or mysql (Galera) backend, identical across regions
+#   mr_guard_config_clear_database         — clear_database must be off for multi-region nodes
+#   mr_guard_config_ceremony_keys          — identical ceremony key material across regions
+#   mr_guard_config_incompatible_features  — detect settings incompatible with multi-region
+#   mr_self_test_config_guards             — prove the config-guard detectors fire correctly
+#   mr_guard_pg_container_ready            — wait until a pgEdge container accepts connections
+#   mr_guard_primary_keys                  — real PRIMARY KEYs / REPLICA IDENTITY on replicated tables
+#   mr_guard_state_event_triggers          — lifecycle event-log triggers installed ENABLE ALWAYS and replicated
+#   mr_guard_cluster_tables                — cluster_nodes not replicated, gcm_invocations counter uses delta-apply
+#   mr_guard_spock_wiring                  — Spock extension, node, and subscription present
+#   mr_guard_db_state_and_grants           — behavioral proof: state conflict merge + grants LWW
+#   mr_guard_crl_gating                    — behavioral proof: CRL issuance gating
+#   mr_guard_ceremony_gating               — behavioral proof: CO ceremony activation gating
+#   mr_prebuild_behavioral_tests           — build the behavioral test binaries without running them
+#   mr_galera_up / mr_galera_down          — start/stop the 2-node Galera compose profile
+#   mr_guard_galera_wiring                 — wsrep on, cluster size >= 2, node synced, ROW binlog
+#   mr_guard_mysql_primary_keys            — every table InnoDB with a PRIMARY KEY
+#   mr_guard_galera_state_and_grants       — behavioral proof: state merge, payload guard, GCM, grants
+
+[ -n "${_MISE_MULTI_REGION_GUARDS_SH_LOADED:-}" ] && return 0
+_MISE_MULTI_REGION_GUARDS_SH_LOADED=1
+
+_MR_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "${_MISE_COMMON_SH_LOADED:-}" ]; then
+  # shellcheck source=.mise/lib/common.sh
+  source "${_MR_LIB_DIR}/common.sh"
+fi
+
+# Guard-failure accumulator. The calling task reads this after running its guards.
+MR_GUARD_FAILURES=()
+
+# Run one guard function, recording (not aborting on) failure.
+# Usage: mr_run_guard <name> [args...]
+mr_run_guard() {
+  local name="$1"
+  shift
+  print_status "Guard: $name"
+  if "$@"; then
+    print_success "Guard passed: $name"
+    return 0
+  fi
+  print_warning "Guard FAILED: $name"
+  MR_GUARD_FAILURES+=("$name")
+  # Failures are reported through MR_GUARD_FAILURES; a non-zero return would abort under `set -e`.
+  return 0
+}
+
+# Extract the first top-level `key = value` scalar from a KMS server TOML file.
+# Supports `key = "value"`, `key = 'value'`, and bare `key = value`.
+# Prints nothing when the key is absent (or the file is unreadable).
+# Usage: mr_toml_get <file> <key>
+mr_toml_get() {
+  local file="$1" key="$2"
+  awk -F'=' -v k="$key" '
+    /^[[:space:]]*#/ { next }
+    {
+      lhs = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", lhs)
+      if (lhs != k) next
+      rhs = substr($0, index($0, "=") + 1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", rhs)
+
+      # Strip inline comment, respecting quoted # characters.
+      # Match anything after an unquoted # (not preceded/followed by a quote in the active context).
+      # Simpler heuristic: find the first # not inside quotes.
+      in_double = 0
+      in_single = 0
+      for (i = 1; i <= length(rhs); i++) {
+        c = substr(rhs, i, 1)
+        if (c == "\"" && (i == 1 || substr(rhs, i-1, 1) != "\\")) in_double = !in_double
+        else if (c == "'"'"'" && (i == 1 || substr(rhs, i-1, 1) != "\\")) in_single = !in_single
+        else if (c == "#" && !in_double && !in_single) {
+          rhs = substr(rhs, 1, i - 1)
+          break
+        }
+      }
+
+      # Trim trailing whitespace after inline comment removal.
+      gsub(/[[:space:]]+$/, "", rhs)
+
+      # Strip leading/trailing quotes.
+      gsub(/^"|"$|^'"'"'|'"'"'$/, "", rhs)
+      print rhs
+      exit
+    }' "$file" 2>/dev/null
+}
+
+# True when a set of node configs actually declares a multi-region topology:
+# more than one node config, or at least one explicit `region_role = "follower"`.
+# Usage: mr_config_set_is_multi_region <config>...
+mr_config_set_is_multi_region() {
+  local f count=0
+  for f in "$@"; do count=$((count + 1)); done
+  [ "$count" -gt 1 ] && return 0
+  for f in "$@"; do
+    [ "$(mr_toml_get "$f" region_role)" = "follower" ] && return 0
+  done
+  return 1
+}
+
+# ── Static source guards ──────────────────────────────────────────────────────
+
+# Verify the source-level wiring of the multi-region model. Every check below
+# protects a behavior from the issue #1187 acceptance criteria; a regression
+# removing any of them fails the guard.
+# Usage: mr_guard_source_model <repo_root>
+mr_guard_source_model() {
+  local repo_root="$1" ok=0
+  local core="${repo_root}/crate/server/src/core/mod.rs"
+  local crl="${repo_root}/crate/server/src/core/operations/generate_crl.rs"
+  local ceremony="${repo_root}/crate/server/src/core/operations/join_split_key.rs"
+  local permissions="${repo_root}/crate/server/src/core/kms/permissions.rs"
+  local cron="${repo_root}/crate/server/src/cron.rs"
+  local pgsql="${repo_root}/crate/server_database/src/stores/sql/pgsql.rs"
+  local interfaces="${repo_root}/crate/interfaces/src/stores/objects_store.rs"
+  local mysql="${repo_root}/crate/server_database/src/stores/sql/mysql.rs"
+  local f
+
+  for f in "$core" "$crl" "$ceremony" "$permissions" "$cron" "$pgsql" "$interfaces" "$mysql"; do
+    if [ ! -f "$f" ]; then
+      print_warning "source guard: missing expected file $f"
+      ok=1
+    fi
+  done
+  [ "$ok" -eq 0 ] || return 1
+
+  grep -q "fn require_leader_region" "$core" || {
+    print_warning "source guard: require_leader_region helper missing from core/mod.rs"
+    ok=1
+  }
+  grep -q 'require_leader_region(kms, "CRL generation")' "$crl" || {
+    print_warning "source guard: CRL generation is no longer leader-gated in generate_crl.rs"
+    ok=1
+  }
+  grep -q 'require_leader_region(kms, "Crypto Officer ceremony activation")' "$ceremony" || {
+    print_warning "source guard: CO ceremony activation is no longer leader-gated in join_split_key.rs"
+    ok=1
+  }
+  grep -q 'require_leader_region(self, "Crypto Officer ceremony revocation")' "$permissions" || {
+    print_warning "source guard: CO ceremony revocation is no longer leader-gated in kms/permissions.rs"
+    ok=1
+  }
+  grep -q "Skipping background CRL refresh on follower" "$cron" || {
+    print_warning "source guard: follower CRL-refresh cron skip missing from cron.rs"
+    ok=1
+  }
+  grep -q "update_state_allow_downgrade" "$interfaces" || {
+    print_warning "source guard: batch-UNDO downgrade bypass missing from ObjectsStore trait"
+    ok=1
+  }
+  grep -q "async fn update_state_allow_downgrade" "$mysql" || {
+    print_warning "source guard: MySQL update_state_allow_downgrade override missing from mysql.rs"
+    ok=1
+  }
+
+  # The session-local UNDO bypass is undone by peers; lifecycle events replaced it.
+  if grep -q "kms.allow_backward_state_transition" "$pgsql"; then
+    print_warning "source guard: kms.allow_backward_state_transition bypass still present in pgsql.rs"
+    ok=1
+  fi
+
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# ── Static config guards ──────────────────────────────────────────────────────
+
+# Exactly one region across the deployment must be `leader`; every other region
+# must be `follower`. Usage: mr_guard_config_topology <config>...
+mr_guard_config_topology() {
+  local f role leaders=0 followers=0 ok=0
+  for f in "$@"; do
+    [ -f "$f" ] || {
+      print_warning "config topology: file not found: $f"
+      ok=1
+      continue
+    }
+    role="$(mr_toml_get "$f" region_role)"
+    role="${role:-leader}"
+    case "$role" in
+      leader) leaders=$((leaders + 1)) ;;
+      follower) followers=$((followers + 1)) ;;
+      *)
+        print_warning "config topology: $f has invalid region_role '$role' (expected leader|follower)"
+        ok=1
+        ;;
+    esac
+  done
+
+  if [ "$leaders" -eq 0 ]; then
+    print_warning "config topology: no leader region declared (all nodes are followers)"
+    ok=1
+  fi
+  if [ "$leaders" -gt 1 ]; then
+    print_warning "config topology: $leaders leader regions declared — split-brain CRL/ceremony issuance"
+    ok=1
+  fi
+  if [ "$#" -gt 1 ] && [ "$followers" -eq 0 ]; then
+    print_warning "config topology: $# node configs but no follower — all regions are leaders"
+    ok=1
+  fi
+
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# Multi-region nodes must use a backend with multi-master replication and a lifecycle-state
+# guard: PostgreSQL (logical replication + event-log triggers) or MySQL (Galera certification),
+# identical across regions. Usage: mr_guard_config_backend <config>...
+mr_guard_config_backend() {
+  local f backend first="" ok=0
+  mr_config_set_is_multi_region "$@" || return 0
+  for f in "$@"; do
+    backend="$(mr_toml_get "$f" database_type)"
+    if [ "$backend" != "postgresql" ] && [ "$backend" != "mysql" ]; then
+      print_warning "config backend: $f declares database_type=${backend:-<unset>} — multi-region \
+active-active requires postgresql (logical multi-master) or mysql (Galera); sqlite/redis-findex cannot replicate"
+      ok=1
+    elif [ -z "$first" ]; then
+      first="$backend"
+    elif [ "$backend" != "$first" ]; then
+      print_warning "config backend: mixed backends across regions ($first vs $backend in $f)"
+      ok=1
+    fi
+  done
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# `clear_database = true` on any multi-region node would wipe its local copy and
+# replicate the deletes to every peer. Usage: mr_guard_config_clear_database <config>...
+mr_guard_config_clear_database() {
+  local f clear ok=0
+  mr_config_set_is_multi_region "$@" || return 0
+  for f in "$@"; do
+    clear="$(mr_toml_get "$f" clear_database)"
+    if [ "$clear" = "true" ]; then
+      print_warning "config clear_database: $f has clear_database = true — destructive on every \
+start and the deletes replicate to all regions"
+      ok=1
+    fi
+  done
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# When the CO ceremony is enabled, every region must share identical ceremony key
+# material (ceremony_secret or ceremony_key_id) — replicated records are
+# AES-256-GCM sealed and verified with the local node's derived keys.
+# Usage: mr_guard_config_ceremony_keys <config>...
+mr_guard_config_ceremony_keys() {
+  local f require secret key_id ok=0 ceremony_enabled=0
+  local first_secret="" first_key_id=""
+  mr_config_set_is_multi_region "$@" || return 0
+
+  for f in "$@"; do
+    require="$(mr_toml_get "$f" crypto_officer_require_ceremony)"
+    [ "$require" = "true" ] && ceremony_enabled=1
+  done
+  [ "$ceremony_enabled" -eq 1 ] || return 0
+
+  for f in "$@"; do
+    secret="$(mr_toml_get "$f" ceremony_secret)"
+    key_id="$(mr_toml_get "$f" ceremony_key_id)"
+
+    if [ -z "$secret" ] && [ -z "$key_id" ]; then
+      print_warning "config ceremony: $f enables CO ceremony but sets neither ceremony_secret \
+nor ceremony_key_id"
+      ok=1
+      continue
+    fi
+
+    if [ -n "$secret" ]; then
+      if [ -z "$first_secret" ]; then
+        first_secret="$secret"
+      elif [ "$secret" != "$first_secret" ]; then
+        print_warning "config ceremony: $f ceremony_secret differs from the first region's — \
+replicated records will fail GCM verification on this node"
+        ok=1
+      fi
+    fi
+    if [ -n "$key_id" ]; then
+      if [ -z "$first_key_id" ]; then
+        first_key_id="$key_id"
+      elif [ "$key_id" != "$first_key_id" ]; then
+        print_warning "config ceremony: $f ceremony_key_id differs from the first region's"
+        ok=1
+      fi
+    fi
+  done
+
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# Detect features known to be incompatible with (or unsafe under) the
+# multi-region active-active model. Emits warnings for advisory hazards and
+# fails only for hard incompatibilities.
+# Usage: mr_guard_config_incompatible_features <config>...
+mr_guard_config_incompatible_features() {
+  local f ok=0 leader_rotation=0 follower_rotation=0 value
+  mr_config_set_is_multi_region "$@" || return 0
+
+  for f in "$@"; do
+    # HSM-backed objects live in the local PKCS#11 token and do not replicate.
+    # Every region must therefore have access to the same HSM partition.
+    value="$(mr_toml_get "$f" hsm_slot)"
+    if [ -n "$value" ] && [ "$value" != "[]" ]; then
+      print_warning "config incompatible: $f configures hsm_slot ${value} — HSM-stored objects \
+do not replicate; every region must share the same HSM partition/token"
+    fi
+
+    # Auto-rotation runs on the leader region only (a follower skips it): a follower with the
+    # cron enabled is harmless, but a deployment where only followers enable it never rotates.
+    value="$(mr_toml_get "$f" auto_rotation_check_interval_secs)"
+    value="${value:-0}"
+    if [ "$value" -gt 0 ] 2>/dev/null; then
+      if [ "$(mr_toml_get "$f" region_role)" = "follower" ]; then
+        follower_rotation=1
+      else
+        leader_rotation=1
+      fi
+    fi
+  done
+
+  if [ "$follower_rotation" -eq 1 ] && [ "$leader_rotation" -eq 0 ]; then
+    print_warning "config incompatible: auto-rotation cron is enabled on a follower region only — \
+followers skip it, so no region rotates keys; enable it on the leader region"
+  fi
+
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# Prove the config-guard detectors actually fire, using synthetic config files.
+# Positive cases must pass; negative cases must fail. Usage: mr_self_test_config_guards
+mr_self_test_config_guards() {
+  local tmpdir ok=0
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/kms-mr-guards.XXXXXX")" || return 1
+
+  cat >"${tmpdir}/leader.toml" <<'EOF'
+region_role = "leader"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6432/kms"
+clear_database = false
+crypto_officer_require_ceremony = true
+ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+auto_rotation_check_interval_secs = 0
+EOF
+  cat >"${tmpdir}/follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6433/kms"
+clear_database = false
+crypto_officer_require_ceremony = true
+ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+auto_rotation_check_interval_secs = 0
+EOF
+
+  print_status "config guard self-test: positive case (leader + follower, matching ceremony key)"
+  if mr_guard_config_topology "${tmpdir}/leader.toml" "${tmpdir}/follower.toml" &&
+    mr_guard_config_backend "${tmpdir}/leader.toml" "${tmpdir}/follower.toml" &&
+    mr_guard_config_clear_database "${tmpdir}/leader.toml" "${tmpdir}/follower.toml" &&
+    mr_guard_config_ceremony_keys "${tmpdir}/leader.toml" "${tmpdir}/follower.toml"; then
+    print_success "config guard self-test: positive case passed"
+  else
+    print_warning "config guard self-test: positive case FAILED"
+    ok=1
+  fi
+
+  cat >"${tmpdir}/sqlite_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "sqlite"
+sqlite_path = "/tmp/kms-mr-sqlite"
+EOF
+  if mr_guard_config_backend "${tmpdir}/sqlite_follower.toml"; then
+    print_warning "config guard self-test: sqlite follower was NOT rejected by the backend guard"
+    ok=1
+  else
+    print_success "config guard self-test: sqlite follower correctly rejected"
+  fi
+
+  cat >"${tmpdir}/mysql_leader.toml" <<'EOF'
+region_role = "leader"
+database_type = "mysql"
+database_url = "mysql://kms:kms@127.0.0.1:3310/kms"
+EOF
+  cat >"${tmpdir}/mysql_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "mysql"
+database_url = "mysql://kms:kms@127.0.0.1:3311/kms"
+EOF
+  if mr_guard_config_backend "${tmpdir}/mysql_leader.toml" "${tmpdir}/mysql_follower.toml"; then
+    print_success "config guard self-test: mysql (Galera) leader + follower accepted"
+  else
+    print_warning "config guard self-test: mysql leader + follower was rejected by the backend guard"
+    ok=1
+  fi
+
+  cat >"${tmpdir}/redis_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "redis-findex"
+database_url = "redis://127.0.0.1:6379"
+EOF
+  if mr_guard_config_backend "${tmpdir}/redis_follower.toml"; then
+    print_warning "config guard self-test: redis-findex follower was NOT rejected by the backend guard"
+    ok=1
+  else
+    print_success "config guard self-test: redis-findex follower correctly rejected"
+  fi
+
+  if mr_guard_config_backend "${tmpdir}/leader.toml" "${tmpdir}/mysql_follower.toml"; then
+    print_warning "config guard self-test: mixed backends were NOT rejected"
+    ok=1
+  else
+    print_success "config guard self-test: mixed backends correctly rejected"
+  fi
+
+  cat >"${tmpdir}/leader2.toml" <<'EOF'
+region_role = "leader"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6433/kms"
+EOF
+  if mr_guard_config_topology "${tmpdir}/leader.toml" "${tmpdir}/leader2.toml"; then
+    print_warning "config guard self-test: two-leader topology was NOT rejected"
+    ok=1
+  else
+    print_success "config guard self-test: two-leader topology correctly rejected"
+  fi
+
+  cat >"${tmpdir}/clearing_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6433/kms"
+clear_database = true
+EOF
+  if mr_guard_config_clear_database "${tmpdir}/clearing_follower.toml"; then
+    print_warning "config guard self-test: clear_database follower was NOT rejected"
+    ok=1
+  else
+    print_success "config guard self-test: clear_database follower correctly rejected"
+  fi
+
+  cat >"${tmpdir}/mismatch_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6433/kms"
+crypto_officer_require_ceremony = true
+ceremony_secret = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+EOF
+  if mr_guard_config_ceremony_keys "${tmpdir}/leader.toml" "${tmpdir}/mismatch_follower.toml"; then
+    print_warning "config guard self-test: mismatched ceremony_secret was NOT rejected"
+    ok=1
+  else
+    print_success "config guard self-test: mismatched ceremony_secret correctly rejected"
+  fi
+
+  # Test inline comments on boolean values (catching the original bug).
+  cat >"${tmpdir}/commented_clear.toml" <<'EOF'
+region_role = "leader"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6432/kms"
+clear_database = true # destructive but intentional in test
+crypto_officer_require_ceremony = true
+ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+EOF
+  # Create a follower to make this a multi-region deployment
+  cat >"${tmpdir}/commented_follower_for_clear.toml" <<'EOF'
+region_role = "follower"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6433/kms"
+EOF
+  if mr_guard_config_clear_database "${tmpdir}/commented_clear.toml" "${tmpdir}/commented_follower_for_clear.toml"; then
+    print_warning "config guard self-test: clear_database with inline comment was NOT rejected"
+    ok=1
+  else
+    print_success "config guard self-test: clear_database with inline comment correctly rejected"
+  fi
+
+  # Test inline comments on region_role (catching false failures).
+  cat >"${tmpdir}/commented_follower.toml" <<'EOF'
+region_role = "follower" # secondary region
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6433/kms"
+EOF
+  if mr_guard_config_topology "${tmpdir}/leader.toml" "${tmpdir}/commented_follower.toml"; then
+    print_success "config guard self-test: region_role with inline comment correctly parsed"
+  else
+    print_warning "config guard self-test: region_role with inline comment was incorrectly rejected"
+    ok=1
+  fi
+
+  # Incompatible-feature detectors: run them against a synthetic misconfigured
+  # follower to prove they emit their warnings (advisory by design, so exit code
+  # is not asserted here).
+  cat >"${tmpdir}/rotating_hsm_follower.toml" <<'EOF'
+region_role = "follower"
+database_type = "postgresql"
+database_url = "postgresql://kms:kms@127.0.0.1:6433/kms"
+auto_rotation_check_interval_secs = 3600
+hsm_slot = [0]
+EOF
+  print_status "config guard self-test: incompatible-feature detectors (warnings expected)"
+  mr_guard_config_incompatible_features "${tmpdir}/leader.toml" "${tmpdir}/rotating_hsm_follower.toml"
+
+  rm -rf "${tmpdir}"
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# ── Live DB guards (pgEdge containers) ────────────────────────────────────────
+
+# Run psql inside a pgEdge container and print the query result.
+# Usage: _mr_psql <container> <sql>
+_mr_psql() {
+  local container="$1" sql="$2"
+  docker exec -e PGPASSWORD=kms "${container}" \
+    psql -h 127.0.0.1 -U kms -d kms -tAc "${sql}" 2>/dev/null
+}
+
+# Wait until a pgEdge container accepts connections. Usage: mr_guard_pg_container_ready <container> [timeout]
+mr_guard_pg_container_ready() {
+  local container="$1" timeout="${2:-30}" _i
+  for _i in $(seq 1 "$timeout"); do
+    if docker exec "${container}" pg_isready -h 127.0.0.1 -U kms -d kms -q 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  print_warning "pg container ${container} not ready after ${timeout}s"
+  return 1
+}
+
+# The replicated tables must carry a real PRIMARY KEY (REPLICA IDENTITY DEFAULT),
+# otherwise logical replication cannot replicate UPDATE/DELETE on them.
+# Usage: mr_guard_primary_keys <container>
+mr_guard_primary_keys() {
+  local container="$1" pks ident
+  pks="$(_mr_psql "${container}" "SELECT count(*) FROM pg_constraint WHERE contype='p' AND conname IN ('tags_pkey','read_access_pkey','crypto_officer_activations_pkey','object_state_events_pkey','object_state_event_tombstones_pkey');")"
+  if [ "${pks//[^0-9]/}" != "5" ]; then
+    print_warning "primary keys: ${container} has ${pks:-0}/5 expected PRIMARY KEYs (tags_pkey, read_access_pkey, crypto_officer_activations_pkey, object_state_events_pkey, object_state_event_tombstones_pkey)"
+    return 1
+  fi
+
+  ident="$(_mr_psql "${container}" "SELECT string_agg(relname || '=' || relreplident::text, ',' ORDER BY relname) FROM pg_class WHERE relname IN ('tags','read_access','crypto_officer_activations','object_state_events','object_state_event_tombstones');")"
+  if [ "$ident" != "crypto_officer_activations=d,object_state_event_tombstones=d,object_state_events=d,read_access=d,tags=d" ]; then
+    print_warning "primary keys: ${container} REPLICA IDENTITY not default for all replicated tables: ${ident:-<none>}"
+    return 1
+  fi
+  print_success "primary keys: ${container} has valid PRIMARY KEYs with REPLICA IDENTITY DEFAULT"
+  return 0
+}
+
+# The lifecycle event-log triggers must be ENABLE ALWAYS (they must fire in replication apply
+# sessions), shaped as expected, and both event tables must be in a Spock replication set.
+# Usage: mr_guard_state_event_triggers <container>
+mr_guard_state_event_triggers() {
+  local container="$1" trg enabled def want repl
+  for trg in trg_objects_state_derive trg_object_state_events_apply trg_object_state_event_tombstones_apply; do
+    enabled="$(_mr_psql "${container}" "SELECT tgenabled FROM pg_trigger WHERE tgname='${trg}' AND NOT tgisinternal;")"
+    if [ "$enabled" != "A" ]; then
+      print_warning "state triggers: ${container} ${trg} missing or not ENABLE ALWAYS (tgenabled=${enabled:-<none>}, expected A)"
+      return 1
+    fi
+    def="$(_mr_psql "${container}" "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname='${trg}';")"
+    want="AFTER INSERT"
+    [ "$trg" = "trg_objects_state_derive" ] && want="BEFORE INSERT OR UPDATE"
+    if ! grep -q "$want" <<<"$def" || ! grep -q "FOR EACH ROW" <<<"$def"; then
+      print_warning "state triggers: ${container} ${trg} is not ${want} FOR EACH ROW: ${def:-<none>}"
+      return 1
+    fi
+  done
+  if [ "$(_mr_psql "${container}" "SELECT count(*) FROM pg_trigger WHERE tgname='trg_objects_state_monotonic';" | tr -d '[:space:]')" != "0" ]; then
+    print_warning "state triggers: ${container} obsolete trg_objects_state_monotonic still installed"
+    return 1
+  fi
+  repl="$(_mr_psql "${container}" "SELECT count(*) FROM spock.replication_set_table WHERE set_reloid::regclass::text IN ('object_state_events','object_state_event_tombstones');")"
+  if [ "${repl//[^0-9]/}" != "2" ]; then
+    print_warning "state triggers: ${container} has ${repl:-0}/2 lifecycle event tables in a Spock replication set"
+    return 1
+  fi
+  print_success "state triggers: ${container} lifecycle event triggers are ENABLE ALWAYS and replicated"
+  return 0
+}
+
+# Tables written by every region are not all replicated the same way: `cluster_nodes` (node
+# heartbeat and display leader) is per region and must stay out of the replication set, and the
+# AES-GCM `gcm_invocations.count` must be merged by delta-apply so the regions' counts add up.
+# Usage: mr_guard_cluster_tables <container>
+mr_guard_cluster_tables() {
+  local container="$1" repl opts
+  repl="$(_mr_psql "${container}" "SELECT count(*) FROM spock.replication_set_table WHERE set_reloid::regclass::text='cluster_nodes';")"
+  if [ "${repl//[^0-9]/}" != "0" ]; then
+    print_warning "cluster tables: ${container} replicates cluster_nodes — run SELECT spock.repset_remove_table('default', 'cluster_nodes')"
+    return 1
+  fi
+  opts="$(_mr_psql "${container}" "SELECT attoptions FROM pg_attribute WHERE attrelid='gcm_invocations'::regclass AND attname='count';")"
+  if ! grep -q 'delta_apply_function=spock.delta_apply' <<<"$opts" || ! grep -q 'log_old_value=true' <<<"$opts"; then
+    print_warning "cluster tables: ${container} gcm_invocations.count has no delta-apply (attoptions=${opts:-<none>}) — run ALTER TABLE gcm_invocations ALTER COLUMN count SET (log_old_value = true, delta_apply_function = spock.delta_apply)"
+    return 1
+  fi
+  print_success "cluster tables: ${container} keeps cluster_nodes local and merges gcm_invocations by delta-apply"
+  return 0
+}
+
+# Spock must be installed with a node and at least one subscription (full-mesh
+# bidirectional replication). Usage: mr_guard_spock_wiring <container>
+mr_guard_spock_wiring() {
+  local container="$1" ext nodes subs
+  ext="$(_mr_psql "${container}" "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname='spock');")"
+  if [ "$ext" != "t" ]; then
+    print_warning "spock wiring: ${container} does not have the spock extension installed"
+    return 1
+  fi
+  nodes="$(_mr_psql "${container}" "SELECT count(*) FROM spock.node;")"
+  subs="$(_mr_psql "${container}" "SELECT count(*) FROM spock.subscription;")"
+  if [ "${nodes//[^0-9]/}" = "0" ] || [ "${subs//[^0-9]/}" = "0" ]; then
+    print_warning "spock wiring: ${container} has ${nodes:-0} node(s) and ${subs:-0} subscription(s) — expected >=1 of each"
+    return 1
+  fi
+  print_success "spock wiring: ${container} has spock with ${nodes//[^0-9]/} node(s) and ${subs//[^0-9]/} subscription(s)"
+  return 0
+}
+
+# ── Behavioral guards (live 2-node pgEdge proofs) ─────────────────────────────
+
+# Pre-build the pgEdge behavioral test binaries without running them, so the
+# pgEdge containers are only started for the short test-execution window — a
+# long first build (e.g. a cold nix-shell bootstrap) must not outlive the
+# containers. Usage: mr_prebuild_behavioral_tests <repo_root>
+mr_prebuild_behavioral_tests() {
+  local repo_root="$1"
+  (
+    cd "${repo_root}" || return 1
+    cargo test -p cosmian_kms_server_database --lib \
+      "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}" --no-run
+    cargo test -p cosmian_kms_server --lib \
+      "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}" --no-run
+  )
+}
+
+# Run one of the `#[ignore]`d live cargo proofs. Usage: _mr_cargo_ignored <repo_root> <package> <test_name>
+_mr_cargo_ignored() {
+  local repo_root="$1" package="$2" test_name="$3"
+  (
+    cd "${repo_root}" || return 1
+    cargo test -p "${package}" --lib \
+      "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}" \
+      -- --ignored --nocapture "${test_name}"
+  )
+}
+
+# Object-state conflict merge (both commit orderings) + grants/permissions LWW
+# convergence. Usage: mr_guard_db_state_and_grants <repo_root> <pg1_url> <pg2_url>
+mr_guard_db_state_and_grants() {
+  local repo_root="$1" pg1_url="$2" pg2_url="$3"
+  KMS_PGEDGE_1_URL="${pg1_url}" KMS_PGEDGE_2_URL="${pg2_url}" \
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server_database test_db_pgedge_active_active
+}
+
+# CRL issuance gating: follower rejection, leader issuance, CDP replication,
+# follower revoke does not regenerate. Usage: mr_guard_crl_gating <repo_root> <pg1_url> <pg2_url>
+mr_guard_crl_gating() {
+  local repo_root="$1" pg1_url="$2" pg2_url="$3"
+  KMS_PGEDGE_1_URL="${pg1_url}" KMS_PGEDGE_2_URL="${pg2_url}" \
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server test_pgedge_crl_leader_only_generation_and_follower_cdp_replication
+}
+
+# CO ceremony gating: leader activation replicates, follower activation/revocation
+# rejected, mismatched ceremony_secret fails secure. Usage: mr_guard_ceremony_gating <repo_root> <pg1_url> <pg2_url>
+mr_guard_ceremony_gating() {
+  local repo_root="$1" pg1_url="$2" pg2_url="$3"
+  KMS_PGEDGE_1_URL="${pg1_url}" KMS_PGEDGE_2_URL="${pg2_url}" \
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server test_pgedge_crypto_officer_multi_region_activation_replication_and_fail_secure
+}
+
+# ── MySQL / Galera (Percona XtraDB Cluster) ────────────────────────────────────
+
+# Generate (once) the CA and server certificate the two Galera nodes share for their cluster
+# traffic: the SST refuses to run without a CA. Mounted at /cert by the compose file.
+_mr_galera_certs() {
+  local dir="${_MR_LIB_DIR}/../../target/galera-certs"
+  [ -f "${dir}/server-cert.pem" ] && return 0
+  mkdir -p "$dir" || return 1
+  (
+    cd "$dir" || exit 1
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout ca-key.pem -out ca.pem -days 3650 -subj "/CN=kms-galera-ca" 2>/dev/null &&
+      openssl req -newkey rsa:2048 -nodes -keyout server-key.pem -out server.csr -subj "/CN=galera" 2>/dev/null &&
+      openssl x509 -req -in server.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem -days 3650 2>/dev/null &&
+      rm -f server.csr &&
+      chmod 644 ./*.pem # test-only keys: the mysql user of the container must read them
+  )
+}
+
+# Start the two-node Galera cluster of the `galera` compose profile and wait until both nodes
+# are synced. Usage: mr_galera_up
+mr_galera_up() {
+  local i
+  _mr_galera_certs || return 1
+  docker compose --profile galera up -d galera-1 || return 1
+  for i in $(seq 1 180); do
+    docker exec galera1 mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_ready'" 2>/dev/null | grep -q ON && break
+    [ "$i" -eq 180 ] && return 1
+    sleep 1
+  done
+  docker compose --profile galera up -d galera-2 || return 1
+  for i in $(seq 1 300); do
+    if [ "$(docker exec galera1 mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_cluster_size'" 2>/dev/null | awk '{print $2}')" = "2" ] &&
+      [ "$(docker exec galera2 mysql -h127.0.0.1 -ukms -pkms -N -e "show status like 'wsrep_local_state_comment'" 2>/dev/null | awk '{print $2}')" = "Synced" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# Remove the Galera containers and their data: a stopped cluster whose first node shut down last
+# refuses to bootstrap (`safe_to_bootstrap: 0`). Usage: mr_galera_down
+mr_galera_down() {
+  docker compose --profile galera rm -fsv galera-1 galera-2 2>/dev/null || true
+}
+
+# Run a SQL statement in a Galera container. Usage: _mr_mysql <container> <sql>
+_mr_mysql() {
+  docker exec "$1" mysql -h127.0.0.1 -ukms -pkms -N -e "$2" kms 2>/dev/null
+}
+
+# Galera replication is on, the cluster has both nodes, this node is synced and the binlog is
+# row-based. Usage: mr_guard_galera_wiring <container>
+mr_guard_galera_wiring() {
+  local container="$1" ok=0 v
+  v="$(_mr_mysql "$container" "show variables like 'wsrep_on'" | awk '{print $2}')"
+  [ "$v" = "ON" ] || {
+    print_warning "galera wiring: $container wsrep_on=${v:-<none>}"
+    ok=1
+  }
+  v="$(_mr_mysql "$container" "show status like 'wsrep_cluster_size'" | awk '{print $2}')"
+  [ "${v:-0}" -ge 2 ] 2>/dev/null || {
+    print_warning "galera wiring: $container wsrep_cluster_size=${v:-<none>}, expected >= 2"
+    ok=1
+  }
+  v="$(_mr_mysql "$container" "show status like 'wsrep_local_state_comment'" | awk '{print $2}')"
+  [ "$v" = "Synced" ] || {
+    print_warning "galera wiring: $container wsrep_local_state_comment=${v:-<none>}"
+    ok=1
+  }
+  v="$(_mr_mysql "$container" "show variables like 'binlog_format'" | awk '{print $2}')"
+  [ "$v" = "ROW" ] || {
+    print_warning "galera wiring: $container binlog_format=${v:-<none>}"
+    ok=1
+  }
+  [ "$ok" -eq 0 ] || return 1
+  return 0
+}
+
+# Every table is InnoDB with a PRIMARY KEY (Galera requires both). Usage: mr_guard_mysql_primary_keys <container>
+mr_guard_mysql_primary_keys() {
+  local container="$1" bad
+  bad="$(_mr_mysql "$container" "SELECT COUNT(*) FROM information_schema.tables t WHERE t.table_schema = DATABASE() AND (t.engine <> 'InnoDB' OR NOT EXISTS (SELECT 1 FROM information_schema.table_constraints c WHERE c.table_schema = t.table_schema AND c.table_name = t.table_name AND c.constraint_type = 'PRIMARY KEY'))")"
+  if [ "$bad" != "0" ]; then
+    print_warning "mysql primary keys: $container has ${bad:-<unreadable>} table(s) that are not InnoDB or have no PRIMARY KEY"
+    return 1
+  fi
+  return 0
+}
+
+# Behavioral proof: lifecycle-state merge, payload guard, GCM counters, grants across two Galera nodes.
+# Usage: mr_guard_galera_state_and_grants <repo_root> <url1> <url2>
+mr_guard_galera_state_and_grants() {
+  local repo_root="$1" url1="$2" url2="$3"
+  KMS_GALERA_1_URL="${url1}" KMS_GALERA_2_URL="${url2}" \
+    _mr_cargo_ignored "${repo_root}" cosmian_kms_server_database test_db_galera_active_active
+}

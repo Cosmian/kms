@@ -4,7 +4,7 @@ mod database_objects;
 pub(crate) use database_objects::extract_serial_hex_from_object;
 mod database_permissions;
 mod db_metrics;
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{collections::HashMap, future::Future, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
@@ -66,6 +66,9 @@ pub struct Database {
     /// full HSM-slot scans (or SQL round-trips) when the same keyset is resolved
     /// on every delegated Sign/Verify call (see `rotate_name_cache` module docs).
     rotate_name_cache: RotateNameCache,
+    /// AES-GCM invocations this node reserved in the store and has not handed out yet, per key
+    /// (see `Database::reserve_gcm_invocations`).
+    gcm_leases: std::sync::Mutex<HashMap<String, u64>>,
 
     /// The database kind for the default store (sqlite/postgres/mysql/redis-findex).
     kind: MainDbKind,
@@ -111,9 +114,57 @@ impl MainDbKind {
     }
 }
 
+/// A live KMS node advertised by the cluster heartbeat table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClusterNode {
+    /// Process-specific identifier generated at server startup.
+    pub node_id: String,
+    /// KMS package version reported by the node.
+    pub version: String,
+    /// Last heartbeat as a Unix timestamp in seconds.
+    pub last_heartbeat: i64,
+    /// Whether this node is the active cluster leader.
+    pub is_leader: bool,
+}
+
 #[async_trait]
 trait DatabaseHealth {
     async fn check(&self) -> Result<(), String>;
+
+    async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>>;
+
+    async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()>;
+
+    async fn list_cluster_nodes(&self, minimum_heartbeat: i64) -> DbResult<Vec<ClusterNode>>;
+}
+
+/// Dedicated connections reserved for cron locks. Each held lock pins one connection, and cron
+/// jobs run concurrently, so this must exceed the number of distinct lock names (currently 5);
+/// otherwise a long job would block the leader-election heartbeat.
+pub(crate) const CRON_LOCK_CONNECTIONS: usize = 8;
+
+#[async_trait]
+pub(crate) trait ClusterLockGuard: Send {
+    async fn release(self: Box<Self>) -> DbResult<()>;
+}
+
+pub(crate) struct NoopClusterLockGuard;
+
+#[async_trait]
+impl ClusterLockGuard for NoopClusterLockGuard {
+    async fn release(self: Box<Self>) -> DbResult<()> {
+        Ok(())
+    }
 }
 
 impl Database {
@@ -275,6 +326,7 @@ impl Database {
             ),
             object_cache: ObjectCache::new(cache.max_age, cache.max_size, cache.max_ttl),
             rotate_name_cache: RotateNameCache::new(),
+            gcm_leases: std::sync::Mutex::new(HashMap::new()),
             kind,
             health,
             recorder: None,
@@ -299,6 +351,44 @@ impl Database {
 
     pub async fn health_check(&self) -> Result<(), String> {
         self.health.check().await
+    }
+
+    /// Run one scheduled job only when this server acquires its database lock.
+    ///
+    /// `SQLite` uses a no-op lock because it is single-node only.
+    ///
+    /// shortcut: Redis remains uncoordinated; add a Redis lease if multi-node Redis cron support
+    /// becomes part of the supported cluster backends.
+    pub async fn with_cron_lock<F, Fut>(&self, lock_name: &str, action: F) -> DbResult<bool>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = ()>,
+    {
+        let Some(lock) = self.health.try_acquire_cron_lock(lock_name).await? else {
+            return Ok(false);
+        };
+        action().await;
+        lock.release().await?;
+        Ok(true)
+    }
+
+    /// Persist this server's heartbeat and remove expired node records.
+    pub async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        self.health
+            .record_cluster_heartbeat(node_id, version, last_heartbeat, is_leader, stale_before)
+            .await
+    }
+
+    /// List cluster nodes whose heartbeat is newer than `minimum_heartbeat`.
+    pub async fn list_cluster_nodes(&self, minimum_heartbeat: i64) -> DbResult<Vec<ClusterNode>> {
+        self.health.list_cluster_nodes(minimum_heartbeat).await
     }
 
     /// Count all non-destroyed objects across all registered stores.
@@ -353,6 +443,30 @@ impl DatabaseHealth for SqliteHealthProbe {
     async fn check(&self) -> Result<(), String> {
         self.store.health_check().await.map_err(|e| e.to_string())
     }
+
+    async fn try_acquire_cron_lock(
+        &self,
+        _lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        Ok(Some(Box::new(NoopClusterLockGuard)))
+    }
+
+    async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        self.store
+            .record_cluster_heartbeat(node_id, version, last_heartbeat, is_leader, stale_before)
+            .await
+    }
+
+    async fn list_cluster_nodes(&self, minimum_heartbeat: i64) -> DbResult<Vec<ClusterNode>> {
+        self.store.list_cluster_nodes(minimum_heartbeat).await
+    }
 }
 
 struct PgHealthProbe {
@@ -370,6 +484,30 @@ impl DatabaseHealth for PgHealthProbe {
     async fn check(&self) -> Result<(), String> {
         self.store.health_check().await.map_err(|e| e.to_string())
     }
+
+    async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        self.store.try_acquire_cron_lock(lock_name).await
+    }
+
+    async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        self.store
+            .record_cluster_heartbeat(node_id, version, last_heartbeat, is_leader, stale_before)
+            .await
+    }
+
+    async fn list_cluster_nodes(&self, minimum_heartbeat: i64) -> DbResult<Vec<ClusterNode>> {
+        self.store.list_cluster_nodes(minimum_heartbeat).await
+    }
 }
 
 struct MySqlHealthProbe {
@@ -386,6 +524,30 @@ impl MySqlHealthProbe {
 impl DatabaseHealth for MySqlHealthProbe {
     async fn check(&self) -> Result<(), String> {
         self.store.health_check().await.map_err(|e| e.to_string())
+    }
+
+    async fn try_acquire_cron_lock(
+        &self,
+        lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        self.store.try_acquire_cron_lock(lock_name).await
+    }
+
+    async fn record_cluster_heartbeat(
+        &self,
+        node_id: &str,
+        version: &str,
+        last_heartbeat: i64,
+        is_leader: bool,
+        stale_before: i64,
+    ) -> DbResult<()> {
+        self.store
+            .record_cluster_heartbeat(node_id, version, last_heartbeat, is_leader, stale_before)
+            .await
+    }
+
+    async fn list_cluster_nodes(&self, minimum_heartbeat: i64) -> DbResult<Vec<ClusterNode>> {
+        self.store.list_cluster_nodes(minimum_heartbeat).await
     }
 }
 
@@ -413,6 +575,237 @@ impl DatabaseHealth for RedisFindexHealthProbe {
         } else {
             Err(format!("unexpected redis ping response: {pong}"))
         }
+    }
+
+    async fn try_acquire_cron_lock(
+        &self,
+        _lock_name: &str,
+    ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+        Ok(Some(Box::new(NoopClusterLockGuard)))
+    }
+
+    async fn record_cluster_heartbeat(
+        &self,
+        _node_id: &str,
+        _version: &str,
+        _last_heartbeat: i64,
+        _is_leader: bool,
+        _stale_before: i64,
+    ) -> DbResult<()> {
+        Ok(())
+    }
+
+    async fn list_cluster_nodes(&self, _minimum_heartbeat: i64) -> DbResult<Vec<ClusterNode>> {
+        Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::pending;
+
+    use tokio::time::{sleep, timeout};
+
+    use super::*;
+
+    async fn instantiate(params: &MainDbParams, clear_db_on_start: bool) -> Database {
+        Database::instantiate(
+            params,
+            clear_db_on_start,
+            HashMap::new(),
+            CacheParams {
+                max_age: Duration::from_secs(60),
+                max_size: NonZeroUsize::new(1).expect("nonzero cache size"),
+                max_ttl: None,
+                disabled: false,
+            },
+            None,
+            None,
+        )
+        .await
+        .expect("instantiate database")
+    }
+
+    async fn assert_heartbeats(database: &Database) {
+        // The database may be shared with real nodes and other tests: use unique node ids and
+        // only look at them.
+        let suffix = uuid::Uuid::new_v4();
+        let (node_a, node_b) = (format!("node-a-{suffix}"), format!("node-b-{suffix}"));
+        let own = |nodes: Vec<ClusterNode>| -> Vec<ClusterNode> {
+            nodes
+                .into_iter()
+                .filter(|n| n.node_id == node_a || n.node_id == node_b)
+                .collect()
+        };
+
+        database
+            .record_cluster_heartbeat(&node_a, "1.0", 100, true, 0)
+            .await
+            .expect("record leader heartbeat");
+        database
+            .record_cluster_heartbeat(&node_b, "1.0", 101, false, 0)
+            .await
+            .expect("record follower heartbeat");
+
+        let nodes = own(database
+            .list_cluster_nodes(0)
+            .await
+            .expect("list cluster nodes"));
+        assert_eq!(nodes.len(), 2);
+        assert!(nodes.iter().any(|n| n.node_id == node_a && n.is_leader));
+        assert!(nodes.iter().any(|n| n.node_id == node_b && !n.is_leader));
+
+        database
+            .record_cluster_heartbeat(&node_b, "1.0", 1_000, true, 500)
+            .await
+            .expect("elect node-b and prune stale node");
+        let nodes = own(database
+            .list_cluster_nodes(500)
+            .await
+            .expect("list live cluster nodes"));
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].node_id, node_b);
+        assert!(nodes[0].is_leader);
+
+        // Leave nothing behind in a shared database.
+        database
+            .record_cluster_heartbeat(&node_b, "1.0", 0, false, 1)
+            .await
+            .expect("expire test node");
+    }
+
+    /// Heartbeats of the leader and of a follower, with a stale row to prune, run at the same
+    /// time. When the stale-row DELETE shared the upsert transaction on PostgreSQL, the leader's
+    /// "clear all leader flags" UPDATE and the follower's DELETE could deadlock.
+    async fn assert_concurrent_heartbeats_do_not_deadlock(database: &Database) {
+        let suffix = uuid::Uuid::new_v4();
+        let (leader, follower, stale) = (
+            format!("node-leader-{suffix}"),
+            format!("node-follower-{suffix}"),
+            format!("node-stale-{suffix}"),
+        );
+        // `last_heartbeat` is far in the past, so only these rows (and expired ones) are pruned.
+        for round in 0..200_i64 {
+            database
+                .record_cluster_heartbeat(&follower, "1.0", 1_000 + round, false, 0)
+                .await
+                .expect("seed follower");
+            database
+                .record_cluster_heartbeat(&stale, "1.0", 1, false, 0)
+                .await
+                .expect("seed stale node");
+            let (a, b) = tokio::join!(
+                database.record_cluster_heartbeat(&leader, "1.0", 2_000 + round, true, 10),
+                database.record_cluster_heartbeat(&follower, "1.0", 1_000 + round, false, 10),
+            );
+            a.expect("leader heartbeat must not fail");
+            b.expect("follower heartbeat must not fail");
+        }
+        database
+            .record_cluster_heartbeat(&leader, "1.0", 0, false, 1)
+            .await
+            .expect("expire leader");
+        database
+            .record_cluster_heartbeat(&follower, "1.0", 0, false, 1)
+            .await
+            .expect("expire follower");
+    }
+
+    /// Two servers sharing one database must never run the same job at the same time.
+    async fn assert_cron_lock_exclusion(params: &MainDbParams) {
+        let node_a = instantiate(params, false).await;
+        let node_b = instantiate(params, false).await;
+
+        let ran_by_a = node_a
+            .with_cron_lock("job", || async {
+                assert!(
+                    !node_b
+                        .with_cron_lock("job", || async {})
+                        .await
+                        .expect("contend for held lock")
+                );
+                // A job holding its lock must not block other lock names on the same server.
+                let other = timeout(
+                    Duration::from_secs(5),
+                    node_a.with_cron_lock("other-job", || async {}),
+                )
+                .await
+                .expect("a held lock must not starve other cron jobs")
+                .expect("acquire another lock name");
+                assert!(other);
+            })
+            .await
+            .expect("acquire and release lock");
+        assert!(ran_by_a);
+        assert!(
+            node_b
+                .with_cron_lock("job", || async {})
+                .await
+                .expect("acquire released lock")
+        );
+
+        // A cancelled job (server shutdown) must free its lock for the other nodes.
+        timeout(
+            Duration::from_millis(200),
+            node_a.with_cron_lock("job", pending::<()>),
+        )
+        .await
+        .expect_err("a never-ending job must time out");
+        let mut acquired = false;
+        for _ in 0..50 {
+            if node_b
+                .with_cron_lock("job", || async {})
+                .await
+                .expect("retry after cancelled job")
+            {
+                acquired = true;
+                break;
+            }
+            sleep(Duration::from_millis(100)).await;
+        }
+        assert!(acquired, "cancelled job left its lock held");
+    }
+
+    #[tokio::test]
+    async fn sqlite_cluster_heartbeat_and_cron_lock_round_trip() {
+        let directory = tempfile::tempdir().expect("create temporary database directory");
+        let params = MainDbParams::Sqlite(directory.path().to_path_buf(), Some(1));
+        let database = instantiate(&params, false).await;
+
+        assert!(
+            database
+                .with_cron_lock("test-job", || async {})
+                .await
+                .expect("run no-op SQLite cron lock")
+        );
+        assert_heartbeats(&database).await;
+    }
+
+    // docker run --name postgres -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5432:5432 -d postgres
+    #[ignore = "Requires a running PostgreSQL instance"]
+    #[tokio::test]
+    async fn test_db_postgresql_cluster_heartbeat_and_cron_lock() {
+        let url = option_env!("KMS_POSTGRES_URL")
+            .unwrap_or("postgres://kms:kms@127.0.0.1:5432/kms")
+            .to_owned();
+        let params = MainDbParams::Postgres(url, None);
+        assert_cron_lock_exclusion(&params).await;
+        let database = instantiate(&params, false).await;
+        assert_heartbeats(&database).await;
+        assert_concurrent_heartbeats_do_not_deadlock(&database).await;
+    }
+
+    // docker run --name mysql --env MYSQL_DATABASE=kms --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
+    #[ignore = "Requires a running MySQL or MariaDB instance"]
+    #[tokio::test]
+    async fn test_db_mysql_cluster_heartbeat_and_cron_lock() {
+        let url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
+        let params = MainDbParams::Mysql(url.parse().expect("valid MySQL URL"), None);
+        // On a server that refuses `GET_LOCK` (Percona `XtraDB` Cluster), the row lock excludes too.
+        assert_cron_lock_exclusion(&params).await;
+        let database = instantiate(&params, false).await;
+        assert_heartbeats(&database).await;
+        assert_concurrent_heartbeats_do_not_deadlock(&database).await;
     }
 }
 

@@ -1,0 +1,46 @@
+---
+name: Leg cargo-publish-dry-run
+description: >
+  Free disk space, then dry-run the publication of the workspace crates (no git deps, valid metadata).
+
+runs:
+  using: composite
+  steps:
+    - name: Free Disk Space (Ubuntu)
+      if: github.event_name != 'pull_request'
+      uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
+      with:
+        # This might remove tools that are actually needed,
+        # if set to "true" but frees about 6 GB
+        tool-cache: false
+
+        # All of these default to true, but feel free to set to
+        # "false" if necessary for your workflow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+
+    - uses: ./.github/actions/cleanup-runner
+      if: github.event_name != 'pull_request'
+
+    # ── cargo-publish-dry-run: ensures the publication of crates is possible (no git deps, etc.) ──
+    - name: Publishing - dry run
+      if: github.event_name != 'pull_request'
+      shell: bash
+      run: |
+        cargo publish --all-features --workspace --dry-run
+
+    # PRs skip the full compile: --no-verify still catches git/path deps without a version and bad metadata.
+    - name: Publishing - dry run (no compile)
+      if: github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        cargo publish --workspace --dry-run --no-verify
+
+    - name: Check disk space after build
+      if: always()
+      shell: bash
+      run: df -h

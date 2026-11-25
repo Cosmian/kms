@@ -43,11 +43,16 @@ pub(crate) use spire_token::{
 };
 
 mod session_auth;
+
+mod ui_session;
 use actix_web::{
     dev::ServiceRequest,
     http::{Method, header},
 };
 pub(crate) use session_auth::{SessionAuth, reject_forgeable_session_mutation};
+#[cfg(test)]
+pub(crate) use ui_session::test_ui_session_cookie;
+pub(crate) use ui_session::{UiSession, UiSessionCookie, request_cookie};
 
 use crate::{
     error::KmsError,

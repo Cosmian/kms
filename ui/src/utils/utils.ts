@@ -204,6 +204,33 @@ export const postNoTTLVRequest = async (path: string, request: object, serverUrl
     return await response.json();
 };
 
+export const putNoContentRequest = async (path: string, request: object, serverUrl: string) => {
+    const response = await fetch(serverUrl + path, {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
+    }
+};
+
+export const getTextRequest = async (path: string, serverUrl: string) => {
+    const response = await fetch(serverUrl + path, { method: "GET" });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
+    }
+
+    return await response.text();
+};
+
 export const getNoTTLVRequest = async (path: string, serverUrl: string) => {
     const kmsUrl = serverUrl + path;
 

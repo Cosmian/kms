@@ -81,7 +81,7 @@ HSM keys follow a stricter permission model than regular KMS keys. The key princ
 - At rest, the KEK unwraps a stored key for any user only when the key block names the KEK itself (uid or `_pk` alias). A key wrapped by a public key or certificate is unwrapped with the private key that its `PrivateKeyLink` points to, which must be a private key on which the user holds the usual rights (owner, or a `decrypt`/`get` grant), even when that private key is the KEK.
 - **Unwrapping** with an HSM key (`Import` with `key_wrap_type = NotWrapped`, or any use of a stored key wrapped by an HSM key, whether or not it is served from the unwrapped cache) is a decryption: it requires HSM admin rights or an explicit `decrypt` grant on that HSM key.
 - **Wrapping** with an HSM key (creating, importing or exporting a key wrapped by it) is an encryption: it requires HSM admin rights or an explicit `encrypt` grant on that HSM key (`get` is not enough). To later use a key wrapped by an HSM key, also hold `decrypt` on the HSM key.
-- A **bare HSM key UID** (no `@N` suffix) that names a keyset resolves to its latest generation (`Encrypt`, `Sign`, `MAC`) or walks the generations (`Decrypt`, `SignatureVerify`); the caller must hold the operation's grant on the selected generation. An unauthorized caller gets "not found".
+- An HSM key addressed by **keyset** (bare base UID, `@latest`, `@first`, `@N`) resolves to the generation given by [HSM keyset addressing](../kmip_support/key_rotation/hsm_keysets_reference.md#addressing); the caller must hold the operation's grant on the selected generation. An unauthorized caller gets "not found".
 
 ### Operations by role
 
@@ -114,13 +114,15 @@ HSM keys follow a stricter permission model than regular KMS keys. The key princ
 | `export`           | ✅               | Export key; also implies `get`                           |
 | `get_attributes`   | ✅               | Read KMS metadata                                        |
 | `locate`           | ✅               | Search visibility for this key                           |
-| `set_attribute`    | ✅               | Modify KMS metadata — does not access HSM hardware       |
+| `set_attribute`    | ✅               | Modify KMS metadata (see note below table)               |
 | `modify_attribute` | ✅               | Modify KMS metadata — does not access HSM hardware       |
 | `add_attribute`    | ✅               | Modify KMS metadata — does not access HSM hardware       |
 | `delete_attribute` | ✅               | Modify KMS metadata — does not access HSM hardware       |
 | `destroy`          | ❌               | Admin-only — irreversible hardware operation             |
 | `revoke`           | ❌               | HSM keys do not support KMIP lifecycle state changes     |
 | `create`           | ❌               | Admin-only — not a per-key grant                         |
+
+Setting the rotation attributes of an HSM key (`RotateName`, `RotateInterval`) does write to the HSM: it updates `CKA_LABEL` or the key dates, see [HSM keysets: attribute support](../kmip_support/key_rotation/hsm_keysets_reference.md#attribute-support).
 
 !!! warning Get is not a wildcard for HSM keys
     Unlike regular KMS keys, granting `Get` on an HSM key does **not** implicitly grant all other operations.

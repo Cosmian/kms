@@ -114,7 +114,7 @@ async fn assert_kem_encrypt_contract(kms: &KMS, owner: &UserId, sk: &str, pk: &s
     assert!(!secret.is_empty() && !enc.is_empty());
     assert_eq!(decapsulate(kms, owner, sk, enc).await?, secret);
     assert!(
-        decapsulate(kms, owner, sk, data).await.is_err(),
+        decapsulate(kms, owner, sk, data.to_vec()).await.is_err(),
         "the packed tuple is not itself an encapsulation"
     );
     Ok(())

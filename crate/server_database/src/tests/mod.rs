@@ -17,8 +17,7 @@ use crate::stores::RedisWithFindex;
 use crate::stores::additional_redis_findex_tests::{
     issue_940_repro::test_issue_940, test_active_key_count_counter,
     test_certificate_serial_tag_backfill, test_corner_case, test_live_count_counter,
-    test_migration_state_markers, test_objects_db, test_permissions_db, test_protected_parameters,
-    test_wrapped_by_backfill,
+    test_objects_db, test_permissions_db, test_protected_parameters, test_wrapped_by_backfill,
 };
 use crate::{
     error::{DbError, DbResult},
@@ -28,7 +27,7 @@ use crate::{
             atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
             find_with_options_test, gcm_invocations_orphan_purge_test, gcm_invocations_test,
-            update_if_version_test, wrapping_key_link_test,
+            lifecycle_state_contract_test, update_if_version_test, wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -40,6 +39,10 @@ mod json_access_test;
 mod list_uids_for_tags_test;
 mod owner_test;
 mod permissions_test;
+#[cfg(feature = "non-fips")]
+mod redis_migration_tests;
+mod sql_migration_tests;
+mod sqlite_migration_tests;
 mod tagging_tests;
 
 #[cfg(feature = "non-fips")]
@@ -116,7 +119,6 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     test_wrapped_by_backfill().await?;
     test_certificate_serial_tag_backfill().await?;
     Box::pin(test_issue_940()).await?;
-    test_migration_state_markers().await?;
     test_protected_parameters().await?;
     Box::pin(json_access(&get_redis_with_findex().await?)).await?;
     find_attributes(&get_redis_with_findex().await?).await?;
@@ -139,6 +141,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
         get_redis_fixed_key(false)
     })
     .await?;
+    Box::pin(redis_migration_tests::redis_migration_scenarios()).await?;
     Ok(())
 }
 
@@ -186,109 +189,8 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Ok(())
 }
 
-/// Faithful migration test: build a **legacy** `SQLite` database whose `objects`
-/// table predates the `wrapping_key_id` column, insert a wrapped object row by
-/// hand, then open it with the current [`SqlitePool`]. Opening must add the
-/// column, create its index and backfill the wrapping-key link so the object
-/// becomes discoverable through `find_wrapped_by`.
-#[tokio::test]
-async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
-    use std::collections::HashSet;
-
-    use cosmian_kmip::{
-        kmip_0::kmip_types::State,
-        kmip_2_1::{
-            kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
-        },
-    };
-    use cosmian_kms_interfaces::{ObjectsStore, UserId};
-    use uuid::Uuid;
-
-    log_init(Some("info"));
-    let dir = TempDir::new()?;
-    let db_file = dir.path().join("legacy_sqlite.db");
-
-    let owner = "legacy_owner";
-    let wrapping_key_uid = "legacy_wrapping_key";
-    let wrapped_uid = Uuid::new_v4().to_string();
-
-    // Serialize a wrapped object exactly as the database stores it.
-    let wrapped_obj: Object = serde_json::from_value(serde_json::json!({
-        "SymmetricKey": {
-            "KeyBlock": {
-                "KeyFormatType": "TransparentSymmetricKey",
-                "CryptographicAlgorithm": "AES",
-                "CryptographicLength": 256,
-                "KeyWrappingData": {
-                    "WrappingMethod": "Encrypt",
-                    "EncryptionKeyInformation": { "UniqueIdentifier": wrapping_key_uid },
-                    "EncodingOption": "TTLVEncoding"
-                }
-            }
-        }
-    }))
-    .map_err(|e| DbError::ServerError(format!("failed to build wrapped object: {e}")))?;
-    let object_json =
-        serde_json::to_string(&wrapped_obj).map_err(|e| DbError::ServerError(e.to_string()))?;
-    let attributes_json = serde_json::to_string(&Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        state: Some(State::Active),
-        ..Default::default()
-    })
-    .map_err(|e| DbError::ServerError(e.to_string()))?;
-
-    // ── Create a legacy-schema database (objects table WITHOUT wrapping_key_id) ──
-    {
-        let conn = rusqlite::Connection::open(&db_file)
-            .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-        conn.execute_batch(
-            "CREATE TABLE objects (
-                 id VARCHAR(128) PRIMARY KEY,
-                 object VARCHAR NOT NULL,
-                 attributes jsonb NOT NULL,
-                 state VARCHAR(32),
-                 owner VARCHAR(255)
-             );",
-        )
-        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-        conn.execute(
-            "INSERT INTO objects (id, object, attributes, state, owner) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![wrapped_uid, object_json, attributes_json, "Active", owner],
-        )
-        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
-    } // raw connection is dropped/closed here
-
-    // ── Open with the current backend → triggers the column add + backfill ──
-    let pool = SqlitePool::instantiate(&db_file, false, None).await?;
-
-    // The pre-existing wrapped object must now be discoverable by its wrapping key.
-    let found = pool
-        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
-        .await?;
-    let found_uids: HashSet<&str> = found.iter().map(|(uid, _, _)| uid.as_str()).collect();
-    if !found_uids.contains(wrapped_uid.as_str()) {
-        return Err(DbError::ServerError(format!(
-            "backfill migration: wrapped object '{wrapped_uid}' should be discoverable via \
-             find_wrapped_by after migration, got: {found_uids:?}"
-        )));
-    }
-
-    // Re-opening must be a no-op (marker set): the object stays discoverable.
-    let pool2 = SqlitePool::instantiate(&db_file, false, None).await?;
-    let found2 = pool2
-        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
-        .await?;
-    if found2.iter().all(|(uid, _, _)| uid != &wrapped_uid) {
-        return Err(DbError::ServerError(
-            "backfill migration: wrapped object lost after re-opening the database".to_owned(),
-        ));
-    }
-
-    Ok(())
-}
-
 /// A certificate object with serial `0ABBCC` (hex).
+#[cfg(feature = "non-fips")]
 pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_objects::Object {
     use cosmian_kmip::{
         kmip_0::kmip_types::CertificateType,
@@ -321,76 +223,6 @@ pub(crate) fn legacy_certificate_object() -> cosmian_kmip::kmip_2_1::kmip_object
     })
 }
 
-/// A certificate stored before the `_serial=<HEX>` tag existed (it only carries `_cert`) gets
-/// the tag when the database is re-opened; the marker is recorded.
-#[tokio::test]
-async fn test_sqlite_certificate_serial_tag_backfill() -> DbResult<()> {
-    use cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
-    use cosmian_kms_interfaces::ObjectsStore;
-
-    const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
-
-    log_init(Some("info"));
-    let dir = TempDir::new()?;
-    let db_file = dir.path().join("serial_tag_sqlite.db");
-    let db_err = |e: rusqlite::Error| DbError::DatabaseError(e.to_string());
-
-    let object = legacy_certificate_object();
-    let object_json =
-        serde_json::to_string(&object).map_err(|e| DbError::ServerError(e.to_string()))?;
-    let attributes_json = serde_json::to_string(&Attributes::default())
-        .map_err(|e| DbError::ServerError(e.to_string()))?;
-
-    // Create the schema, then drop the pool
-    drop(SqlitePool::instantiate(&db_file, true, None).await?);
-    // Seed a legacy certificate (`_cert` tag only) and clear the completion marker
-    {
-        let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
-        conn.execute(
-            "INSERT INTO objects (id, object, attributes, state, owner) \
-             VALUES ('legacy_cert', ?1, ?2, 'Active', 'legacy_owner')",
-            rusqlite::params![object_json, attributes_json],
-        )
-        .map_err(db_err)?;
-        conn.execute(
-            "INSERT INTO tags (id, tag) VALUES ('legacy_cert', '_cert')",
-            [],
-        )
-        .map_err(db_err)?;
-        conn.execute(
-            "DELETE FROM parameters WHERE name = ?1",
-            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-        )
-        .map_err(db_err)?;
-    }
-
-    let pool = SqlitePool::instantiate(&db_file, false, None).await?;
-    let tags = pool.retrieve_tags("legacy_cert").await?;
-    let expected: std::collections::HashSet<String> =
-        ["_cert".to_owned(), "_serial=0ABBCC".to_owned()].into();
-    if tags != expected {
-        return Err(DbError::ServerError(format!(
-            "the backfill must add the serial tag, keeping the existing tags; got {tags:?}"
-        )));
-    }
-    drop(pool);
-
-    let conn = rusqlite::Connection::open(&db_file).map_err(db_err)?;
-    let marker: String = conn
-        .query_row(
-            "SELECT value FROM parameters WHERE name = ?1",
-            [CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM],
-            |row| row.get(0),
-        )
-        .map_err(db_err)?;
-    if marker != "true" {
-        return Err(DbError::ServerError(format!(
-            "serial tag backfill marker should be 'true', got '{marker}'"
-        )));
-    }
-    Ok(())
-}
-
 #[ignore = "Requires a running PostgreSQL instance"]
 #[tokio::test]
 pub(crate) async fn test_db_postgresql() -> DbResult<()> {
@@ -415,6 +247,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
     Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
     gcm_invocations_test(&get_pgsql().await?).await?;
+    lifecycle_state_contract_test(&get_pgsql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_pgsql().await?, || async {
         PgPool::instantiate(
             option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms"),
@@ -447,6 +280,296 @@ pub(crate) async fn test_db_postgresql_multihost() -> DbResult<()> {
     crud(&pg).await?;
     Box::pin(atomic(&pg)).await?;
     upsert(&pg).await?;
+    Ok(())
+}
+
+/// What a Destroy leaves behind: the same object with empty key material.
+fn zeroized_copy(
+    object: &cosmian_kmip::kmip_2_1::kmip_objects::Object,
+) -> DbResult<cosmian_kmip::kmip_2_1::kmip_objects::Object> {
+    use cosmian_kmip::kmip_2_1::{
+        kmip_data_structures::{KeyMaterial, KeyValue},
+        kmip_types::KeyFormatType,
+    };
+    let mut zeroized = object.clone();
+    let key_block = zeroized
+        .key_block_mut()
+        .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    key_block.key_format_type = KeyFormatType::Raw;
+    key_block.key_value = Some(KeyValue::Structure {
+        key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::default()),
+        attributes: None,
+    });
+    Ok(zeroized)
+}
+
+#[ignore = "Requires a running PostgreSQL instance"]
+#[tokio::test]
+pub(crate) async fn test_db_postgresql_state_event_merge() -> DbResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        },
+    };
+    use cosmian_kms_interfaces::{ObjectsStore, UserId};
+    use uuid::Uuid;
+
+    log_init(option_env!("RUST_LOG"));
+    let pg = get_pgsql().await?;
+    let owner = UserId::from("state_merge_test_user");
+    let key_obj = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[0_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    let key_json = serde_json::to_string(&key_obj)?;
+    let zeroized_json = serde_json::to_string(&zeroized_copy(&key_obj)?)?;
+    let attrs = Attributes::default();
+
+    let new_object = || async {
+        pg.create(None, &owner, &key_obj, &attrs, &HashSet::new())
+            .await
+    };
+    let expect_state = |label: &str, got: Option<State>, want: State| {
+        if got == Some(want) {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!(
+                "{label}: expected {want:?}, got {got:?}"
+            )))
+        }
+    };
+    let state_of = |uid: String| {
+        let pg = &pg;
+        async move { state_on(pg, &uid).await }
+    };
+    let stored_json = |uid: String| {
+        let pg = &pg;
+        async move {
+            let owm = pg
+                .retrieve(&uid)
+                .await?
+                .ok_or_else(|| DbError::ServerError(format!("{uid}: object missing")))?;
+            Ok::<_, DbError>(serde_json::to_string(owm.object())?)
+        }
+    };
+    // Simulates a lifecycle event arriving through logical replication.
+    let replica_event = |uid: String, state: &'static str, object: Option<String>| {
+        let pg = &pg;
+        async move {
+            let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+            client
+                .batch_execute("SET session_replication_role = 'replica';")
+                .await
+                .map_err(DbError::from)?;
+            let inserted = client
+                .execute(
+                    "INSERT INTO object_state_events (event_id, object_id, state, object, \
+                     wrapping_key_id) VALUES (gen_random_uuid(), $1, $2, $3, NULL)",
+                    &[&uid, &state, &object],
+                )
+                .await;
+            client
+                .batch_execute("SET session_replication_role = 'origin';")
+                .await
+                .map_err(DbError::from)?;
+            inserted.map_err(DbError::from)?;
+            Ok::<_, DbError>(())
+        }
+    };
+
+    // a) a replicated Destroyed event wins over a local Deactivated.
+    let uid = new_object().await?;
+    pg.update_state(&uid, State::Deactivated).await?;
+    replica_event(uid.clone(), "Destroyed", None).await?;
+    expect_state("a", state_of(uid).await?, State::Destroyed)?;
+
+    // c) an explicit downgrade replaces the observed state.
+    let uid = new_object().await?;
+    pg.update_state(&uid, State::Active).await?;
+    pg.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    expect_state("c", state_of(uid.clone()).await?, State::PreActive)?;
+
+    // d) a replicated Destroyed event carries its zeroized payload onto the row.
+    replica_event(uid.clone(), "Destroyed", Some(zeroized_json.clone())).await?;
+    expect_state("d", state_of(uid.clone()).await?, State::Destroyed)?;
+    if stored_json(uid.clone()).await? != zeroized_json {
+        return Err(DbError::ServerError("d: payload not zeroized".to_owned()));
+    }
+
+    // e) a later payload write cannot bring the key material back.
+    pg.update_object(&uid, &key_obj, &attrs, None).await?;
+    if stored_json(uid.clone()).await? != zeroized_json {
+        return Err(DbError::ServerError("e: key material survived".to_owned()));
+    }
+
+    // f) Batch Undo order: reset the state, then restore the payload.
+    pg.update_state_allow_downgrade(&uid, State::Active).await?;
+    pg.update_object(&uid, &key_obj, &attrs, None).await?;
+    expect_state("f", state_of(uid.clone()).await?, State::Active)?;
+    if stored_json(uid).await? != key_json {
+        return Err(DbError::ServerError("f: payload not restored".to_owned()));
+    }
+
+    // g) startup reconcile: an event-less object gets one event, orphan events are purged.
+    let uid = Uuid::new_v4().to_string();
+    let orphan = Uuid::new_v4().to_string();
+    let url = option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+    {
+        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        client
+            .execute(
+                "INSERT INTO objects (id, object, attributes, state, owner) \
+                 VALUES ($1, $2, '{}'::jsonb, 'Active', 'backfill_owner')",
+                &[&uid, &key_json],
+            )
+            .await
+            .map_err(DbError::from)?;
+        client
+            .execute(
+                "INSERT INTO object_state_events (event_id, object_id, state) \
+                 VALUES (gen_random_uuid(), $1, 'Active')",
+                &[&orphan],
+            )
+            .await
+            .map_err(DbError::from)?;
+    }
+    let pg_again = PgPool::instantiate(url, false, None).await?;
+    let client = pg_again.raw_pool().get().await.map_err(DbError::from)?;
+    let count_events = |id: String| {
+        let client = &client;
+        async move {
+            let n: i64 = client
+                .query_one(
+                    "SELECT count(*) FROM object_state_events WHERE object_id = $1",
+                    &[&id],
+                )
+                .await
+                .map_err(DbError::from)?
+                .get(0);
+            DbResult::Ok(n)
+        }
+    };
+    let events = count_events(uid).await?;
+    let orphans = count_events(orphan).await?;
+    if events != 1 || orphans != 0 {
+        return Err(DbError::ServerError(format!(
+            "g: expected 1 baseline event and 0 orphan events, got {events} and {orphans}"
+        )));
+    }
+
+    // g2) an older KMS ran without the derive trigger: preserve its Destroyed state and payload.
+    let older = Uuid::new_v4().to_string();
+    {
+        let mut legacy_client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        let tx = legacy_client.transaction().await.map_err(DbError::from)?;
+        tx.execute(
+            "INSERT INTO objects (id, object, attributes, state, owner) \
+             VALUES ($1, $2, '{}'::jsonb, 'Active', 'backfill_owner')",
+            &[&older, &key_json],
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.execute(
+            "INSERT INTO object_state_events (event_id, object_id, state) \
+             VALUES (gen_random_uuid(), $1, 'Active')",
+            &[&older],
+        )
+        .await
+        .map_err(DbError::from)?;
+        // Transactional DDL restores the trigger even if the simulated legacy write fails.
+        tx.batch_execute("ALTER TABLE objects DISABLE TRIGGER trg_objects_state_derive")
+            .await
+            .map_err(DbError::from)?;
+        tx.execute(
+            "UPDATE objects SET state = 'Destroyed', object = $2 WHERE id = $1",
+            &[&older, &zeroized_json],
+        )
+        .await
+        .map_err(DbError::from)?;
+        tx.batch_execute("ALTER TABLE objects ENABLE ALWAYS TRIGGER trg_objects_state_derive")
+            .await
+            .map_err(DbError::from)?;
+        tx.commit().await.map_err(DbError::from)?;
+    }
+    let reconciled = PgPool::instantiate(url, false, None).await?;
+    // A stale lifecycle write and payload update must not undo the reconciled destruction.
+    reconciled.update_state(&older, State::Active).await?;
+    reconciled
+        .update_object(&older, &key_obj, &attrs, None)
+        .await?;
+    expect_state("g2", state_of(older.clone()).await?, State::Destroyed)?;
+    if stored_json(older.clone()).await? != zeroized_json {
+        return Err(DbError::ServerError(
+            "g2: reconciled Destroyed payload was overwritten".to_owned(),
+        ));
+    }
+    let events_before = count_events(older.clone()).await?;
+    let _reopened = PgPool::instantiate(url, false, None).await?;
+    if count_events(older).await? != events_before {
+        return Err(DbError::ServerError(
+            "g2: repeated startup must not append redundant events".to_owned(),
+        ));
+    }
+
+    // h) a UID with stale events (late replicated event, older-node delete) can be created again:
+    // the new object starts PreActive with its own payload.
+    let reused = Uuid::new_v4().to_string();
+    replica_event(reused.clone(), "Destroyed", Some(zeroized_json.clone())).await?;
+    pg.create(
+        Some(reused.clone()),
+        &owner,
+        &key_obj,
+        &attrs,
+        &HashSet::new(),
+    )
+    .await?;
+    expect_state("h", state_of(reused.clone()).await?, State::PreActive)?;
+    if stored_json(reused).await? != key_json {
+        return Err(DbError::ServerError(
+            "h: stale Destroyed event zeroized a new object".to_owned(),
+        ));
+    }
+
+    // h2) same through `AtomicOperation::Create` (the Import path), which has its own tombstone call.
+    let reused_atomic = Uuid::new_v4().to_string();
+    replica_event(
+        reused_atomic.clone(),
+        "Destroyed",
+        Some(zeroized_json.clone()),
+    )
+    .await?;
+    pg.atomic(
+        &owner,
+        &[cosmian_kms_interfaces::AtomicOperation::Create((
+            reused_atomic.clone(),
+            owner.clone(),
+            key_obj.clone(),
+            attrs.clone(),
+            HashSet::new(),
+        ))],
+    )
+    .await?;
+    expect_state(
+        "h2",
+        state_of(reused_atomic.clone()).await?,
+        State::PreActive,
+    )?;
+    if stored_json(reused_atomic).await? != key_json {
+        return Err(DbError::ServerError(
+            "h2: stale Destroyed event zeroized a new object".to_owned(),
+        ));
+    }
+
     Ok(())
 }
 
@@ -576,6 +699,445 @@ pub(crate) async fn test_db_postgresql_failover() -> DbResult<()> {
     Ok(())
 }
 
+/// Enable or disable both Spock subscriptions of the two-node test cluster.
+async fn set_replication(pg1: &PgPool, pg2: &PgPool, enabled: bool) -> DbResult<()> {
+    let func = if enabled { "sub_enable" } else { "sub_disable" };
+    for (pg, sub) in [(pg1, "sub_n1_n2"), (pg2, "sub_n2_n1")] {
+        let client = pg.raw_pool().get().await.map_err(DbError::from)?;
+        client
+            .batch_execute(&format!("SELECT spock.{func}('{sub}', true);"))
+            .await
+            .map_err(DbError::from)?;
+    }
+    Ok(())
+}
+
+/// Block until everything committed so far on each node has been applied on the other.
+async fn sync_both(pg1: &PgPool, pg2: &PgPool) -> DbResult<()> {
+    for (provider, subscriber, origin) in [(pg1, pg2, "n1"), (pg2, pg1, "n2")] {
+        let lsn: String = provider
+            .raw_pool()
+            .get()
+            .await
+            .map_err(DbError::from)?
+            .query_one("SELECT spock.sync_event()::text;", &[])
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        let applied: bool = subscriber
+            .raw_pool()
+            .get()
+            .await
+            .map_err(DbError::from)?
+            .query_one(
+                "CALL spock.wait_for_sync_event(NULL, $1::name, $2::text::pg_lsn, 60);",
+                &[&origin, &lsn],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get("result");
+        if !applied {
+            return Err(DbError::ServerError(format!(
+                "replication from {origin} did not apply sync event {lsn} within 60s"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn state_on(
+    db: &impl cosmian_kms_interfaces::ObjectsStore,
+    uid: &str,
+) -> DbResult<Option<cosmian_kmip::kmip_0::kmip_types::State>> {
+    Ok(db.retrieve_state(uid).await?.map(|(state, _)| state))
+}
+
+#[ignore = "Orchestrated by `mise run test:db:pgedge` (requires the pgedge Docker Compose profile)."]
+#[tokio::test]
+pub(crate) async fn test_db_pgedge_active_active() -> DbResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        },
+    };
+    use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, PermissionsStore, UserId};
+    use uuid::Uuid;
+
+    log_init(option_env!("RUST_LOG"));
+
+    let url1 = std::env::var("KMS_PGEDGE_1_URL")
+        .unwrap_or_else(|_| "postgresql://kms:kms@127.0.0.1:6432/kms".to_owned());
+    let url2 = std::env::var("KMS_PGEDGE_2_URL")
+        .unwrap_or_else(|_| "postgresql://kms:kms@127.0.0.1:6433/kms".to_owned());
+
+    // Instantiate PgPool on both nodes: creates KMS schema, PK migrations, and monotonic trigger
+    let pg1 = PgPool::instantiate(&url1, true, None).await?;
+    let pg2 = PgPool::instantiate(&url2, true, None).await?;
+
+    // Wire Spock logical multi-master replication on both nodes (idempotent setup)
+    {
+        let c1 = pg1.raw_pool().get().await.map_err(DbError::from)?;
+        c1.batch_execute("CREATE EXTENSION IF NOT EXISTS spock;")
+            .await
+            .map_err(DbError::from)?;
+        let n1_exists: bool = c1
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.node WHERE node_name = 'n1');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !n1_exists {
+            c1.batch_execute(
+                "SELECT spock.node_create(node_name := 'n1', dsn := 'host=pgedge1 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c1.batch_execute(
+            "SELECT spock.repset_add_all_tables('default', ARRAY['public']); \
+SELECT spock.repset_remove_table('default', 'cluster_nodes'); \
+ALTER TABLE gcm_invocations ALTER COLUMN count SET (log_old_value = true, delta_apply_function = spock.delta_apply);",
+        )
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    {
+        let c2 = pg2.raw_pool().get().await.map_err(DbError::from)?;
+        c2.batch_execute("CREATE EXTENSION IF NOT EXISTS spock;")
+            .await
+            .map_err(DbError::from)?;
+        let n2_exists: bool = c2
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.node WHERE node_name = 'n2');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !n2_exists {
+            c2.batch_execute(
+                "SELECT spock.node_create(node_name := 'n2', dsn := 'host=pgedge2 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c2.batch_execute(
+            "SELECT spock.repset_add_all_tables('default', ARRAY['public']); \
+SELECT spock.repset_remove_table('default', 'cluster_nodes'); \
+ALTER TABLE gcm_invocations ALTER COLUMN count SET (log_old_value = true, delta_apply_function = spock.delta_apply);",
+        )
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    // Create subscriptions and wait for initial sync
+    {
+        let c1 = pg1.raw_pool().get().await.map_err(DbError::from)?;
+        let sub1_exists: bool = c1
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.subscription WHERE sub_name = 'sub_n1_n2');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !sub1_exists {
+            c1.batch_execute(
+                "SELECT spock.sub_create(subscription_name := 'sub_n1_n2', provider_dsn := 'host=pgedge2 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c1.batch_execute("SELECT spock.sub_wait_for_sync('sub_n1_n2');")
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    {
+        let c2 = pg2.raw_pool().get().await.map_err(DbError::from)?;
+        let sub2_exists: bool = c2
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM spock.subscription WHERE sub_name = 'sub_n2_n1');",
+                &[],
+            )
+            .await
+            .map_err(DbError::from)?
+            .get(0);
+        if !sub2_exists {
+            c2.batch_execute(
+                "SELECT spock.sub_create(subscription_name := 'sub_n2_n1', provider_dsn := 'host=pgedge1 port=5432 dbname=kms user=kms password=kms');",
+            )
+            .await
+            .map_err(DbError::from)?;
+        }
+        c2.batch_execute("SELECT spock.sub_wait_for_sync('sub_n2_n1');")
+            .await
+            .map_err(DbError::from)?;
+    }
+
+    // Prepare test objects
+    let owner = UserId::from("pgedge_test_user");
+    let key_obj = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[0_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    let zeroized_object = zeroized_copy(&key_obj)?;
+    let attrs = Attributes::default();
+
+    // Creates an object on pg1 (optionally `Active`) and waits until both nodes have it.
+    let new_object = |active: bool| {
+        let (pg1, pg2, owner, key_obj) = (&pg1, &pg2, &owner, &key_obj);
+        async move {
+            let uid = Uuid::new_v4().to_string();
+            pg1.atomic(
+                owner,
+                &[AtomicOperation::Create((
+                    uid.clone(),
+                    owner.clone(),
+                    key_obj.clone(),
+                    Attributes::default(),
+                    HashSet::new(),
+                ))],
+            )
+            .await?;
+            if active {
+                pg1.update_state(&uid, State::Active).await?;
+            }
+            sync_both(pg1, pg2).await?;
+            Ok::<_, DbError>(uid)
+        }
+    };
+    let expect = |label: &str, got: Option<State>, want: State| {
+        if got == Some(want) {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!(
+                "{label}: expected {want:?}, got {got:?}"
+            )))
+        }
+    };
+
+    // S1: pg1 Destroyed vs pg2 Deactivated.
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.update_state(&uid, State::Destroyed).await?;
+    pg2.update_state(&uid, State::Deactivated).await?;
+    expect(
+        "S1 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Destroyed,
+    )?;
+    expect(
+        "S1 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Deactivated,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S1 pg1", state_on(&pg1, &uid).await?, State::Destroyed)?;
+    expect("S1 pg2", state_on(&pg2, &uid).await?, State::Destroyed)?;
+
+    // S2: pg2 Destroyed vs pg1 Deactivated (the later commit is the lower state).
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg2.update_state(&uid, State::Destroyed).await?;
+    pg1.update_state(&uid, State::Deactivated).await?;
+    expect(
+        "S2 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Deactivated,
+    )?;
+    expect(
+        "S2 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S2 pg1", state_on(&pg1, &uid).await?, State::Destroyed)?;
+    expect("S2 pg2", state_on(&pg2, &uid).await?, State::Destroyed)?;
+
+    // S3: Compromised on one node, Destroyed on the other.
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.update_state(&uid, State::Compromised).await?;
+    pg2.update_state(&uid, State::Destroyed).await?;
+    expect(
+        "S3 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Compromised,
+    )?;
+    expect(
+        "S3 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect(
+        "S3 pg1",
+        state_on(&pg1, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+    expect(
+        "S3 pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+
+    // S4: a concurrent payload write must not bring key material back on a Destroyed row.
+    let uid = new_object(false).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.atomic(
+        &owner,
+        &[
+            AtomicOperation::UpdateObject((
+                uid.clone(),
+                zeroized_object.clone(),
+                attrs.clone(),
+                None,
+            )),
+            AtomicOperation::UpdateState((uid.clone(), State::Destroyed)),
+        ],
+    )
+    .await?;
+    pg2.update_object(&uid, &key_obj, &attrs, None).await?;
+    expect(
+        "S4 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::Destroyed,
+    )?;
+    if state_on(&pg2, &uid).await? == Some(State::Destroyed) {
+        return Err(DbError::ServerError(
+            "S4: partition did not hold".to_owned(),
+        ));
+    }
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    let zeroized_json = serde_json::to_string(&zeroized_object)?;
+    for (name, pg) in [("pg1", &pg1), ("pg2", &pg2)] {
+        expect(
+            &format!("S4 {name}"),
+            state_on(pg, &uid).await?,
+            State::Destroyed,
+        )?;
+        let stored = pg
+            .retrieve(&uid)
+            .await?
+            .ok_or_else(|| DbError::ServerError(format!("S4 {name}: object missing")))?;
+        if serde_json::to_string(stored.object())? != zeroized_json {
+            return Err(DbError::ServerError(format!(
+                "S4 {name}: key material survived Destroy"
+            )));
+        }
+    }
+
+    // S5: a downgrade removes only the events its node observed.
+    let uid = new_object(true).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    pg2.update_state(&uid, State::Destroyed).await?;
+    expect(
+        "S5 isolated pg1",
+        state_on(&pg1, &uid).await?,
+        State::PreActive,
+    )?;
+    expect(
+        "S5 isolated pg2",
+        state_on(&pg2, &uid).await?,
+        State::Destroyed,
+    )?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S5 pg1", state_on(&pg1, &uid).await?, State::Destroyed)?;
+    expect("S5 pg2", state_on(&pg2, &uid).await?, State::Destroyed)?;
+
+    // S6: a downgrade replicates without concurrency.
+    let uid = new_object(true).await?;
+    pg1.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    sync_both(&pg1, &pg2).await?;
+    expect("S6 pg1", state_on(&pg1, &uid).await?, State::PreActive)?;
+    expect("S6 pg2", state_on(&pg2, &uid).await?, State::PreActive)?;
+
+    // S7: AES-GCM invocation counters of the two regions add up (Spock delta-apply on
+    // `gcm_invocations.count`); whole-row last-update-wins would keep only one of them. The
+    // first reservation is concurrent too, so the row's initial insert conflicts.
+    let gcm_uid = Uuid::new_v4().to_string();
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.reserve_gcm_invocations(&gcm_uid, 3).await?;
+    pg2.reserve_gcm_invocations(&gcm_uid, 4).await?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    pg1.reserve_gcm_invocations(&gcm_uid, 10).await?;
+    pg2.reserve_gcm_invocations(&gcm_uid, 20).await?;
+    sync_both(&pg1, &pg2).await?;
+    for (name, pg) in [("pg1", &pg1), ("pg2", &pg2)] {
+        let total = pg.reserve_gcm_invocations(&gcm_uid, 0).await?;
+        if total != Some(37) {
+            return Err(DbError::ServerError(format!(
+                "S7 {name}: GCM invocation total is {total:?}, expected 37"
+            )));
+        }
+    }
+
+    // S8: heartbeats are per region: `cluster_nodes` is outside the replication set, so one
+    // region's nodes and its elected leader never appear in (or get overwritten by) the other's.
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    pg1.record_cluster_heartbeat("region-1-node", "test", now, true, 0)
+        .await?;
+    sync_both(&pg1, &pg2).await?;
+    if !pg2.list_cluster_nodes(0).await?.is_empty() {
+        return Err(DbError::ServerError(
+            "S8: cluster_nodes was replicated to the other region".to_owned(),
+        ));
+    }
+
+    // Grants: whole-row last-update-wins is the accepted contract; the nodes must agree and
+    // the row is either gone or holds both operations.
+    let uid = new_object(false).await?;
+    let alice = UserId::from("alice");
+    pg1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Get]))
+        .await?;
+    sync_both(&pg1, &pg2).await?;
+    set_replication(&pg1, &pg2, false).await?;
+    pg2.remove_operations(&uid, &alice, HashSet::from([KmipOperation::Get]))
+        .await?;
+    pg1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Encrypt]))
+        .await?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    let perm1 = pg1
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    let perm2 = pg2
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    if perm1 != perm2
+        || !(perm1.is_empty()
+            || perm1 == HashSet::from([KmipOperation::Get, KmipOperation::Encrypt]))
+    {
+        return Err(DbError::ServerError(format!(
+            "read_access did not converge: pg1={perm1:?}, pg2={perm2:?}"
+        )));
+    }
+
+    Ok(())
+}
+
 #[ignore = "Requires a running MySQL or MariaDB instance"]
 #[tokio::test]
 pub(crate) async fn test_db_mysql() -> DbResult<()> {
@@ -599,6 +1161,7 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
     Box::pin(update_if_version_test(&get_mysql().await?)).await?;
     gcm_invocations_test(&get_mysql().await?).await?;
+    lifecycle_state_contract_test(&get_mysql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_mysql().await?, || async {
         MySqlPool::instantiate(
             option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms"),
@@ -608,5 +1171,215 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
         .await
     })
     .await?;
+    Box::pin(sql_migration_tests::mysql_migration_scenarios()).await?;
+    Ok(())
+}
+
+#[ignore = "Orchestrated by `mise run test:db:galera` (requires the galera Docker Compose profile)."]
+#[tokio::test]
+pub(crate) async fn test_db_galera_active_active() -> DbResult<()> {
+    use std::collections::HashSet;
+
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
+            kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        },
+    };
+    use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, PermissionsStore, UserId};
+    use uuid::Uuid;
+
+    log_init(option_env!("RUST_LOG"));
+
+    let url1 = std::env::var("KMS_GALERA_1_URL")
+        .unwrap_or_else(|_| "mysql://kms:kms@127.0.0.1:3310/kms".to_owned());
+    let url2 = std::env::var("KMS_GALERA_2_URL")
+        .unwrap_or_else(|_| "mysql://kms:kms@127.0.0.1:3311/kms".to_owned());
+    // The clear on node 1 replicates.
+    let my1 = MySqlPool::instantiate(&url1, true, None).await?;
+    let my2 = MySqlPool::instantiate(&url2, false, None).await?;
+
+    let owner = UserId::from("galera_test_user");
+    let key_obj = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &[0_u8; 32],
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )
+    .map_err(|e| DbError::DatabaseError(e.to_string()))?;
+    let zeroized_object = zeroized_copy(&key_obj)?;
+    let zeroized_json = serde_json::to_string(&zeroized_object)?;
+    let attrs = Attributes::default();
+
+    // Creates an object on node 1 (optionally `Active`); node 2 sees it (causal reads).
+    let new_object = |active: bool| {
+        let (my1, owner, key_obj) = (&my1, &owner, &key_obj);
+        async move {
+            let uid = Uuid::new_v4().to_string();
+            my1.atomic(
+                owner,
+                &[AtomicOperation::Create((
+                    uid.clone(),
+                    owner.clone(),
+                    key_obj.clone(),
+                    Attributes::default(),
+                    HashSet::new(),
+                ))],
+            )
+            .await?;
+            if active {
+                my1.update_state(&uid, State::Active).await?;
+            }
+            Ok::<_, DbError>(uid)
+        }
+    };
+    let expect = |label: &str, got: Option<State>, want: State| {
+        if got == Some(want) {
+            Ok(())
+        } else {
+            Err(DbError::ServerError(format!(
+                "{label}: expected {want:?}, got {got:?}"
+            )))
+        }
+    };
+
+    // G1: Destroyed on node 1, then a stale Deactivated from node 2.
+    let uid = new_object(false).await?;
+    my1.update_state(&uid, State::Destroyed).await?;
+    my2.update_state(&uid, State::Deactivated).await?;
+    expect("G1 my1", state_on(&my1, &uid).await?, State::Destroyed)?;
+    expect("G1 my2", state_on(&my2, &uid).await?, State::Destroyed)?;
+
+    // G2: Compromised on node 1, then Destroyed on node 2.
+    let uid = new_object(false).await?;
+    my1.update_state(&uid, State::Compromised).await?;
+    my2.update_state(&uid, State::Destroyed).await?;
+    expect(
+        "G2 my1",
+        state_on(&my1, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+    expect(
+        "G2 my2",
+        state_on(&my2, &uid).await?,
+        State::Destroyed_Compromised,
+    )?;
+
+    // G3: a payload write from the other node must not bring key material back.
+    let uid = new_object(false).await?;
+    my1.atomic(
+        &owner,
+        &[
+            AtomicOperation::UpdateObject((
+                uid.clone(),
+                zeroized_object.clone(),
+                attrs.clone(),
+                None,
+            )),
+            AtomicOperation::UpdateState((uid.clone(), State::Destroyed)),
+        ],
+    )
+    .await?;
+    my2.update_object(&uid, &key_obj, &attrs, None).await?;
+    for (name, my) in [("my1", &my1), ("my2", &my2)] {
+        expect(
+            &format!("G3 {name}"),
+            state_on(my, &uid).await?,
+            State::Destroyed,
+        )?;
+        let stored = my
+            .retrieve(&uid)
+            .await?
+            .ok_or_else(|| DbError::ServerError(format!("G3 {name}: object missing")))?;
+        if serde_json::to_string(stored.object())? != zeroized_json {
+            return Err(DbError::ServerError(format!(
+                "G3 {name}: key material survived Destroy"
+            )));
+        }
+    }
+
+    // G4: concurrent Destroyed and Deactivated from the two nodes both succeed (certification
+    // aborts are retried) and converge on Destroyed.
+    let uid = new_object(false).await?;
+    let (r1, r2) = tokio::join!(
+        my1.update_state(&uid, State::Destroyed),
+        my2.update_state(&uid, State::Deactivated)
+    );
+    r1?;
+    r2?;
+    expect("G4 my1", state_on(&my1, &uid).await?, State::Destroyed)?;
+    expect("G4 my2", state_on(&my2, &uid).await?, State::Destroyed)?;
+
+    // G5: an explicit downgrade replicates.
+    let uid = new_object(true).await?;
+    my1.update_state_allow_downgrade(&uid, State::PreActive)
+        .await?;
+    expect("G5 my1", state_on(&my1, &uid).await?, State::PreActive)?;
+    expect("G5 my2", state_on(&my2, &uid).await?, State::PreActive)?;
+
+    // G6: concurrent AES-GCM invocation reservations add up exactly.
+    let gcm_uid = Uuid::new_v4().to_string();
+    for (a, b) in [(3, 4), (10, 20)] {
+        let (r1, r2) = tokio::join!(
+            my1.reserve_gcm_invocations(&gcm_uid, a),
+            my2.reserve_gcm_invocations(&gcm_uid, b)
+        );
+        r1?;
+        r2?;
+    }
+    for (name, my) in [("my1", &my1), ("my2", &my2)] {
+        let total = my.reserve_gcm_invocations(&gcm_uid, 0).await?;
+        if total != Some(37) {
+            return Err(DbError::ServerError(format!(
+                "G6 {name}: GCM invocation total is {total:?}, expected 37"
+            )));
+        }
+    }
+
+    // G7: Galera cannot exclude a table: `cluster_nodes` is a global view across regions.
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    my1.record_cluster_heartbeat("region-1-node", "test", now, true, 0)
+        .await?;
+    if !my2
+        .list_cluster_nodes(0)
+        .await?
+        .iter()
+        .any(|n| n.node_id == "region-1-node")
+    {
+        return Err(DbError::ServerError(
+            "G7: cluster_nodes was not replicated".to_owned(),
+        ));
+    }
+
+    // G8: grants: read-modify-write can lose one side (as on PostgreSQL), but the nodes agree.
+    let uid = new_object(false).await?;
+    let alice = UserId::from("alice");
+    my1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Get]))
+        .await?;
+    let (r1, r2) = tokio::join!(
+        my2.remove_operations(&uid, &alice, HashSet::from([KmipOperation::Get])),
+        my1.grant_operations(&uid, &alice, HashSet::from([KmipOperation::Encrypt]))
+    );
+    r1?;
+    r2?;
+    let perm1 = my1
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    let perm2 = my2
+        .list_user_operations_on_object(&uid, &alice, false)
+        .await?;
+    if perm1 != perm2
+        || !(perm1.is_empty()
+            || perm1 == HashSet::from([KmipOperation::Encrypt])
+            || perm1 == HashSet::from([KmipOperation::Get, KmipOperation::Encrypt]))
+    {
+        return Err(DbError::ServerError(format!(
+            "read_access did not converge: my1={perm1:?}, my2={perm2:?}"
+        )));
+    }
+
     Ok(())
 }

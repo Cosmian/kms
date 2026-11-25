@@ -38,11 +38,20 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::elliptic_curves::operation::{to_ec_private_key, to_ec_public_key},
 };
+#[cfg(feature = "non-fips")]
 use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::core::KMS;
-use crate::{error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms};
+use crate::{
+    error::KmsError,
+    middlewares::UserId,
+    result::KResult,
+    tests::test_utils::{
+        assert_stored_wrapped_by_kek, https_clap_config, test_kms, test_kms_with_kek,
+        unwrapped_key_bytes,
+    },
+};
 
 /// Helper function to create a symmetric key for testing `DeriveKey` operations
 fn create_base_symmetric_key_request() -> Create {
@@ -78,8 +87,8 @@ async fn test_derive_key_pbkdf2_default() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000), // Lower than default for faster testing
         },
         Attributes {
@@ -174,8 +183,8 @@ async fn test_derive_key_pbkdf2_different_hash_algorithms() -> KResult<()> {
                     ..CryptographicParameters::default()
                 }),
                 initialization_vector: None,
-                derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-                salt: Some(b"test salt 16 byte".to_vec()),
+                derivation_data: Some(b"test derivation data".to_vec().into()),
+                salt: Some(b"test salt 16 byte".to_vec().into()),
                 iteration_count: Some(10_000), // Lower for faster testing
             },
             Attributes {
@@ -237,8 +246,8 @@ async fn test_derive_key_hkdf() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test info for HKDF".to_vec())),
-            salt: Some(b"HKDF salt".to_vec()),
+            derivation_data: Some(b"test info for HKDF".to_vec().into()),
+            salt: Some(b"HKDF salt".to_vec().into()),
             iteration_count: None, // Not used for HKDF
         },
         Attributes {
@@ -302,8 +311,8 @@ async fn test_derive_key_resets_client_usage_limits_count() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"usage limits info".to_vec())),
-            salt: Some(b"HKDF salt".to_vec()),
+            derivation_data: Some(b"usage limits info".to_vec().into()),
+            salt: Some(b"HKDF salt".to_vec().into()),
             iteration_count: None,
         },
         Attributes {
@@ -369,8 +378,8 @@ async fn test_derive_key_from_secret_data() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"secret data derivation".to_vec())),
-            salt: Some(b"secret salt 16 byte".to_vec()),
+            derivation_data: Some(b"secret data derivation".to_vec().into()),
+            salt: Some(b"secret salt 16 byte".to_vec().into()),
             iteration_count: Some(50_000),
         },
         Attributes {
@@ -431,8 +440,8 @@ async fn test_derive_key_error_cases() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -474,7 +483,7 @@ async fn test_derive_key_preactive_base_and_unsupported_method() -> KResult<()> 
             base_key_id.clone(),
             method,
             DerivationParameters {
-                salt: Some(b"test salt 16 byte".to_vec()),
+                salt: Some(b"test salt 16 byte".to_vec().into()),
                 iteration_count: Some(1000),
                 ..DerivationParameters::default()
             },
@@ -552,7 +561,7 @@ async fn test_derive_key_hash_and_hmac_known_answers() -> KResult<()> {
                         hashing_algorithm: Some(h),
                         ..CryptographicParameters::default()
                     }),
-                    derivation_data: derivation_data.map(|d| Zeroizing::new(d.to_vec())),
+                    derivation_data: derivation_data.map(|d| d.to_vec().into()),
                     ..DerivationParameters::default()
                 },
                 Attributes {
@@ -627,7 +636,7 @@ async fn test_derive_key_pbkdf2_missing_salt() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
             salt: None, // Missing salt - should cause error
             iteration_count: Some(100_000),
         },
@@ -677,8 +686,8 @@ async fn test_derive_key_pbkdf2_fips_minimums() -> KResult<()> {
                     ..CryptographicParameters::default()
                 }),
                 initialization_vector: None,
-                derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-                salt: Some(salt.to_vec()),
+                derivation_data: Some(b"test derivation data".to_vec().into()),
+                salt: Some(salt.to_vec().into()),
                 iteration_count: Some(iterations),
             },
             Attributes {
@@ -724,8 +733,8 @@ async fn test_derive_key_nonexistent_base_key() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -777,8 +786,8 @@ async fn test_derive_key_without_permission_is_object_not_found() -> KResult<()>
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -821,8 +830,8 @@ async fn test_derive_key_missing_cryptographic_length() -> KResult<()> {
                 ..CryptographicParameters::default()
             }),
             initialization_vector: None,
-            derivation_data: Some(Zeroizing::new(b"test derivation data".to_vec())),
-            salt: Some(b"test salt 16 byte".to_vec()),
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
             iteration_count: Some(100_000),
         },
         Attributes {
@@ -988,8 +997,8 @@ fn build_hkdf_chacha_request(base_uid: &str, derived_uid: &str) -> DeriveKey {
                 hashing_algorithm: Some(HashingAlgorithm::SHA256),
                 ..CryptographicParameters::default()
             }),
-            derivation_data: Some(Zeroizing::new(b"share-seal/v1".to_vec())),
-            salt: Some(b"share-seal-salt".to_vec()),
+            derivation_data: Some(b"share-seal/v1".to_vec().into()),
+            salt: Some(b"share-seal-salt".to_vec().into()),
             iteration_count: None,
             initialization_vector: None,
         },
@@ -1023,24 +1032,28 @@ async fn secret_bytes(kms: &Arc<KMS>, uid: &str) -> KResult<Zeroizing<Vec<u8>>> 
     }
 }
 
+/// RFC 7748 §6.1 shared secret of Alice's private and Bob's public key.
 #[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
-    let kms = test_kms().await?;
-    let owner = UserId::from("x25519-owner");
+const RFC7748_SHARED_SECRET: &str =
+    "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742";
+
+/// Import the RFC 7748 §6.1 key pair as `alice-private` / `bob-public` for `owner` and derive
+/// their shared secret as `derived_uid`. Returns the UID of the derived key.
+#[cfg(feature = "non-fips")]
+async fn derive_rfc7748_secret(
+    kms: &Arc<KMS>,
+    owner: &UserId,
+    derived_uid: &str,
+) -> KResult<String> {
     let alice_private =
         hex::decode("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
             .expect("alice private");
     let bob_public =
         hex::decode("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f")
             .expect("bob public");
-    let expected_shared_secret =
-        hex::decode("4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742")
-            .expect("shared secret");
-
     import_private_x25519_key(
-        &kms,
-        &owner,
+        kms,
+        owner,
         "alice-private",
         "bob-public",
         &alice_private,
@@ -1049,8 +1062,8 @@ async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
     )
     .await?;
     import_public_x25519_key(
-        &kms,
-        &owner,
+        kms,
+        owner,
         "bob-public",
         "alice-private",
         &bob_public,
@@ -1058,21 +1071,29 @@ async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
         CryptographicUsageMask::KeyAgreement,
     )
     .await?;
-
-    let derived_uid = "derived-rfc7748-secret";
-    let response = kms
+    Ok(kms
         .derive_key(
             build_x25519_derive_request("alice-private", "bob-public", derived_uid),
-            &owner,
+            owner,
         )
-        .await?;
+        .await?
+        .unique_identifier
+        .to_string())
+}
+
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_derive_key_x25519_rfc_7748_vector() -> KResult<()> {
+    let kms = test_kms().await?;
+    let owner = UserId::from("x25519-owner");
+    let derived_uid = "derived-rfc7748-secret";
     assert_eq!(
-        response.unique_identifier.to_string(),
-        derived_uid.to_owned()
+        derive_rfc7748_secret(&kms, &owner, derived_uid).await?,
+        derived_uid
     );
     assert_eq!(
         secret_bytes(&kms, derived_uid).await?.as_slice(),
-        expected_shared_secret
+        hex::decode(RFC7748_SHARED_SECRET).expect("shared secret")
     );
 
     let private = kms
@@ -1225,12 +1246,12 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                     ..CryptographicParameters::default()
                 }),
-                data: Some(plaintext.clone()),
-                i_v_counter_nonce: Some(nonce.clone()),
+                data: Some(plaintext.clone().into()),
+                i_v_counter_nonce: Some(nonce.clone().into()),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: Some(aad.clone()),
+                authenticated_encryption_additional_data: Some(aad.clone().into()),
             },
             &owner,
         )
@@ -1244,12 +1265,12 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                     ..CryptographicParameters::default()
                 }),
-                data: encrypt_response.data.clone(),
-                i_v_counter_nonce: Some(nonce.clone()),
+                data: encrypt_response.data.as_ref().map(|d| d.to_vec()),
+                i_v_counter_nonce: Some(nonce.clone().into()),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
-                authenticated_encryption_additional_data: Some(aad),
+                authenticated_encryption_additional_data: Some(aad.into()),
                 authenticated_encryption_tag: encrypt_response.authenticated_encryption_tag.clone(),
             },
             &owner,
@@ -1315,8 +1336,8 @@ async fn test_derive_key_x25519_can_feed_hkdf_and_chacha20_poly1305() -> KResult
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ChaCha20Poly1305),
                     ..CryptographicParameters::default()
                 }),
-                data: Some(Zeroizing::new(b"again".to_vec())),
-                i_v_counter_nonce: Some(nonce),
+                data: Some(b"again".to_vec().into()),
+                i_v_counter_nonce: Some(nonce.into()),
                 correlation_value: None,
                 init_indicator: None,
                 final_indicator: None,
@@ -1751,5 +1772,91 @@ async fn test_derive_key_asymmetric_not_supported_in_fips() -> KResult<()> {
         "unexpected error: {error}"
     );
 
+    Ok(())
+}
+
+/// With a server key encryption key configured, a PBKDF2-derived key is stored wrapped and
+/// still holds the PBKDF2 output of the unwrapped base key.
+#[tokio::test]
+async fn test_derive_key_pbkdf2_is_wrapped_by_server_kek() -> KResult<()> {
+    let (kms, kek_id) = test_kms_with_kek("kek-owner", https_clap_config).await?;
+    let owner = UserId::from("kek_derive_owner");
+    let base_uid = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier
+        .to_string();
+    assert_stored_wrapped_by_kek(&kms, &base_uid, &kek_id).await;
+
+    let salt = b"test salt 16 byte".to_vec();
+    let derived_uid = kms
+        .derive_key(
+            DeriveKey::new_single_base(
+                ObjectType::SymmetricKey,
+                UniqueIdentifier::TextString(base_uid.clone()),
+                DerivationMethod::PBKDF2,
+                DerivationParameters {
+                    cryptographic_parameters: Some(CryptographicParameters {
+                        hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                        ..CryptographicParameters::default()
+                    }),
+                    initialization_vector: None,
+                    derivation_data: None,
+                    salt: Some(salt.clone().into()),
+                    iteration_count: Some(10_000),
+                },
+                Attributes {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    cryptographic_length: Some(128),
+                    cryptographic_usage_mask: Some(
+                        CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+                    ),
+                    key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+                    object_type: Some(ObjectType::SymmetricKey),
+                    ..Attributes::default()
+                },
+            ),
+            &owner,
+        )
+        .await?
+        .unique_identifier
+        .to_string();
+    assert_stored_wrapped_by_kek(&kms, &derived_uid, &kek_id).await;
+
+    let base_bytes = unwrapped_key_bytes(&kms, &base_uid, &owner).await?;
+    let mut expected = [0_u8; 16];
+    openssl::pkcs5::pbkdf2_hmac(
+        &base_bytes,
+        &salt,
+        10_000,
+        openssl::hash::MessageDigest::sha256(),
+        &mut expected,
+    )
+    .map_err(|e| KmsError::CryptographicError(e.to_string()))?;
+    assert_eq!(
+        unwrapped_key_bytes(&kms, &derived_uid, &owner)
+            .await?
+            .as_slice(),
+        expected
+    );
+    Ok(())
+}
+
+/// With a server key encryption key configured, an X25519 shared secret is stored wrapped
+/// and still equals the RFC 7748 §6.1 value.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_derive_key_x25519_is_wrapped_by_server_kek() -> KResult<()> {
+    let (kms, kek_id) = test_kms_with_kek("kek-owner", https_clap_config).await?;
+    let owner = UserId::from("x25519-kek-owner");
+    let derived_uid = "derived-kek-secret";
+    derive_rfc7748_secret(&kms, &owner, derived_uid).await?;
+    assert_stored_wrapped_by_kek(&kms, derived_uid, &kek_id).await;
+    assert_eq!(
+        unwrapped_key_bytes(&kms, derived_uid, &owner)
+            .await?
+            .as_slice(),
+        hex::decode(RFC7748_SHARED_SECRET).expect("shared secret")
+    );
     Ok(())
 }

@@ -43,7 +43,7 @@ A clear architectural decision was needed to deliver client parity across CLI, W
      - Direction 2 (KMS &rarr; GnuPG): KMS-generated Ed25519 and RSA keys (2048, 3072, 4096 bits) exported and used in GnuPG.
      - Direction 3 (Negative Boundaries): Pinning server rejections of inline signatures, cleartext signatures, digested data, streaming operations, and invalid key lengths.
      - Direction 4 (PGP/MIME RFC 3156): End-to-end encrypted and signed MIME email validation in the GnuPG &rarr; KMS direction.
-   - Provide an end-to-end MISE test task `.mise/scripts/test/test_gnupg.sh` and CI matrix entry in `.github/workflows/test_all.yml` testing the binary CLI against live KMS and GnuPG instances.
+   - Provide an end-to-end MISE test task `.mise/scripts/test/pkcs11/test_gnupg.sh` and CI matrix entry in `.github/workflows/test_all.yml` testing the binary CLI against live KMS and GnuPG instances.
 
 4. **Handling Discovered Operational Constraints**:
    - GnuPG key generation requires generating encryption-capable subkeys (`ecdh/cv25519` or `RSA`) with non-AEAD preference lists (`AES256`, `SHA512`, `ZLIB`, etc.) to prevent GnuPG from emitting SEIPDv2 AEAD packets (packet type 20) unsupported by standard OpenPGP v4 decryptors.

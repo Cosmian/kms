@@ -40,7 +40,7 @@ fn characterization_ttlv_parser_bad_inputs() {
     let (out, ok) = run("\nzz\n0102\nexit\n");
     assert_eq!(
         out,
-        "TTLV Parser - Enter hex strings (or 'quit' to exit)\n> > ERROR parsing hex string: Invalid character 'z' at position 0\n> ERROR: Unsupported KMIP version: 2147483647.2147483647\n> "
+        "TTLV Parser - Enter hex strings (or 'quit' to exit)\n> > ERROR parsing hex string: Invalid character 'z' at position 0\n> ERROR: Failed to find KMIP version\n> "
     );
     assert!(ok);
 }
@@ -50,7 +50,7 @@ fn characterization_ttlv_parser_no_version() {
     let (out, ok) = run(&format!("{NO_VERSION_HEX}\nquit\n"));
     assert_eq!(
         out,
-        "TTLV Parser - Enter hex strings (or 'quit' to exit)\n> ERROR: Unsupported KMIP version: 2147483647.2147483647\n> "
+        "TTLV Parser - Enter hex strings (or 'quit' to exit)\n> ERROR: Failed to find KMIP version\n> "
     );
     assert!(ok);
 }

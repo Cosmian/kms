@@ -102,7 +102,6 @@ pub(crate) async fn recursively_revoke_key(
     let mut count = 0;
     for uid in uids {
         // Revoke does not apply to prefixed objects
-        // TODO: this should probably be a setting on the Objects Store, i.e. whether the store supports objects states
         if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(&uid) {
             // ensure user can revoke
             if !kms.database.is_object_owned_by(&uid, user).await? {

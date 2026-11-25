@@ -6,7 +6,7 @@
 ## Triggers
 
 `nightly.yml` runs on the schedule (daily 00:00 UTC), on pushes to `develop` and `main`, on tags and on manual
-dispatch. Bot commits from `nix-update-hashes.yml`, `update-generated-docs.yml` and `package-and-commit-sbom.yml` carry `[skip ci]`, so they do not
+dispatch. Bot commits from `nix-update-hashes.yml`, `update-generated-docs.yml` and `package-and-commit-sbom.yml` (pushed by `commit-generated.yml`, the Git-only publisher) carry `[skip ci]`, so they do not
 re-trigger it. All jobs are restricted to `Cosmian/kms`: they need secrets that forks do not have.
 
 `main.yml` runs the full nightly test set at 03:00 UTC, three hours after the packaging cron (see "PR versus nightly" in `README_main.md`). The two workflows are independent.
@@ -25,8 +25,8 @@ flowchart TB
         PubRel["publish-release<br/>package.cosmian.com · GitHub release on tags"]
         PubSbom["publish-sbom"]
         PkgTests["tests<br/>packaging-tests.yml"]
-        WinPkg["windows-package<br/>build_windows.yml: build · sign · test · publish"]
-        WinPkgFips["windows-package-fips<br/>build_windows.yml (variant fips): build · sign · install test · publish"]
+        WinPkg["windows-package<br/>build_windows.yml: build · sign · test"]
+        WinPkgFips["windows-package-fips<br/>build_windows.yml (variant fips): build · sign · install test"]
         Docker["docker<br/>packaging-docker.yml: images then manifests"]
         K8s["kubernetes<br/>packaging-kubernetes.yml: e2e · helm chart E2E · plugin packages · chart publish"]
         Apk["apk<br/>packaging-apk.yml: apk then publish-apk"]

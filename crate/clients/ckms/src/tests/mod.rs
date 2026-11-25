@@ -42,6 +42,7 @@ mod rsa;
 mod secret_data;
 mod security;
 mod shared;
+mod ssh;
 mod symmetric;
 pub(crate) mod utils;
 mod vendor_id;

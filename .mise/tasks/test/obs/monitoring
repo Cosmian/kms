@@ -22,6 +22,6 @@ fi
 print_header "Running monitoring stack integration test (${VARIANT_NAME})"
 echo "Purpose: prove KMS metrics flow OTel → VictoriaMetrics, Grafana healthy"
 
-bash "${REPO_ROOT}/.mise/scripts/test/test_monitoring.sh" --variant "${VARIANT}"
+bash "${REPO_ROOT}/.mise/scripts/test/obs/test_monitoring.sh" --variant "${VARIANT}"
 
 print_success "Monitoring stack integration test completed"

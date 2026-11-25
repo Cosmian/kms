@@ -9,7 +9,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         requests::create_ec_key_pair_request,
     },
 };
-use zeroize::Zeroizing;
 
 use crate::{
     error::KmsError,
@@ -49,7 +48,7 @@ async fn e2e_signature_algorithm_allowlist_is_enforced_on_sign() {
                 ),
                 ..Default::default()
             }),
-            data: Some(Zeroizing::new(b"hello".to_vec())),
+            data: Some(b"hello".to_vec().into()),
             ..Default::default()
         },
     );

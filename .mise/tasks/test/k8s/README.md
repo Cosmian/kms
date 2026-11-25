@@ -281,7 +281,7 @@ stop working.
 the task starts and stops the tunnel). Locally, `~/.cosmian/<model>.sh` is sourced when present.
 Not part of `test:k8s` (it needs a live HSM).
 
-**In CI:** the `test-k8s-hsm` job of `packaging-docker.yml`, after the Docker images are built and pushed by `nix-docker-image`: it pulls the amd64 FIPS and non-FIPS images and runs the task with `--local-image`, so nothing is built twice. It shares the per-HSM concurrency group of the `test-hsm-hardware` job of `test_all.yml` (the HSMs refuse concurrent CI runs). It runs wherever `packaging-docker.yml` runs (tags, schedule, manual dispatch), not on pull requests, and only in the upstream repository.
+**In CI:** the `test-k8s-hsm` job of `packaging-docker.yml`, after the Docker images are built and pushed by `nix-docker-image`: it pulls the amd64 FIPS and non-FIPS images and runs the task with `--local-image`, so nothing is built twice. It shares the per-HSM concurrency group of the `hsm:*` legs of `test_all.yml` (the HSMs refuse concurrent CI runs). It runs wherever `packaging-docker.yml` runs (tags, schedule, manual dispatch), not on pull requests, and only in the upstream repository.
 
 ```bash
 mise run test:k8s:hsm --model proteccio --variant fips
@@ -294,5 +294,5 @@ mise run test:k8s:hsm --model proteccio --variant fips --local-image ghcr.io/cos
 Image-loading regression tests run without a cluster or HSM:
 
 ```bash
-python3 .mise/scripts/test/test_k8s_hsm_images.py
+python3 .mise/scripts/test/k8s/test_k8s_hsm_images.py
 ```

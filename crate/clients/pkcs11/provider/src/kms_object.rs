@@ -18,8 +18,8 @@ use ckms::{
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
-                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, MAC,
-                    MACVerify, Query, RNGRetrieve, Revoke, Sign, SignatureVerify,
+                    Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, MAC, MACVerify,
+                    Query, RNGRetrieve, Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -598,6 +598,9 @@ pub(crate) async fn kms_import_symmetric_key_async(
         cryptographic_length,
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(usage_mask),
+        // Back-dated: the server activates an import only if its date is not in the future, so
+        // tolerate a client clock ahead of the KMS.
+        activation_date: Some(cosmian_kmip::time_normalize()? - std::time::Duration::from_secs(60)),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         object_type: Some(ObjectType::SymmetricKey),
         unique_identifier: label.map(|l| UniqueIdentifier::TextString(l.to_owned())),
@@ -611,7 +614,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::TransparentSymmetricKey { key },
+                key_material: KeyMaterial::TransparentSymmetricKey { key: key.into() },
                 attributes: Some(Box::new(attributes.clone())),
             }),
             cryptographic_length,
@@ -630,7 +633,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
         )?;
         kms_rest_client.create(request).await?.unique_identifier
     } else {
-        let response = kms_rest_client
+        kms_rest_client
             .import(Import {
                 unique_identifier: label
                     .map(|l| UniqueIdentifier::TextString(l.to_owned()))
@@ -641,15 +644,8 @@ pub(crate) async fn kms_import_symmetric_key_async(
                 attributes: attributes.clone(),
                 object: object.clone(),
             })
-            .await?;
-
-        // Imported software keys start PreActive and must be activated before use.
-        kms_rest_client
-            .activate(Activate {
-                unique_identifier: response.unique_identifier.clone(),
-            })
-            .await?;
-        response.unique_identifier
+            .await?
+            .unique_identifier
     };
 
     let res = KmsObject {
@@ -692,7 +688,11 @@ pub(crate) async fn kms_import_object_async(
 
     let cryptographic_length = Some(i32::try_from(secret_data_value.len() * 8)?);
 
-    let mut attributes = Attributes::default();
+    let mut attributes = Attributes {
+        // Back-dated, see `kms_import_symmetric_key_async`.
+        activation_date: Some(cosmian_kmip::time_normalize()? - std::time::Duration::from_secs(60)),
+        ..Attributes::default()
+    };
     attributes.set_tags(vendor_id, tags)?;
 
     let object = Object::SecretData(SecretData {
@@ -701,7 +701,7 @@ pub(crate) async fn kms_import_object_async(
             cryptographic_length,
             key_format_type: KeyFormatType::Raw,
             key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(secret_data_value)),
+                key_material: KeyMaterial::ByteString(secret_data_value.into()),
                 attributes: Some(Box::new(attributes.clone())),
             }),
             key_compression_type: None,
@@ -842,9 +842,9 @@ async fn kms_encrypt_async(
             encrypt_ctx.remote_object_id.clone(),
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
-        data: Some(Zeroizing::new(data)),
-        i_v_counter_nonce: encrypt_ctx.iv.clone(),
-        authenticated_encryption_additional_data: encrypt_ctx.aad.clone(),
+        data: Some(data.into()),
+        i_v_counter_nonce: encrypt_ctx.iv.clone().map(Into::into),
+        authenticated_encryption_additional_data: encrypt_ctx.aad.clone().map(Into::into),
         ..Default::default()
     };
     let response = kms_rest_client.encrypt(encryption_request).await?;
@@ -853,7 +853,7 @@ async fn kms_encrypt_async(
     })?;
     let (iv, tag) = if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
         let iv = match response.i_v_counter_nonce {
-            Some(iv) => iv,
+            Some(iv) => iv.to_vec(),
             None if require_generated_nonce => {
                 return Err(Pkcs11Error::ServerError(
                     "AES-GCM message encryption response does not contain a nonce".to_owned(),
@@ -866,13 +866,13 @@ async fn kms_encrypt_async(
                 "AES-GCM encryption response does not contain an authentication tag".to_owned(),
             )
         })?;
-        (iv, tag)
+        (iv, tag.to_vec())
     } else {
         (Vec::new(), Vec::new())
     };
     debug!("kms_encrypt_async: ciphertext_len: {}", ciphertext.len());
     Ok(MessageEncryptionOutput {
-        ciphertext,
+        ciphertext: ciphertext.to_vec(),
         iv,
         tag,
     })
@@ -951,13 +951,13 @@ pub(crate) async fn kms_decrypt_async(
         )),
         cryptographic_parameters: Some(cryptographic_parameters),
         data: Some(ciphertext),
-        i_v_counter_nonce: decrypt_ctx.iv.clone(),
-        authenticated_encryption_additional_data: decrypt_ctx.aad.clone(),
-        authenticated_encryption_tag,
+        i_v_counter_nonce: decrypt_ctx.iv.clone().map(Into::into),
+        authenticated_encryption_additional_data: decrypt_ctx.aad.clone().map(Into::into),
+        authenticated_encryption_tag: authenticated_encryption_tag.map(Into::into),
         ..Default::default()
     };
     let response = kms_rest_client.decrypt(decryption_request).await?;
-    response.data.ok_or_else(|| {
+    response.data.map(Into::into).ok_or_else(|| {
         Pkcs11Error::ServerError("Decryption response does not contain data".to_owned())
     })
 }
@@ -1367,7 +1367,7 @@ pub(crate) async fn kms_sign_async(
     let sign_request = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         cryptographic_parameters,
-        data: data_bytes.map(zeroize::Zeroizing::new),
+        data: data_bytes.map(Into::into),
         digested_data: digested_data_bytes,
         correlation_value: None,
         init_indicator: None,
@@ -1498,7 +1498,7 @@ pub(crate) fn kms_mac(
         unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_owned())),
         cryptographic_parameters: Some(aes_mac_parameters(mode)),
         data: Some(data.to_vec()),
-        i_v_counter_nonce: iv,
+        i_v_counter_nonce: iv.map(Into::into),
         ..Default::default()
     };
     let response = RUNTIME.block_on(kms_rest_client.mac(request))?;

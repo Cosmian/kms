@@ -15,12 +15,9 @@ use std::{
 
 use actix_cors::Cors;
 use actix_files::Files;
-use actix_identity::IdentityMiddleware;
-use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer, Scope,
     body::MessageBody,
-    cookie::{Key, time::Duration},
     dev::{ServerHandle, ServiceFactory, ServiceRequest, ServiceResponse, Transform},
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
@@ -37,7 +34,10 @@ use cosmian_kms_server_database::reexport::{
         requests::{create_rsa_key_pair_request, import_object_request},
     },
     cosmian_kms_crypto::{
-        crypto::password_derivation::{FIPS_MIN_SALT_SIZE, derive_key_from_password},
+        crypto::{
+            password_derivation::{FIPS_MIN_SALT_SIZE, derive_key_from_password},
+            secret::Secret,
+        },
         openssl::kmip_private_key_to_openssl,
     },
 };
@@ -46,8 +46,9 @@ use openssl::{
     hash::{Hasher, MessageDigest},
     ssl::SslAcceptorBuilder,
 };
-use tokio::{runtime::Handle, task::JoinHandle, try_join};
+use tokio::{runtime::Handle, try_join};
 use url::Url;
+use zeroize::Zeroizing;
 
 #[cfg(feature = "non-fips")]
 use crate::routes::tokenize;
@@ -61,7 +62,7 @@ use crate::{
     error::KmsError,
     middlewares::{
         AuditMiddleware, AuthVerifier, AuthVerifierValidator, JwksManager, JwtConfig, SessionAuth,
-        SpireTokenCache, UserId, api_token_middleware, ensure_auth_middleware,
+        SpireTokenCache, UiSessionCookie, UserId, api_token_middleware, ensure_auth_middleware,
         extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
         reject_forgeable_session_mutation, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
@@ -70,8 +71,8 @@ use crate::{
     routes::{
         access,
         aws_xks::{self, AWS_XKS_SERVICE_USER},
-        azure_ekm, cli_archive_download, cli_archive_exists, crl, csr, est, get_hsm_status,
-        get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, cluster, crl, csr, est,
+        get_hsm_status, get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
@@ -83,6 +84,10 @@ use crate::{
                 configure_transit_key, create_transit_key, create_transit_key_put,
                 delete_transit_key, get_transit_key, list_transit_keys, sign_with_transit_key,
                 sign_with_transit_key_put,
+            },
+            transit_encryption::{
+                decrypt_with_transit_key, decrypt_with_transit_key_put, encrypt_with_transit_key,
+                encrypt_with_transit_key_put, rotate_transit_key, rotate_transit_key_put,
             },
         },
         ssh, swagger,
@@ -527,6 +532,8 @@ pub async fn start_kms_server(
         .await
         .context("start KMS server: key_encryption_key wrapping check")?;
 
+    let cluster_heartbeat_shutdown_tx = cron::spawn_cluster_heartbeat_cron(kms_server.clone());
+
     // Spawn background metrics cron thread and retain shutdown signal
     let metrics_shutdown_tx = if kms_server.metrics.is_some() {
         Some(cron::spawn_metrics_cron(kms_server.clone()))
@@ -571,14 +578,13 @@ pub async fn start_kms_server(
     }
 
     // Handle sockets
-    let (ss_command_tx, _socket_server_handle) = if server_params.start_socket_server {
+    let ss_command_tx = if server_params.start_socket_server {
         let (tx, rx) = mpsc::channel::<KResult<()>>();
         // Start the socket server
-        let socket_server_handle =
-            start_socket_server(kms_server.clone(), rx, pre_bound_socket_listener)?;
-        (Some(tx), Some(socket_server_handle))
+        start_socket_server(&kms_server, rx, pre_bound_socket_listener)?;
+        Some(tx)
     } else {
-        (None, None)
+        None
     };
 
     // Log the server configuration
@@ -589,6 +595,7 @@ pub async fn start_kms_server(
         pre_bound_http_listener,
     )
     .await;
+    let _ = cluster_heartbeat_shutdown_tx.send(());
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
         let _ = tx.send(());
@@ -628,18 +635,19 @@ pub async fn start_kms_server(
 /// - The server fails to run
 ///
 /// # Returns
-/// * a `JoinHandle<()>` that represents the socket server thread.
+/// * `Ok(())` once the socket server is listening. Its task is kept in `KMS::socket_server_task`
+///   so that `GET /health` can report when it ends.
 fn start_socket_server(
-    kms_server: Arc<KMS>,
+    kms_server: &Arc<KMS>,
     command_receiver: mpsc::Receiver<KResult<()>>,
     pre_bound_socket_listener: Option<std::net::TcpListener>,
-) -> KResult<JoinHandle<()>> {
+) -> KResult<()> {
     // Start the socket server
     let socket_server =
         SocketServer::instantiate(&SocketServerParams::try_from(kms_server.params.as_ref())?)?;
     let tokio_handle = Handle::current();
     let socket_server_handle = socket_server.start_threaded(
-        kms_server,
+        kms_server.clone(),
         move |username, request, kms_server| {
             trace!("request: {username} ({} bytes)", request.len());
             // Handle the TTLV bytes received from the socket server
@@ -652,7 +660,9 @@ fn start_socket_server(
         command_receiver,
         pre_bound_socket_listener,
     )?;
-    Ok(socket_server_handle)
+    // The socket server is started once per KMS: a second handle could only be a duplicate.
+    drop(kms_server.socket_server_task.set(socket_server_handle));
+    Ok(())
 }
 
 /// Start an HTTP(S) KMS server
@@ -729,12 +739,13 @@ fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpR
 ///
 /// # Returns
 ///
-/// Returns a 64-byte `Key` suitable for actix-web session cookie encryption.
+/// Returns the 64-byte derived key; its first 32 bytes are the AES-256-GCM key of the UI
+/// session cookie (`UiSessionCookie`).
 ///
 /// # Errors
 ///
 /// Returns `KmsError` if key derivation fails.
-fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key> {
+fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Secret<64>> {
     // Version prefix allows for future algorithm changes
     const VERSION: &str = "v1";
 
@@ -761,11 +772,8 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
         })?;
 
     // Derive a 64-byte key from the public URL
-    let derived_key = derive_key_from_password::<64>(salt, public_url.as_bytes())
-        .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))?;
-
-    // Convert the derived key to an actix-web Key
-    Ok(Key::from(derived_key.as_ref()))
+    derive_key_from_password::<64>(salt, public_url.as_bytes())
+        .map_err(|e| KmsError::ServerError(format!("Failed to derive session key: {e}")))
 }
 
 /// Fetch the OIDC discovery document and build an `OidcRuntimeConfig`.
@@ -1123,8 +1131,17 @@ pub async fn prepare_kms_server(
         .and_then(AuthVerifierConfig::saml_session_realm)
         .map(Arc::from);
 
+    // `X-Vault-Token` counts as configured authentication on every scope: a request without
+    // any credential is rejected instead of running as `default_username`.
+    let use_vault_token_auth =
+        kms_server.params.vault.api_enabled && kms_server.params.vault.auth_verifier_url.is_some();
+    let use_any_auth = use_vault_token_auth
+        || use_jwt_auth
+        || use_cert_auth
+        || use_api_token_auth
+        || use_auth_verifier;
     // Insecure defaults remain supported for development; make them visible in production logs.
-    if !(use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier) {
+    if !use_any_auth {
         cosmian_logger::warn!(
             "SECURITY: no authentication method is configured: every request is served as the \
              default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for \
@@ -1291,8 +1308,13 @@ pub async fn prepare_kms_server(
     // - Otherwise: generate a random ephemeral key (secure but lost on restart).
     //   Operators who need persistent sessions or load-balanced deployments MUST set
     //   `ui_session_salt` (or KMS_UI_SESSION_SALT).
-    let secret_key: Key = if let Some(salt) = kms_server.params.ui.session_salt.as_deref() {
-        derive_session_key_from_url(&kms_public_url, salt)?
+    let mut session_key = Zeroizing::new([0_u8; 32]);
+    if let Some(salt) = kms_server.params.ui.session_salt.as_deref() {
+        let derived = derive_session_key_from_url(&kms_public_url, salt)?;
+        let (key, _) = derived.split_first_chunk::<32>().ok_or_else(|| {
+            KmsError::ServerError("derived session key is shorter than 32 bytes".to_owned())
+        })?;
+        session_key.copy_from_slice(key);
     } else {
         // No secret configured: generate a cryptographically random ephemeral key.
         // This is secure, but sessions will be invalidated on every server restart
@@ -1304,12 +1326,12 @@ pub async fn prepare_kms_server(
              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong \
              random secret value."
         );
-        let random_key_bytes = kms_server
+        kms_server
             .rng
-            .random_vec(64)
+            .fill_bytes(&mut *session_key)
             .map_err(|e| KmsError::ServerError(format!("KMS RNG failed: {e}")))?;
-        Key::from(random_key_bytes.as_slice())
-    };
+    }
+    let ui_session_cookie = Data::new(UiSessionCookie::new(session_key, session_cookie_secure));
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
@@ -1348,8 +1370,6 @@ pub async fn prepare_kms_server(
     //
     // When `vault_api_enabled = false` or `vault_auth_verifier_url` is absent, a dummy
     // context is created but never invoked: `Condition::new(false, …)` is a no-op.
-    let use_vault_token_auth =
-        kms_server.params.vault.api_enabled && kms_server.params.vault.auth_verifier_url.is_some();
     let spire_cache = SpireTokenCache::new(kms_server.params.vault.token_cache_ttl_secs);
     let spire_auth_verifier_url: Url = match &kms_server.params.vault.auth_verifier_url {
         Some(url) => url.clone(),
@@ -1407,19 +1427,7 @@ pub async fn prepare_kms_server(
                     .add(("X-Frame-Options", "DENY"))
                     .add(("Content-Security-Policy", "frame-ancestors 'none'")),
             )
-            .wrap(IdentityMiddleware::default())
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
-                    .cookie_path("/".to_owned())
-                    .cookie_http_only(true)
-                    .cookie_name("auth_session".to_owned())
-                    .cookie_same_site(actix_web::cookie::SameSite::Lax)
-                    .cookie_secure(session_cookie_secure)
-                    .session_lifecycle(
-                        PersistentSession::default().session_ttl(Duration::hours(24)),
-                    )
-                    .build(),
-            )
+            .app_data(ui_session_cookie.clone())
             .app_data(Data::new(kms_server_for_http.clone())) // Set the shared reference to the `KMS` instance.
             // 64 MB — realistic maximum for KMIP payloads including wrapped keys and certificates.
             // The previous 10 GB limit allowed unauthenticated clients to exhaust server RAM (DoS).
@@ -1465,11 +1473,6 @@ pub async fn prepare_kms_server(
             // `data/`/`metadata/` routes (`kv::mount_guard`), so they cannot shadow another scope.
             // They are registered before every unguarded scope (`/google_cse`, `/ms_dke`, ...),
             // which would otherwise swallow a mount of the same name.
-            let use_any_auth = use_vault_token_auth
-                || use_jwt_auth
-                || use_cert_auth
-                || use_api_token_auth
-                || use_auth_verifier;
             let kv_mount = &kms_server_for_http.params.kv.mount;
             let native_path = format!("/{kv_mount}");
             let v1_path = format!("/v1/{kv_mount}");
@@ -1526,7 +1529,7 @@ pub async fn prepare_kms_server(
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
-                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                    use_any_auth,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -1618,18 +1621,9 @@ pub async fn prepare_kms_server(
             // Cors must run first to handle OPTIONS preflight before auth checks.
             // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
             // AuthenticatedUser before EnsureAuth verifies it.
-            //
-            // vault_token_optional_middleware is intentionally *optional*: it enriches the
-            // request identity when `X-Vault-Token` is present but does NOT mandate that a
-            // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
-            // the endpoint actually require authentication.
-            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier;
             let tokenize_scope = wrap_native_auth(
                 web::scope("/tokenize").app_data(web::JsonConfig::default().limit(65_536)),
-                Condition::new(
-                    use_any_auth,
-                    ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
-                ),
+                ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
                 &native_auth,
             )
                 .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
@@ -1671,7 +1665,13 @@ pub async fn prepare_kms_server(
                     .service(list_transit_keys)
                     .service(delete_transit_key)
                     .service(sign_with_transit_key)
-                    .service(sign_with_transit_key_put);
+                    .service(sign_with_transit_key_put)
+                    .service(encrypt_with_transit_key)
+                    .service(encrypt_with_transit_key_put)
+                    .service(decrypt_with_transit_key)
+                    .service(decrypt_with_transit_key_put)
+                    .service(rotate_transit_key)
+                    .service(rotate_transit_key_put);
                 app = app.service(transit_scope);
 
                 let pki_mount = kms_server_for_http.params.vault.pki_mount.clone();
@@ -1816,6 +1816,9 @@ pub async fn prepare_kms_server(
                 "/tokenize{_:.*}",
                 "/rotation-policy{_:.*}",
                 "/kv-secrets{_:.*}",
+                "/ssh-certificate{_:.*}",
+                "/ssh-ca{_:.*}",
+                "/generate-password{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_runtime_config))
@@ -1912,7 +1915,7 @@ pub async fn prepare_kms_server(
             ),
             ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                use_any_auth,
             ),
             &native_auth,
         )
@@ -1941,7 +1944,7 @@ pub async fn prepare_kms_server(
             web::scope(""),
             ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
+                use_any_auth,
             ),
             &native_auth,
         )
@@ -1960,6 +1963,7 @@ pub async fn prepare_kms_server(
             .service(kmip::kmip)
             .service(get_server_info)
             .service(get_hsm_status)
+            .service(cluster::get_cluster_status)
             .service(access::get_current_user)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)
@@ -2243,8 +2247,8 @@ mod tests {
         let key2 = derive_session_key_from_url(url2, salt).expect("Failed to derive key 2");
 
         // Extract the key bytes for comparison
-        let key1_bytes = key1.master();
-        let key2_bytes = key2.master();
+        let key1_bytes = &*key1;
+        let key2_bytes = &*key2;
 
         assert_eq!(
             key1_bytes, key2_bytes,
@@ -2253,7 +2257,7 @@ mod tests {
 
         // Different URL should generate different key
         let key3 = derive_session_key_from_url(url3, salt).expect("Failed to derive key 3");
-        let key3_bytes = key3.master();
+        let key3_bytes = &*key3;
 
         assert_ne!(
             key1_bytes, key3_bytes,
@@ -2263,7 +2267,7 @@ mod tests {
         // Different salt should generate different key
         let key4 =
             derive_session_key_from_url(url1, "different_salt").expect("Failed to derive key 4");
-        let key4_bytes = key4.master();
+        let key4_bytes = &*key4;
 
         assert_ne!(
             key1_bytes, key4_bytes,
@@ -2291,8 +2295,7 @@ mod tests {
 
         // Should be deterministic
         assert_eq!(
-            key1.master(),
-            key2.master(),
+            &*key1, &*key2,
             "Keys with same URL and salt should be identical"
         );
     }
@@ -2538,31 +2541,34 @@ mod tests {
     /// Bodies are also checked to keep the Vault `errors` envelope on the real scope (S37).
     #[actix_web::test]
     async fn kv_scope_refuses_session_cookie_writes_without_json_content_type() {
-        use actix_session::Session;
         use actix_web::{
-            http::{StatusCode, header::CONTENT_TYPE},
+            http::{
+                StatusCode,
+                header::{CONTENT_TYPE, COOKIE, SET_COOKIE},
+            },
             test,
         };
 
-        async fn login(session: Session) -> HttpResponse {
-            session
-                .insert("user_id", "alice@example.com")
-                .expect("session insert");
-            HttpResponse::Ok().finish()
+        use crate::middlewares::{UiSession, test_ui_session_cookie};
+
+        async fn login(cookie: Data<UiSessionCookie>) -> HttpResponse {
+            let session = UiSession {
+                user_id: Some(UserId::from("alice@example.com")),
+                ..UiSession::default()
+            };
+            HttpResponse::Ok()
+                .insert_header((
+                    SET_COOKIE,
+                    cookie.set_cookie(&session).expect("session cookie"),
+                ))
+                .finish()
         }
 
         let auth = TestAuthStack::new(None).await;
         let app = test::init_service(
             App::new()
                 .app_data(Data::new(auth.kms.clone()))
-                .wrap(
-                    SessionMiddleware::builder(
-                        CookieSessionStore::default(),
-                        Key::from(&[0x42_u8; 64]),
-                    )
-                    .cookie_secure(false)
-                    .build(),
-                )
+                .app_data(Data::new(test_ui_session_cookie()))
                 .route("/login", web::post().to(login))
                 .service(
                     kv_scope("/v1/kv", kv::configure_routes, false, &auth.stack())
@@ -2573,11 +2579,12 @@ mod tests {
         let login_response =
             test::call_service(&app, test::TestRequest::post().uri("/login").to_request()).await;
         let cookie = login_response
-            .response()
-            .cookies()
-            .next()
+            .headers()
+            .get(SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(';').next())
             .expect("session cookie")
-            .into_owned();
+            .to_owned();
         let body = r#"{"data":{"password":"hunter2"}}"#;
 
         for content_type in [
@@ -2588,7 +2595,7 @@ mod tests {
         ] {
             let mut forged = test::TestRequest::post()
                 .uri("/v1/kv/data/csrf")
-                .cookie(cookie.clone())
+                .insert_header((COOKIE, cookie.clone()))
                 .set_payload(body);
             if let Some(content_type) = content_type {
                 forged = forged.insert_header((CONTENT_TYPE, content_type));
@@ -2604,7 +2611,7 @@ mod tests {
         }
         let forged_delete = test::TestRequest::delete()
             .uri("/v1/kv/metadata/csrf")
-            .cookie(cookie.clone())
+            .insert_header((COOKIE, cookie.clone()))
             .insert_header((CONTENT_TYPE, "text/plain"))
             .to_request();
         assert_eq!(
@@ -2614,13 +2621,13 @@ mod tests {
         let read = || {
             test::TestRequest::get()
                 .uri("/v1/kv/data/csrf")
-                .cookie(cookie.clone())
+                .insert_header((COOKIE, cookie.clone()))
                 .to_request()
         };
 
         let malformed = test::TestRequest::post()
             .uri("/v1/kv/data/csrf")
-            .cookie(cookie.clone())
+            .insert_header((COOKIE, cookie.clone()))
             .insert_header((CONTENT_TYPE, "application/json"))
             .set_payload("{")
             .to_request();
@@ -2633,7 +2640,7 @@ mod tests {
         // above created the path.
         let json_write = test::TestRequest::post()
             .uri("/v1/kv/data/csrf")
-            .cookie(cookie.clone())
+            .insert_header((COOKIE, cookie.clone()))
             .insert_header((CONTENT_TYPE, "application/json; charset=utf-8"))
             .set_payload(r#"{"data":{"password":"hunter2"},"options":{"cas":0}}"#)
             .to_request();
@@ -2655,6 +2662,57 @@ mod tests {
             test::call_service(&app, tokenless).await.status(),
             StatusCode::OK
         );
+    }
+
+    /// Native-auth POST endpoints that exist only in non-FIPS builds.
+    #[cfg(feature = "non-fips")]
+    const TOKENIZE: &[&str] = &["/tokenize/hash"];
+    #[cfg(not(feature = "non-fips"))]
+    const TOKENIZE: &[&str] = &[];
+
+    /// With the Vault token as the only configured method, a request without credentials must
+    /// be rejected on every authenticated scope instead of running as `default_username`.
+    #[actix_web::test]
+    async fn vault_token_only_auth_rejects_requests_without_credentials() {
+        use reqwest::{StatusCode, header::CONTENT_TYPE};
+
+        let mut config = https_clap_config();
+        config.tls = crate::config::TlsConfig::default();
+        config.socket_server.start = false;
+        config.vault.api_enabled = true;
+        config.vault.auth_verifier_url = Some("http://127.0.0.1:9".to_owned());
+        let kms = crate::tests::test_utils::test_kms_with_config(config)
+            .await
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+            .await
+            .unwrap();
+        let handle = server.handle();
+        actix_web::rt::spawn(server);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let status = |response: reqwest::Result<reqwest::Response>| response.unwrap().status();
+        assert_eq!(
+            status(client.get(format!("{base}/version")).send().await),
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(client.get(format!("{base}/me")).send().await),
+            StatusCode::UNAUTHORIZED
+        );
+        let posts = ["/kmip/2_1", "/v1/crypto/keys", "/v1/secrets/password"];
+        for path in posts.iter().chain(TOKENIZE) {
+            let response = client
+                .post(format!("{base}{path}"))
+                .header(CONTENT_TYPE, "application/json")
+                .body("{}")
+                .send()
+                .await;
+            assert_eq!(status(response), StatusCode::UNAUTHORIZED, "{path}");
+        }
+        handle.stop(false).await;
     }
 }
 
@@ -2690,9 +2748,7 @@ mod characterization_tests {
     fn characterization_derive_session_key_from_url_golden() {
         let derived: Vec<String> = INPUTS
             .iter()
-            .map(|(url, salt)| {
-                hex::encode(derive_session_key_from_url(url, salt).unwrap().master())
-            })
+            .map(|(url, salt)| hex::encode(&*derive_session_key_from_url(url, salt).unwrap()))
             .collect();
         assert_eq!(derived, GOLDEN.to_vec());
     }
@@ -2702,8 +2758,8 @@ mod characterization_tests {
         let a = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
         let b = derive_session_key_from_url("https://kms.example.com", "salt-seed").unwrap();
         let c = derive_session_key_from_url("https://kms.example.com", "salt-see").unwrap();
-        assert_eq!(a.master(), b.master());
-        assert_ne!(a.master(), c.master());
-        assert_eq!(a.master().len(), 64);
+        assert_eq!(&*a, &*b);
+        assert_ne!(&*a, &*c);
+        assert_eq!(a.len(), 64);
     }
 }

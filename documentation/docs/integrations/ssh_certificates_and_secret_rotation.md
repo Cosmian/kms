@@ -84,6 +84,16 @@ curl --fail-with-body --silent --show-error \
   --data '{"allowed_principals":["alice","db-admin"],"allowed_users":["alice@example.com"],"default_ttl":"15m","max_ttl":"1h"}'
 ```
 
+With the `ckms` CLI, a Crypto Officer does the same in two commands. `ckms ssh ca create` creates an ECDSA P-256 key pair in the KMS (`--curve` selects another curve), makes it the CA and prints its OpenSSH public key; `ckms ssh ca set <KEY_ID>` uses an existing key you own instead, and `ckms ssh ca public-key` prints the public key again. The role above becomes:
+
+```bash
+ckms ssh ca create
+ckms ssh role put developers \
+  --allowed-principal alice db-admin \
+  --allowed-user alice@example.com \
+  --default-ttl 15m --max-ttl 1h
+```
+
 Role names may contain ASCII letters, digits, `_`, `-`, and `.`. Principal names are exact login names; wildcard principals and duplicate entries are rejected. `allowed_users` lists the authenticated KMS user names (for example the JWT email, the client certificate subject, or the API-token user) that may sign with the role; wildcards are rejected, and an empty or omitted list restricts the role to active Crypto Officers. The certificate includes the `permit-pty` extension.
 
 ```mermaid
@@ -96,6 +106,28 @@ flowchart TD
     SetRole --> Ready
 ```
 
+A *role* is a KMS policy record, not an OpenSSH or SSH-protocol concept: `sshd` never sees it and enforces nothing from it. At signing time the KMS applies the role's limits and then writes only the resulting principals and validity window into the certificate; the role name appears in the certificate Key ID (`<requester>/<role>/<serial>`).
+
+```mermaid
+flowchart TD
+    Req["POST /v1/ssh/sign/ROLE"] --> Allowed{"Caller listed in<br/>allowed_users or an<br/>active Crypto Officer?"}
+    Allowed -- "no or unknown role" --> Deny401["401, same answer<br/>for both cases"]
+    Allowed -- "yes" --> Princ{"Every principal in<br/>allowed_principals?"}
+    Princ -- "no" --> Deny401B["401 refused"]
+    Princ -- "yes" --> Ttl{"ttl omitted or<br/>at most max_ttl?"}
+    Ttl -- "no" --> Deny422["422 refused"]
+    Ttl -- "yes" --> Sign["Sign with the CA key<br/>ttl, or default_ttl<br/>if omitted"]
+    Sign --> Cert["Certificate with the<br/>principals and the<br/>validity window"]
+```
+
+### From the Web UI
+
+The **SSH CA & Roles** page (`/ui/ssh-ca`) does the same as `ckms ssh ca` and `ckms ssh role put`:
+leave the key ID empty to create a new EC key and use it as the CA, show the CA public key, and
+save roles. The **SSH Certificate** page can generate the key pair in the browser (ECDSA P-256);
+the private key is downloaded and never sent to the server. Both pages need an active Crypto
+Officer for the CA and role calls.
+
 ## Issue a short-lived user certificate
 
 Generate a user key pair locally. Use an algorithm permitted by your deployment policy; Ed25519 user keys require a non-FIPS build.
@@ -107,14 +139,17 @@ ssh-keygen -t ecdsa -b 256 -f "$HOME/.ssh/id_ecdsa"
 Submit only the public key. The optional `ttl` must not exceed the role's `max_ttl`; if omitted, the role's `default_ttl` is used.
 
 ```bash
-curl --fail-with-body --silent --show-error \
-  --request POST "$API_URL/v1/ssh/sign/developers" \
-  --header "Authorization: Bearer $API_TOKEN" \
-  --header "Content-Type: application/json" \
-  --data "$(jq -n \
-    --arg public_key "$(cat "$HOME/.ssh/id_ecdsa.pub")" \
-    '{public_key:$public_key,valid_principals:["alice"],ttl:"15m"}')" \
-  | jq -r '.data.signed_key' > "$HOME/.ssh/id_ecdsa-cert.pub"
+ckms ssh sign developers "$(cat "$HOME/.ssh/id_ecdsa.pub")" \
+  --principal alice \
+  --ttl 15m > "$HOME/.ssh/id_ecdsa-cert.pub"
+```
+
+A *principal* is a name written into the certificate: for a user certificate, the login name `sshd` accepts the certificate for. Every `--principal` must be allowed by the role.
+
+Without an existing key, `--generate-key` creates an ECDSA P-256 key pair locally (the private key never reaches the KMS) and writes `PATH` (mode `0600`), `PATH.pub` and `PATH-cert.pub`; existing files are never overwritten:
+
+```bash
+ckms ssh sign developers --generate-key "$HOME/.ssh/id_dev" --principal alice
 ```
 
 Use `ssh-keygen -L -f "$HOME/.ssh/id_ecdsa-cert.pub"` to inspect the certificate. Configure the SSH client to use the certificate alongside its private key, then connect as one of the certificate's allowed principals.
@@ -138,17 +173,55 @@ sequenceDiagram
     Sshd-->>Alice: Access granted until the certificate expires
 ```
 
+The KMS runs these checks in order for each `POST /v1/ssh/sign/ROLE`; the first failure refuses the request and no certificate is issued. The first check is the KMS permission system (Crypto Officer and Operator roles), which is separate from the SSH role.
+
+```mermaid
+flowchart TD
+    Req["Authenticated request"] --> Rbac{"KMS role permits<br/>Sign?"}
+    Rbac -- "no" --> R1["401 refused"]
+    Rbac -- "yes" --> Name{"Role name valid?"}
+    Name -- "no" --> R2["422 refused"]
+    Name -- "yes" --> Auth{"SSH role exists and<br/>caller allowed?"}
+    Auth -- "no" --> R3["401 refused<br/>same for both cases"]
+    Auth -- "yes" --> Valid{"Key size and principal<br/>list valid?"}
+    Valid -- "no" --> R4["422 refused"]
+    Valid -- "yes" --> Body{"Principals allowed?"}
+    Body -- "no" --> R5["401 refused"]
+    Body -- "yes" --> Ttl{"ttl at most max_ttl?"}
+    Ttl -- "no" --> R6["422 refused"]
+    Ttl -- "yes" --> Ca{"CA configured, Active<br/>and unchanged?"}
+    Ca -- "no" --> R7["422 refused"]
+    Ca -- "yes" --> Subj{"Subject key allowed?"}
+    Subj -- "no" --> R8["422 refused"]
+    Subj -- "yes" --> Sign["Sign with the CA key<br/>and verify the signature"]
+    Sign --> Audit["Audit event<br/>SSH_CERTIFICATE_ISSUED"]
+    Audit --> Done["Return the certificate"]
+```
+
+Details of each refusal:
+
+- **KMS role**: when no Crypto Officer is configured on the server, this check allows everyone.
+- **SSH role**: a missing role and a role the caller may not use give the same `401`, so roles cannot be enumerated. The CA configuration is fetched at the same time as the role, but its result is examined only after the role and request checks pass, so a missing CA (`422`) never shows to an unauthorized caller.
+- **Request**: the public key is at most 16 KiB, then the principal list has 1 to 64 entries without wildcards or duplicates, then every principal is in `allowed_principals`, then a requested `ttl` is at most `max_ttl` (`default_ttl` when omitted).
+- **CA**: configured, Active (a deactivated or expired CA key is refused), its public key unchanged since configuration, and a sensitive key if it is on an HSM.
+- **Subject key**: RSA of at least 3072 bits, NIST ECDSA, or Ed25519 in non-FIPS builds only.
+
+### Expiry and revocation
+
+A certificate carries a validity window, `valid_after` to `valid_before`:
+
+- **The KMS sets the window once, at issuance**: `valid_after` is the server's current time and `valid_before` is that time plus the TTL (the requested `ttl`, or the role's `default_ttl`, never above `max_ttl`). The signed certificate cannot be changed afterwards.
+- **`sshd` enforces it, not the KMS**: at each authentication `sshd` checks the CA signature, the principal and that its own clock is inside the window. It never contacts the KMS. A session already open is not closed when the certificate expires.
+- **Clock skew**: `valid_after` is not backdated. A host whose clock is behind the KMS refuses a fresh certificate as not yet valid until its clock catches up; keep hosts and KMS synchronized (NTP).
+- **The CA key must be Active**: signing refuses a CA key that is not Active, including one whose Deactivation Date has passed. Deactivating the CA key stops new issuance but does not shorten certificates already issued.
+- **No revocation by the KMS**: to cut off a certificate before `valid_before`, set `RevokedKeys` in `sshd_config` on each host to a file that lists its public key (plain text) or to a binary KRL that lists its serial (the `serial_number` returned at issuance), built with `ssh-keygen -k -f revoked.krl -s ca.pub spec` where `spec` contains the line `serial: N`. Or keep `max_ttl` short.
+
 ## Generate a password for an external rotation
 
 `POST /v1/secrets/password` requires the caller's KMS `Create` permission. It returns a fresh 32-character alphanumeric value in `data.password`; it neither stores nor logs the password.
 
 ```bash
-curl --fail-with-body --silent --show-error \
-  --request POST "$API_URL/v1/secrets/password" \
-  --header "Authorization: Bearer $API_TOKEN" \
-  --header "Content-Type: application/json" \
-  --data '{}' \
-  | jq -er '.data.password'
+ckms password
 ```
 
 The endpoint does not modify the external system or publish the value to KV, and it knows nothing about the system the password is for. The application orchestrating a rotation is responsible for both operations and for recovering from partial failure.
@@ -162,7 +235,7 @@ The procedure has four steps. Only step 2 depends on the system being rotated; t
 3. Publish the same password to a KV v2 path.
 4. Remove the pending file.
 
-The pending copy lets the same credential be published again if the KV write fails after the external system has changed. Set `API_URL`, `API_TOKEN` and `KV_TOKEN` in the environment, plus the connection details of the system being rotated (the examples use `DATABASE_URL`, `DB_HOST`, `DB_ADMIN_USER` and `DB_ADMIN_PASSWORD`). Use a TLS-verified connection to the external system. Protect the pending file's directory with encrypted storage and access controls.
+The pending copy lets the same credential be published again if the KV write fails after the external system has changed. The examples run `ckms` with two configuration files: `KMS_CONF` authenticates the identity allowed to generate passwords (`[http_config]` with `server_url` and `access_token`), and `KV_CONF` authenticates the KV writer (`server_url` and `vault_token`). Set those two paths in the environment, plus the connection details of the system being rotated (the examples use `DATABASE_URL`, `DB_HOST`, `DB_ADMIN_USER` and `DB_ADMIN_PASSWORD`). Use a TLS-verified connection to the external system. Protect the pending file's directory with encrypted storage and access controls.
 
 ```mermaid
 sequenceDiagram
@@ -188,12 +261,7 @@ set -euo pipefail
 umask 077
 pending_file=$(mktemp "${TMPDIR:-/tmp}/kms-rotation.XXXXXX")
 password=$(
-  curl --fail-with-body --silent --show-error \
-    --request POST "$API_URL/v1/secrets/password" \
-    --header "Authorization: Bearer $API_TOKEN" \
-    --header "Content-Type: application/json" \
-    --data '{}' \
-    | jq -er '.data.password'
+  ckms --conf-path "$KMS_CONF" password
 )
 printf '%s' "$password" > "$pending_file"
 unset password
@@ -224,15 +292,13 @@ printf "ALTER USER 'app_user'@'%%' IDENTIFIED BY '%s';" "$(<"$pending_file")" \
 rm -f "$admin_cnf"
 ```
 
-Publish the same password to the KV v2 path. The path and token must be authorized by the KMS KV configuration:
+Publish the same password to the KV v2 path. The path and the token in `KV_CONF` must be authorized by the KMS KV configuration:
 
 ```bash
-jq -n --rawfile password "$pending_file" '{data:{password:$password}}' \
-  | curl --fail-with-body --silent --show-error \
-      --request POST "$API_URL/v1/kv/data/database/app" \
-      --header "X-Vault-Token: $KV_TOKEN" \
-      --header "Content-Type: application/json" \
-      --data-binary @-
+pending_secret_file=$(mktemp "${TMPDIR:-/tmp}/kms-rotation-secret.XXXXXX")
+jq -n --rawfile password "$pending_file" '{password:$password}' > "$pending_secret_file"
+ckms --conf-path "$KV_CONF" kv put --from-file "$pending_secret_file" database/app
+rm -f "$pending_secret_file"
 ```
 
 After the KV write succeeds, remove the pending file:
@@ -282,7 +348,7 @@ This pattern demonstrates recovery from a failed KV publication; it is not an at
 - Role users cannot call KMIP `Sign` on the CA key unless they were granted that right separately; role checks (`allowed_principals`, `max_ttl`) are their only path to a certificate. Anyone you grant raw `Sign` on the CA key has full CA authority and bypasses every role.
 - The certificate Key ID is `<requester>/<role>/<serial>`, and every issuance writes an `SSH_CERTIFICATE_ISSUED` audit event (user, role, serial, principals, TTL, validity window). The SSH server trusts the CA, not individual keys: a caller allowed to sign with a role that permits principal `alice` can get its own key certified as `alice`. On each SSH host, restrict the accepted principals per account with `AuthorizedPrincipalsFile` or `AuthorizedPrincipalsCommand`.
 - SSH CA and role records are stored under identifiers keyed with a server secret, so KMIP users cannot pre-create or replace them; see [internal record identifiers](../configuration/secret_backends.md#internal-record-identifiers).
-- When the Vault token verifier (`vault_api_enabled` with `vault_auth_verifier_url`) is the only authentication method, the SSH and `/v1/secrets/password` endpoints refuse requests that carry no valid `X-Vault-Token` instead of running them as the default user, unless `force_default_username` is enabled.
+- When the Vault token verifier (`vault_api_enabled` with `vault_auth_verifier_url`) is the only authentication method, every authenticated scope (KMIP, access rights, SSH, `/v1/crypto`, `/tokenize`, KV and MS-DKE) refuses requests that carry no valid `X-Vault-Token` with `401` instead of running them as the default user (`force_default_username` only replaces the resulting identity; it does not waive the credential). Token-less clients such as `ckms` must then authenticate another way, for example with an mTLS client certificate whose CN is the `default_username`.
 - Subject public keys must be RSA of at least 3072 bits, NIST ECDSA, or (non-FIPS only) Ed25519.
 - `GET /v1/ssh/public_key` requires no authentication so that hosts can fetch the CA public key. It is served outside the authenticated scope and is not recorded by the audit middleware.
 - The SSH endpoints are always registered; there is no switch to disable them. Without a configured CA they return an error.

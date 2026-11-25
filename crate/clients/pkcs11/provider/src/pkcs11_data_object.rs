@@ -5,10 +5,19 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::{error::Pkcs11Error, kms_object::KmsObject, pkcs11_error};
 
 /// A PKCS11 data object is a `DataObject` that wraps data from a KMS object
-#[derive(Debug)]
 pub(crate) struct Pkcs11DataObject {
     remote_id: String,
     value: Zeroizing<Vec<u8>>,
+}
+
+/// Prints only the length of `value`, never its bytes.
+impl std::fmt::Debug for Pkcs11DataObject {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pkcs11DataObject")
+            .field("remote_id", &self.remote_id)
+            .field("value_len", &self.value.len())
+            .finish()
+    }
 }
 
 impl TryFrom<KmsObject> for Pkcs11DataObject {

@@ -54,6 +54,10 @@ impl CryptoOpSpec for SignatureVerifyOp {
         KeysetMode::TryEach
     }
 
+    fn is_wrong_key(response: &Self::Response) -> bool {
+        response.validity_indicator == Some(ValidityIndicator::Invalid)
+    }
+
     /// `SignatureVerify` accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31.
     fn accepted_states() -> &'static [State] {
         &[State::Active, State::Deactivated, State::Compromised]

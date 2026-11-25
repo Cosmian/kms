@@ -259,11 +259,10 @@ jobs:
 
     name: Publish k8s-plugin-${{ matrix.cpu-arch }}
     needs: k8s-plugin-package
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: write # GitHub Release assets
 
     strategy:
       fail-fast: false
@@ -278,44 +277,48 @@ jobs:
             rpm-arch: aarch64
 
     steps:
-      - name: Checkout repository (for public key file)
+      - name: Checkout repository (for public key file and upload action)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Download k8s plugin packages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: k8s-plugin-packages-${{ matrix.runner }}
+          path: ${{ runner.temp }}/package-artifacts
 
       - name: List downloaded assets
-        run: find . -type f -print
+        run: find "${RUNNER_TEMP}/package-artifacts" -type f -print
 
       - name: Push deb to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: deb/${{ matrix.cpu-arch }}
           files: |
             ./nix/signing-keys/cosmian-kms-public.asc
-            result-k8s-plugin-deb/*.deb
+            ${{ runner.temp }}/package-artifacts/result-k8s-plugin-deb/*.deb
 
       - name: Push rpm to package.cosmian.com
         uses: ./.github/actions/push-package-cosmian
         with:
           known-hosts: ${{ vars.PACKAGE_COSMIAN_SSH_KNOWN_HOSTS }}
+          ssh-private-key: ${{ secrets.PACKAGE_COSMIAN_SSH_PRIVATE_KEY }}
           subdir: rpm/${{ matrix.cpu-arch }}
           files: |
             ./nix/signing-keys/cosmian-kms-public.asc
-            result-k8s-plugin-rpm/*.rpm
+            ${{ runner.temp }}/package-artifacts/result-k8s-plugin-rpm/*.rpm
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
-            result-k8s-plugin-deb/kubernetes-kms-plugin_*
-            result-k8s-plugin-rpm/kubernetes-kms-plugin_*
+            ${{ runner.temp }}/package-artifacts/result-k8s-plugin-deb/kubernetes-kms-plugin_*
+            ${{ runner.temp }}/package-artifacts/result-k8s-plugin-rpm/kubernetes-kms-plugin_*
             ./nix/signing-keys/cosmian-kms-public.asc
 
   # ── Helm chart lint + template + E2E deployment (Minikube) ────────────────────

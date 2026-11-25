@@ -5,6 +5,19 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-069 — GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree](#cosmian-2026-069--ghsa-g3hv-75wg-m249-minimatch-denial-of-service-in-the-web-ui-dependency-tree)
+      - [COSMIAN-2026-068 — RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates](#cosmian-2026-068--rustsec-2026-0543-and-rustsec-2026-0542-unmaintained-chrono-and-humantime-crates)
+      - [COSMIAN-2026-067 — RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow in `gzwrite`](#cosmian-2026-067--rustsec-2026-0544--cve-2026-85091-libz-sys-zlib-heap-buffer-overflow-in-gzwrite)
+      - [COSMIAN-2026-066 — RUSTSEC-2026-0552, RUSTSEC-2026-0553, RUSTSEC-2026-0554: `actix-http` request framing and keep-alive timeout flaws](#cosmian-2026-066--rustsec-2026-0552-rustsec-2026-0553-rustsec-2026-0554-actix-http-request-framing-and-keep-alive-timeout-flaws)
+      - [COSMIAN-2026-065 — RUSTSEC-2026-0459 / CVE-2026-119375: bundled SQLite before 3.54 may return uninitialised page-cache memory](#cosmian-2026-065--rustsec-2026-0459--cve-2026-119375-bundled-sqlite-before-354-may-return-uninitialised-page-cache-memory)
+      - [COSMIAN-2026-064 — Public `GET /health` returned database driver and PKCS#11 error details](#cosmian-2026-064--public-get-health-returned-database-driver-and-pkcs11-error-details)
+      - [COSMIAN-2026-063 — Secret KMIP fields written to trace and debug logs by the TTLV serializer, deserializer and `#[instrument]` spans](#cosmian-2026-063--secret-kmip-fields-written-to-trace-and-debug-logs-by-the-ttlv-serializer-deserializer-and-instrument-spans)
+      - [COSMIAN-2026-062 — Server key encryption key not applied to several object-creation paths](#cosmian-2026-062--server-key-encryption-key-not-applied-to-several-object-creation-paths)
+      - [COSMIAN-2026-061 — Vault-token-only authentication let requests without credentials run as the default user](#cosmian-2026-061--vault-token-only-authentication-let-requests-without-credentials-run-as-the-default-user)
+      - [COSMIAN-2026-060 — HSM ReKey revealed the existence and type of other users' HSM keys](#cosmian-2026-060--hsm-rekey-revealed-the-existence-and-type-of-other-users-hsm-keys)
+      - [COSMIAN-2026-059 — HSM keys addressed by their UID skipped the KMIP algorithm policy](#cosmian-2026-059--hsm-keys-addressed-by-their-uid-skipped-the-kmip-algorithm-policy)
+      - [COSMIAN-2026-058 — Retired HSM key generations remained usable for Encrypt, Sign and MAC](#cosmian-2026-058--retired-hsm-key-generations-remained-usable-for-encrypt-sign-and-mac)
+      - [COSMIAN-2026-057 — Decrypt by keyset name returned wrong-key output in unauthenticated modes](#cosmian-2026-057--decrypt-by-keyset-name-returned-wrong-key-output-in-unauthenticated-modes)
       - [COSMIAN-2026-056 — Get Attributes without a Unique Identifier selected another user's newest object](#cosmian-2026-056--get-attributes-without-a-unique-identifier-selected-another-users-newest-object)
       - [COSMIAN-2026-055 — Batch Undo could restore objects of another user](#cosmian-2026-055--batch-undo-could-restore-objects-of-another-user)
       - [COSMIAN-2026-054 — ReCertify authorized the issuer key as the certificate owner](#cosmian-2026-054--recertify-authorized-the-issuer-key-as-the-certificate-owner)
@@ -116,6 +129,255 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-069 — GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree
+
+| Field      | Value                                                                                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Severity   | Low                                                                                                                                                                                              |
+| Published  | Pending                                                                                                                                                                                          |
+| Affected   | from 5.3.0 before 6.0.0 (build tooling only)                                                                                                                                                     |
+| Fixed in   | 6.0.0                                                                                                                                                                                            |
+| Found by   | OSV scanner (GHSA-g3hv-75wg-m249)                                                                                                                                                                |
+| References | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), [CVE-2026-118764](https://nvd.nist.gov/vuln/detail/CVE-2026-118764), [#1360](https://github.com/Cosmian/kms/pull/1360) |
+
+**Summary:** `minimatch` 7.0.0 to 11.0.0 amplifies attacker-controlled patterns in `firstPhasePreProcess()`, which makes glob matching take quadratic time. The Web UI lockfile resolved `minimatch` 9.0.5 and 10.2.x through the ESLint and `typescript-eslint` development tooling.
+
+**Impact:** `minimatch` is not part of the served Web UI bundle and the server never passes untrusted patterns to it. Only a developer or CI job running the linter on a hostile glob is exposed, for a denial of service.
+
+**Mitigation:** Upgrade to 6.0.0. The Web UI dependency `minimatch` was bumped to 11.0.1 or later (resolved to 11.0.3 and 11.0.5).
+
+---
+
+#### COSMIAN-2026-068 — RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates
+
+| Field      | Value                                                                                                                                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                                                                                                                                       |
+| Published  | Pending                                                                                                                                                                                                   |
+| Affected   | before 6.0.0                                                                                                                                                                                              |
+| Fixed in   | 6.0.0                                                                                                                                                                                                     |
+| Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0543, RUSTSEC-2026-0542)                                                                                                                                      |
+| References | [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543.html), [RUSTSEC-2026-0542](https://rustsec.org/advisories/RUSTSEC-2026-0542.html), [#1431](https://github.com/Cosmian/kms/pull/1431) |
+
+**Summary:** The `chrono` and `humantime` crates are flagged as unmaintained: all versions are affected and no patched version exists.
+
+**Impact:** No known exploit. Future vulnerabilities in these crates would not be fixed upstream.
+
+**Mitigation:** Upgrade to 6.0.0. `chrono` and `humantime` were removed from the dependency tree: `time` replaces `chrono`, the AWS XKS `SigV4` verifier no longer uses `scratchstack-aws-signature`, `ckms login oauth` no longer uses `oauth2`, and the Kubernetes operator parses refresh intervals with an internal parser.
+
+---
+
+#### COSMIAN-2026-067 — RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow in `gzwrite`
+
+| Field      | Value                                                                                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Severity   | Low                                                                                                                                                                                              |
+| Published  | Pending                                                                                                                                                                                          |
+| Affected   | from 5.24.0 before 6.0.0 (MySQL/Percona/MariaDB backend only)                                                                                                                                    |
+| Fixed in   | 6.0.0                                                                                                                                                                                            |
+| Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0544)                                                                                                                                                |
+| References | [RUSTSEC-2026-0544](https://rustsec.org/advisories/RUSTSEC-2026-0544.html), [CVE-2026-85091](https://nvd.nist.gov/vuln/detail/CVE-2026-85091), [#1431](https://github.com/Cosmian/kms/pull/1431) |
+
+**Summary:** `libz-sys` 1.1.25 to 1.1.32 bundle zlib 1.3.1.2 to 1.3.2, whose `gz_vacate()` overflows a heap buffer when `gzprintf()` or `gzvprintf()` is called after a stalled non-blocking `gzwrite()`. KMS 5.29.0 shipped `libz-sys` 1.1.31, reached only through `flate2` and `mysql_async`.
+
+**Impact:** The KMS does not call the `gz*` file API, and `flate2` uses the deflate and inflate stream API, so the vulnerable code path is not reachable. Severity is Low.
+
+**Mitigation:** Upgrade to 6.0.0, which bundles `libz-sys` 1.1.33.
+
+---
+
+#### COSMIAN-2026-066 — RUSTSEC-2026-0552, RUSTSEC-2026-0553, RUSTSEC-2026-0554: `actix-http` request framing and keep-alive timeout flaws
+
+| Field      | Value                                                                                                                                                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                                                                                                                                                              |
+| Published  | Pending                                                                                                                                                                                                                                                                               |
+| Affected   | before 6.0.0                                                                                                                                                                                                                                                                          |
+| Fixed in   | 6.0.0                                                                                                                                                                                                                                                                                 |
+| Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0552, RUSTSEC-2026-0553, RUSTSEC-2026-0554)                                                                                                                                                                                               |
+| References | [RUSTSEC-2026-0552](https://rustsec.org/advisories/RUSTSEC-2026-0552.html), [RUSTSEC-2026-0553](https://rustsec.org/advisories/RUSTSEC-2026-0553.html), [RUSTSEC-2026-0554](https://rustsec.org/advisories/RUSTSEC-2026-0554.html), [#1431](https://github.com/Cosmian/kms/pull/1431) |
+
+**Summary:** `actix-http` 3.19.0 and earlier (3.19.0 in 5.29.0) mishandled HTTP/1.1 framing and timeouts: a bare line feed in chunked trailers was skipped (GHSA-9w4r-xc43-v236, fixed in 3.21.1), a carriage return inside a quoted chunk extension ended the body early (GHSA-9543-cj4x-h76q, fixed in 3.21.3), and the request header timeout applied only to the first request of a keep-alive connection (GHSA-54pm-2wm5-hpmg, fixed in 3.21.2).
+
+**Impact:** A remote unauthenticated client could hold connections open indefinitely and exhaust connection or file-descriptor limits (availability). The framing flaws allow request smuggling only when a reverse proxy forwards the malformed body with a different request boundary; the advisories demonstrate no proxy bypass or cross-user effect.
+
+**Mitigation:** Upgrade to 6.0.0, which bundles `actix-http` 3.21.3. Until upgraded, put the server behind a proxy that normalizes HTTP/1.1 requests and enforces header timeouts and connection limits.
+
+---
+
+#### COSMIAN-2026-065 — RUSTSEC-2026-0459 / CVE-2026-119375: bundled SQLite before 3.54 may return uninitialised page-cache memory
+
+| Field      | Value                                                                                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                                                                                                                                |
+| Published  | Pending                                                                                                                                                                                            |
+| Affected   | before 6.0.0 (SQLite backend only)                                                                                                                                                                 |
+| Fixed in   | 6.0.0                                                                                                                                                                                              |
+| Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0459)                                                                                                                                                  |
+| References | [RUSTSEC-2026-0459](https://rustsec.org/advisories/RUSTSEC-2026-0459.html), [CVE-2026-119375](https://nvd.nist.gov/vuln/detail/CVE-2026-119375), [#1388](https://github.com/Cosmian/kms/pull/1388) |
+
+**Summary:** `rusqlite` 0.37 bundled SQLite through `libsqlite3-sys` 0.35, which bundles SQLite older than 3.54. SQLite before 3.54.0 can return uninitialised page-cache memory when a process opens a database file together with a sibling `-wal` file whose page size differs from the database's.
+
+**Impact:** Exploitation needs a crafted database and `-wal` file pair opened by the server, so an attacker must be able to write in the SQLite database directory; the vector is local. The KMS opens only its own database file. Severity is Low unless the database directory is writable by a less trusted party. PostgreSQL, MySQL and Redis backends are not affected.
+
+**Mitigation:** Upgrade to 6.0.0. `rusqlite` was upgraded from 0.37 to 0.41 (`libsqlite3-sys` 0.39.1, SQLite 3.54.1), and `tokio-rusqlite` was replaced by an in-house async connection wrapper. Keep the SQLite database directory writable only by the KMS service account.
+
+---
+
+#### COSMIAN-2026-064 — Public `GET /health` returned database driver and PKCS#11 error details
+
+| Field      | Value                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| Severity   | Low                                                                                                    |
+| Published  | Pending                                                                                                |
+| Affected   | from 5.15.0 before 6.0.0                                                                               |
+| Fixed in   | 6.0.0                                                                                                  |
+| Found by   | Hardening review, 19 November 2026                                                                     |
+| References | [#1438](https://github.com/Cosmian/kms/pull/1438), [#1366](https://github.com/Cosmian/kms/issues/1366) |
+
+**Summary:** The unauthenticated `GET /health` endpoint put the error text of a failing dependency in the `message` of the response.
+
+**Impact:** Any caller who could reach the endpoint could read database driver errors, which can include host names, user names or file paths, and PKCS#11 return codes. This information helps to target further attacks; no key material was exposed.
+
+**Mitigation:** Upgrade to 6.0.0. The `message` of a `DOWN` dependency is now a fixed text; the error detail is written to the server log as `health check: ...`. Until upgraded, restrict access to `/health` at the reverse proxy.
+
+---
+
+#### COSMIAN-2026-063 — Secret KMIP fields written to trace and debug logs by the TTLV serializer, deserializer and `#[instrument]` spans
+
+| Field      | Value                                                                                                                                                                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                                                                                                                       |
+| Published  | Pending                                                                                                                                                                                                                                        |
+| Affected   | before 6.0.0                                                                                                                                                                                                                                   |
+| Fixed in   | 6.0.0                                                                                                                                                                                                                                          |
+| Found by   | Issue #1426                                                                                                                                                                                                                                    |
+| References | [#1442](https://github.com/Cosmian/kms/pull/1442), [#1426](https://github.com/Cosmian/kms/issues/1426), [COSMIAN-2026-051](#cosmian-2026-051--kmip-payloads-written-to-debug-logs), [Regression tests](crate/kmip/src/ttlv/tests/redaction.rs) |
+
+**Summary:** COSMIAN-2026-051 removed the full-payload logs of the KMIP handler. Other code paths still printed secret-bearing fields: the TTLV serializer stack dumps and `#[instrument]` span fields (private-key big-integer limbs), the TTLV deserializer `TextString` and `ByteString` traces and its error messages echoing hex input, the `Debug` output of a whole incoming `TTLV` request, the symmetric decrypt trace (ciphertext, nonce, AAD, tag), the Covercrypt AAD and refreshed user key, the Azure EKM wrap/unwrap request, the Microsoft DKE encrypted data, the PKCS#11 provider, the `ckms sym encrypt` data encryption key and the PKCS#12 password of `ckms certificates import/export`.
+
+**Impact:** At trace or debug log level, plaintext, IVs, AAD, PINs and passwords, PKCS#12 passwords and private-key integers could be written to logs. Anyone able to read those logs could recover them. Default log levels do not emit them.
+
+**Mitigation:** Upgrade to 6.0.0. Secret-bearing KMIP fields now use `cosmian_kmip::Sensitive<T>`, whose `Debug` and `Display` print only a size, and the types and log statements above redact their secrets (`SafeBigInt`, `Secret`, `TTLV`, `CredentialValue`, `Link`, `EncryptionKeyInformation`, `DataToEncrypt`, HSM key material, PKCS#11 provider). Sensitive buffers are zeroized and compared in constant time. Rotate or restrict access to trace and debug logs written by earlier versions. Regression tests: `crate/kmip/src/ttlv/tests/redaction.rs`.
+
+---
+
+#### COSMIAN-2026-062 — Server key encryption key not applied to several object-creation paths
+
+| Field      | Value                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                                                        |
+| Published  | Pending                                                                                                                                                                         |
+| Affected   | before 6.0.0                                                                                                                                                                    |
+| Fixed in   | 6.0.0                                                                                                                                                                           |
+| Found by   | Hardening review, 19 November 2026                                                                                                                                              |
+| References | [#1439](https://github.com/Cosmian/kms/pull/1439), [#1437](https://github.com/Cosmian/kms/issues/1437), [Regression test](crate/server/src/tests/revocation_authority_tests.rs) |
+
+**Summary:** With a server `key_encryption_key` configured, keys created by derivation, split-key shares, joined keys, key pairs generated by `Certify` and KV secret versions were stored unwrapped, while other keys were wrapped.
+
+**Impact:** The affected objects sat in the database in plaintext although the operator had configured wrapping at rest. An attacker with read access to the database (backup, replica, SQL access) could read them without the key encryption key. The KEK is not exposed and no API access control was bypassed.
+
+**Mitigation:** Upgrade to 6.0.0. Every object-creation path now applies the `key_encryption_key`; wrapping accepts split-key shares, and `Get`/`Export` of a share honours `key_wrap_type = NotWrapped`. Objects created by earlier releases stay unwrapped until they are re-wrapped or re-created; rotate any such key that must be protected at rest. Downgrade note: with `key_encryption_key` configured, split-key shares created by 6.0.0 are stored wrapped and earlier releases cannot join them (`JoinSplitKey` and Crypto Officer ceremony activation fail); join or re-split them before downgrading. Regression test: `certify_generated_key_pair_is_wrapped_by_the_server_kek` in `crate/server/src/tests/revocation_authority_tests.rs`.
+
+---
+
+#### COSMIAN-2026-061 — Vault-token-only authentication let requests without credentials run as the default user
+
+| Field      | Value                                                                                                                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Critical                                                                                                                                                        |
+| Published  | Pending                                                                                                                                                         |
+| Affected   | from 5.26.0 before 6.0.0                                                                                                                                        |
+| Fixed in   | 6.0.0                                                                                                                                                           |
+| Found by   | Hardening review, 19 November 2026                                                                                                                              |
+| References | [#1439](https://github.com/Cosmian/kms/pull/1439), [#1437](https://github.com/Cosmian/kms/issues/1437), [Regression test](crate/server/src/start_kms_server.rs) |
+
+**Summary:** With `vault_api_enabled = true` and `vault_auth_verifier_url` as the only configured authentication method, the KMIP, `/v1/crypto`, `/tokenize`, MS-DKE, KV and SSH scopes did not count the `X-Vault-Token` header as configured authentication. A request without any credentials was therefore accepted and executed as the default user.
+
+**Impact:** An unauthenticated network client could run operations on those scopes with the permissions and objects of the default user. Only deployments whose sole authentication method is the Vault token verifier were exposed.
+
+**Mitigation:** Upgrade to 6.0.0. An `X-Vault-Token` now counts as configured authentication on every scope, so a request without credentials is rejected. Clients must send `X-Vault-Token` or authenticate another way, for example an mTLS client certificate whose CN is `default_username` for `ckms` provisioning. Regression test: `vault_token_only_auth_rejects_requests_without_credentials` in `crate/server/src/start_kms_server.rs`. Until upgraded, configure a second authentication method (mTLS, JWT or API token) so that anonymous requests are refused.
+
+---
+
+#### COSMIAN-2026-060 — HSM ReKey revealed the existence and type of other users' HSM keys
+
+| Field      | Value                                                                                                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                                                                                                              |
+| Published  | Pending                                                                                                                                                                          |
+| Affected   | from 5.25.0 before 6.0.0                                                                                                                                                         |
+| Fixed in   | 6.0.0                                                                                                                                                                            |
+| Found by   | PR review, 22 November 2026                                                                                                                                                      |
+| References | [COSMIAN-2026-037](#cosmian-2026-037--crypto-operations-reveal-the-existence-and-state-of-other-users-keys), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** The COSMIAN-2026-037 fix did not cover `ReKey` on HSM keys. A user allowed to create objects who sent `ReKey` for an HSM UID got a "not supported" error when the object was not an AES key, before any permission check, a permission error when it was an AES key they could not re-key, and a "not found" error when no such key existed.
+
+**Impact:** Such a user could test whether an HSM key ID exists on a slot and whether it is an AES key, without any grant on it. Key material and attributes were not exposed, and no key was rotated.
+
+**Mitigation:** Upgrade to 6.0.0. HSM `ReKey` and `ReKeyKeyPair` check the caller's ownership or `Rekey` grant before the object type, and a caller with no grant on the key gets the same `Item_Not_Found` as for a missing key; a missing key now returns `Item_Not_Found` and a wrong type `Invalid_Object_Type`. Regression tests: `hsm_rekey_by_a_non_owner_reveals_nothing` and `hsm_rekey_error_reasons` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+---
+
+#### COSMIAN-2026-059 — HSM keys addressed by their UID skipped the KMIP algorithm policy
+
+| Field      | Value                                                                                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                     |
+| Published  | Pending                                                                                                                                      |
+| Affected   | from 5.16.0 before 6.0.0                                                                                                                     |
+| Fixed in   | 6.0.0                                                                                                                                        |
+| Found by   | PR review, 22 November 2026                                                                                                                  |
+| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression test](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** A crypto operation on an HSM key addressed by its own UID (any HSM key never re-keyed, or an explicit `name@N` generation) was routed to the HSM without checking the key's algorithm, length or curve against `[kmip.policy]`. Database keys and HSM keyset members resolved by keyset name were checked.
+
+**Impact:** A user holding a grant on an HSM key could use it for `Encrypt`, `Decrypt`, `Sign`, `MAC` and the verify operations although the configured algorithm policy forbids it, for example a key created on the token by another PKCS#11 application with a disallowed size or curve.
+
+**Mitigation:** Upgrade to 6.0.0. Every HSM key is checked against the algorithm policy, on its PKCS#11 metadata, before the HSM is called, however it is addressed. Regression test: `hsm_key_addressed_by_uid_obeys_algorithm_policy` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+---
+
+#### COSMIAN-2026-058 — Retired HSM key generations remained usable for Encrypt, Sign and MAC
+
+| Field      | Value                                                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                                                                           |
+| Published  | Pending                                                                                                                                       |
+| Affected   | from 5.25.0 before 6.0.0                                                                                                                      |
+| Fixed in   | 6.0.0                                                                                                                                         |
+| Found by   | PR review, 22 November 2026                                                                                                                   |
+| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** `ReKey` of a database key moves the old key to `Deactivated` (KMIP 2.1 §4.57), which refuses it for protection. `ReKey` of an HSM key only marked the old generation as retired in its `CKA_LABEL`: PKCS#11 has no KMIP state, and the KMS sent an explicit generation UID (`name@N`) to the HSM without checking whether it was still the keyset head.
+
+**Impact:** After an HSM key was rotated, for example because it was suspected compromised or had reached the end of its cryptoperiod, any user still holding a grant on an older generation could keep encrypting, signing and computing MACs with it by its generation UID.
+
+**Mitigation:** Upgrade to 6.0.0. A generation that is not the head of its HSM keyset is treated as `Deactivated`: `Encrypt`, `Sign` and `MAC` with it fail with `Wrong_Key_Lifecycle_State`, while `Decrypt`, `Signature Verify` and `MAC Verify` still accept it. The head is read from the HSM on each protection operation, not from cached metadata, so a rotation made by another KMS node, or a keyset enrolled after its key was cached, also retires the old generation at once; an HSM failure during that check refuses the operation. The `name@first` / `name@0` addresses and the cached-metadata cases concern development code only. Regression tests: `protect_operations_use_only_the_keyset_head`, `cached_bare_and_latest_heads_cannot_protect_after_external_rotation`, `cached_hsm_protection_fails_closed_when_live_keyset_scan_fails` and `rsa_public_encrypt_checks_live_head_for_generated_public_key_ids` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+---
+
+#### COSMIAN-2026-057 — Decrypt by keyset name returned wrong-key output in unauthenticated modes
+
+| Field      | Value                                                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                      |
+| Published  | Pending                                                                                                                                       |
+| Affected   | from 5.25.0 before 6.0.0                                                                                                                      |
+| Fixed in   | 6.0.0                                                                                                                                         |
+| Found by   | PR review, 22 November 2026                                                                                                                   |
+| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+
+**Summary:** `Decrypt` addressed to the bare name of a rotated keyset tries each generation, newest first, and returns the first result that does not fail. Modes without an integrity check do not fail with a wrong key: AES ECB, CTR and XTS, ChaCha20 and FPE always return output, and AES CBC and RSA PKCS#1 v1.5 do whenever the decrypted padding happens to be well formed.
+
+**Impact:** Ciphertext produced with an older generation in one of these modes could be decrypted with a newer key and the garbage returned as the plaintext, with a success status. A client unwrapping a data key this way silently received a wrong key, and the data it then protected could be lost.
+
+**Mitigation:** Upgrade to 6.0.0. `Decrypt` by keyset name is refused with `Feature_Not_Supported` unless the request or stored parameters select a mode that rejects a wrong key (AES GCM, GCM-SIV, CCM, key wrap, RSA OAEP); address one generation (`name@N`) to decrypt in another mode. On HSM keysets, a member decrypted without request parameters uses AES-GCM or RSA-OAEP, never the token default, which falls back to AES CBC or RSA PKCS#1 v1.5 on tokens without GCM or OAEP. Regression tests: `keyset_decrypt_refuses_modes_that_cannot_detect_a_wrong_key` and `keyset_decrypt_defaults_never_fall_back_to_unauthenticated_token_algorithms` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+
+The released exposure was in SQL keysets. HSM keyset chain-walking is new on this branch. The SQL regression `test_sql_keyset_decrypt_refuses_unauthenticated_modes` in `crate/server/src/core/operations/decrypt.rs` covers inherited stored parameters, explicit-generation CBC decryption and a request overriding stored CBC with GCM.
+
+---
 
 #### COSMIAN-2026-056 — Get Attributes without a Unique Identifier selected another user's newest object
 
@@ -493,7 +755,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** An authenticated user could test whether a UID or tag matches another user's key and learn its lifecycle state. Key material and attributes were not exposed.
 
-**Mitigation:** Upgrade to 5.29.0. The permission check now runs first and keys the caller has no grant on are reported exactly like missing keys. Regression test: `test_crypto_op_does_not_reveal_foreign_keys` in `crate/server/src/tests/security_regression.rs`.
+**Mitigation:** Upgrade to 5.29.0. The permission check now runs first and keys the caller has no grant on are reported exactly like missing keys. Regression test: `test_crypto_op_does_not_reveal_foreign_keys` in `crate/server/src/tests/security_regression.rs`. HSM `ReKey` was not covered by this fix: see COSMIAN-2026-060.
 
 ---
 
@@ -1460,6 +1722,19 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-069    | Low      | from 5.3.0 before 6.0.0 (build tooling only)                            | 6.0.0    | GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree                    |
+| COSMIAN-2026-068    | Low      | before 6.0.0                                                            | 6.0.0    | RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates               |
+| COSMIAN-2026-067    | Low      | from 5.24.0 before 6.0.0 (MySQL/Percona/MariaDB backend only)           | 6.0.0    | RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow in `gzwrite`               |
+| COSMIAN-2026-066    | Moderate | before 6.0.0                                                            | 6.0.0    | RUSTSEC-2026-0552, RUSTSEC-2026-0553, RUSTSEC-2026-0554: `actix-http` request framing and keep-alive timeout flaws |
+| COSMIAN-2026-065    | Low      | before 6.0.0 (SQLite backend only)                                      | 6.0.0    | RUSTSEC-2026-0459 / CVE-2026-119375: bundled SQLite before 3.54 may return uninitialised page-cache memory |
+| COSMIAN-2026-064    | Low      | from 5.15.0 before 6.0.0                                                | 6.0.0    | Public `GET /health` returned database driver and PKCS#11 error details                             |
+| COSMIAN-2026-063    | Moderate | before 6.0.0                                                            | 6.0.0    | Secret KMIP fields written to trace and debug logs by the TTLV serializer, deserializer and `#[instrument]` spans |
+| COSMIAN-2026-062    | Moderate | before 6.0.0                                                            | 6.0.0    | Server key encryption key not applied to several object-creation paths                              |
+| COSMIAN-2026-061    | Critical | from 5.26.0 before 6.0.0                                                | 6.0.0    | Vault-token-only authentication let requests without credentials run as the default user            |
+| COSMIAN-2026-060    | Low      | from 5.25.0 before 6.0.0                                                | 6.0.0    | HSM ReKey revealed the existence and type of other users' HSM keys                                  |
+| COSMIAN-2026-059    | Moderate | from 5.16.0 before 6.0.0                                                | 6.0.0    | HSM keys addressed by their UID skipped the KMIP algorithm policy                                   |
+| COSMIAN-2026-058    | Low      | from 5.25.0 before 6.0.0                                                | 6.0.0    | Retired HSM key generations remained usable for Encrypt, Sign and MAC                               |
+| COSMIAN-2026-057    | Moderate | from 5.25.0 before 6.0.0                                                | 6.0.0    | Decrypt by keyset name returned wrong-key output in unauthenticated modes                           |
 | COSMIAN-2026-056    | Moderate | before 6.0.0                                                            | 6.0.0    | Get Attributes without a Unique Identifier selected another user's newest object                    |
 | COSMIAN-2026-055    | Moderate | unreleased development code only (introduced and fixed before 6.0.0)    | 6.0.0    | Batch Undo could restore objects of another user                                                    |
 | COSMIAN-2026-054    | High     | before 6.0.0                                                            | 6.0.0    | ReCertify authorized the issuer key as the certificate owner                                        |

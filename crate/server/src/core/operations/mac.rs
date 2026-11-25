@@ -137,6 +137,7 @@ impl CryptoOpSpec for MacOp {
                         request
                             .i_v_counter_nonce
                             .as_deref()
+                            .map(Vec::as_slice)
                             .map_or_else(|| random_gmac_iv(kms), caller_gmac_iv)
                     },
                 )
@@ -234,6 +235,10 @@ impl CryptoOpSpec for MacVerifyOp {
 
     fn keyset_mode() -> KeysetMode {
         KeysetMode::TryEach
+    }
+
+    fn is_wrong_key(response: &Self::Response) -> bool {
+        response.validity_indicator == Some(ValidityIndicator::Invalid)
     }
 
     /// `MACVerify` accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31.
@@ -633,6 +638,7 @@ fn infer_hmac_hashing_algorithm(
 mod tests {
     use cosmian_kms_server_database::reexport::{
         cosmian_kmip::{
+            SensitiveBytes,
             kmip_0::kmip_types::{
                 BlockCipherMode, CryptographicUsageMask, ErrorReason, HashingAlgorithm,
             },
@@ -1237,7 +1243,7 @@ mod tests {
         // AAD.
         let iv = [0x42_u8; 12];
         let with_iv = |mode, iv: &[u8]| MAC {
-            i_v_counter_nonce: Some(iv.to_vec()),
+            i_v_counter_nonce: Some(iv.to_vec().into()),
             ..mac(&aes, mode, b"hello world", None, None, None)
         };
         if caller_gcm_iv_allowed() {
@@ -1262,16 +1268,21 @@ mod tests {
                             block_cipher_mode: Some(BlockCipherMode::GCM),
                             ..Default::default()
                         }),
-                        data: Some(zeroize::Zeroizing::new(Vec::new())),
-                        i_v_counter_nonce: Some(iv.to_vec()),
-                        authenticated_encryption_additional_data: Some(b"hello world".to_vec()),
+                        data: Some(SensitiveBytes::default()),
+                        i_v_counter_nonce: Some(iv.to_vec().into()),
+                        authenticated_encryption_additional_data: Some(
+                            b"hello world".to_vec().into(),
+                        ),
                         ..Default::default()
                     },
                     &user,
                 )
                 .await?;
             assert_eq!(
-                encrypted.authenticated_encryption_tag.as_deref(),
+                encrypted
+                    .authenticated_encryption_tag
+                    .as_deref()
+                    .map(Vec::as_slice),
                 gmac.get(12..)
             );
         } else {

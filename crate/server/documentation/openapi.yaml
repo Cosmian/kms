@@ -1648,14 +1648,14 @@ components:
 
     CreateTransitKeyRequest:
       type: object
-      required: [type]
       properties:
         type:
           type: string
+          default: aes256-gcm96
           description: |
             Key algorithm and size. Supported values:
-            `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`, `rsa-4096`.
-            Non-FIPS only: `ed25519`, `ml-dsa-65`.
+            `aes256-gcm96` (encryption, default), `ecdsa-p256`, `ecdsa-p384`,
+            `rsa-2048`, `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`.
           example: ecdsa-p256
         exportable:
           type: boolean
@@ -1706,13 +1706,21 @@ components:
           example: true
         latest_version:
           type: integer
-          description: Current key version (always `1` — in-place rotation is not supported).
+          description: |
+            Current key version. Always `1` for asymmetric keys; incremented by
+            `POST /keys/{name}/rotate` for `aes256-gcm96` keys.
           example: 1
         keys:
           type: object
-          description: Map of version number string to key version metadata.
+          description: |
+            Map of version number string to key version metadata. Asymmetric keys map
+            to a `TransitKeyVersion`; `aes256-gcm96` keys map to the creation time as a
+            Unix timestamp (as in Vault).
           additionalProperties:
-            $ref: '#/components/schemas/TransitKeyVersion'
+            oneOf:
+              - $ref: '#/components/schemas/TransitKeyVersion'
+              - type: integer
+                format: int64
           example:
             '1':
               public_key: "-----BEGIN PUBLIC KEY-----\nMFkwE...\n-----END PUBLIC KEY-----\n"
@@ -1742,6 +1750,72 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/TransitKeyListData'
+
+    EncryptTransitRequest:
+      type: object
+      required: [plaintext]
+      properties:
+        plaintext:
+          type: string
+          description: Base64-encoded plaintext.
+          example: c2VjcmV0
+        key_version:
+          type: integer
+          description: Key version to encrypt with. Defaults to the latest version.
+        associated_data:
+          type: string
+          description: Base64-encoded AEAD associated data; must be supplied again on decrypt.
+        context:
+          type: string
+          description: Not supported (derived keys); any non-empty value is rejected with `400`.
+        batch_input:
+          description: Not supported; any value is rejected with `400`.
+
+    EncryptTransitResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [ciphertext, key_version]
+          properties:
+            ciphertext:
+              type: string
+              description: '`vault:v{version}:` followed by base64(nonce (12 bytes) || ciphertext || tag (16 bytes)).'
+              example: vault:v1:8SDd3WHDOjf7mq69CyCqYjBXAiQQAVZRkFM13ok481zoCmHnSeDX9vyf7w==
+            key_version:
+              type: integer
+              example: 1
+
+    DecryptTransitRequest:
+      type: object
+      required: [ciphertext]
+      properties:
+        ciphertext:
+          type: string
+          description: Ciphertext returned by the encrypt endpoint.
+          example: vault:v1:8SDd3WHDOjf7mq69CyCqYjBXAiQQAVZRkFM13ok481zoCmHnSeDX9vyf7w==
+        associated_data:
+          type: string
+          description: Base64-encoded AEAD associated data used at encryption.
+        context:
+          type: string
+          description: Not supported (derived keys); any non-empty value is rejected with `400`.
+        batch_input:
+          description: Not supported; any value is rejected with `400`.
+
+    DecryptTransitResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [plaintext]
+          properties:
+            plaintext:
+              type: string
+              description: Base64-encoded plaintext.
+              example: c2VjcmV0
 
     SignTransitRequest:
       type: object
@@ -1907,9 +1981,23 @@ paths:
       tags: [Public]
       summary: Health check
       description: >
-        Returns the global UP/DOWN status and per-dependency (database) status.
+        Returns global UP/DEGRADED/DOWN status and per-dependency status and latency.
+        A failed database reports DOWN; a failed HSM, or a KMIP socket server that has stopped,
+        reports DEGRADED. The HSM check reflects the
+        PKCS#11 library's answer, and some libraries (e.g. Crypt2pay) do not report an unreachable device.
+        Each HSM slot is probed with a 2 second limit; a slot that does not answer in time is reported
+        DOWN, and at most one probe per slot runs at a time. The database check has the same 2 second limit.
+        A DEGRADED node answers HTTP 200, or HTTP 503 with `strict=true`.
         Used by load balancers and service dependency checks.
       operationId: getHealth
+      parameters:
+        - name: strict
+          in: query
+          required: false
+          description: Answer HTTP 503 for a DEGRADED node too, so that a load balancer removes it from its pool.
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Server and all dependencies are healthy
@@ -1920,7 +2008,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    enum: [UP, DOWN]
+                    enum: [UP, DEGRADED, DOWN]
                   latency_ms:
                     type: integer
                   dependencies:
@@ -1934,15 +2022,59 @@ paths:
                           status:
                             type: string
                             enum: [UP, DOWN]
+                          latency_ms:
+                            type: integer
                           message:
                             type: string
+                            description: >
+                              Only when DOWN. A fixed text, never the detail of the error, which is written
+                              to the server log: `database check failed (details in the server log)` or
+                              `no answer within 2000 ms`.
+                      hsm:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            status:
+                              type: string
+                              enum: [UP, DOWN]
+                            latency_ms:
+                              type: integer
+                            message:
+                              type: string
+                              description: >
+                                Only when DOWN. A fixed text prefixed with `slot <id>: `, never the detail of
+                                the error, which is written to the server log:
+                                `the HSM returned an error (details in the server log)`,
+                                `no answer within 2000 ms` or
+                                `the previous probe is still waiting for the HSM`.
+                      kmip:
+                        type: object
+                        description: Only present when the KMIP socket server is enabled.
+                        properties:
+                          name:
+                            type: string
+                          status:
+                            type: string
+                            enum: [UP, DOWN]
+                          latency_ms:
+                            type: integer
+                          message:
+                            type: string
+                            description: >
+                              Only when DOWN: `the KMIP socket server is not running (details in the server log)`.
               example:
                 status: UP
                 latency_ms: 3
                 dependencies:
-                  database: {name: sqlite, status: UP}
+                  database: {name: sqlite, status: UP, latency_ms: 1}
+                  hsm:
+                    - {name: hsm::utimaco, status: UP, latency_ms: 2}
+                  kmip: {name: kmip, status: UP, latency_ms: 0}
         '503':
-          description: One or more dependencies are DOWN
+          description: Database is DOWN, or the node is DEGRADED and `strict=true` was requested
 
   /version:
     get:
@@ -2432,6 +2564,42 @@ paths:
                 type: array
                 items:
                   type: object
+
+  /cluster/status:
+    get:
+      tags: [Server]
+      summary: Cluster status
+      description: Returns live nodes, their last heartbeat and version, and the elected leader.
+      operationId: getClusterStatus
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Cluster status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nodes, leader]
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      required: [node_id, version, last_heartbeat, leader]
+                      properties:
+                        node_id:
+                          type: string
+                        version:
+                          type: string
+                        last_heartbeat:
+                          type: integer
+                          format: int64
+                        leader:
+                          type: boolean
+                  leader:
+                    type: [string, 'null']
 
   # ── Certificates ─────────────────────────────────────────────────────────────
 
@@ -5363,9 +5531,11 @@ paths:
       tags: [Vault Transit]
       summary: Create a transit key
       description: |
-        Create a new asymmetric transit key pair stored in the KMS under the tag
-        `vault_transit:{name}`. Supported types: `ecdsa-p256`, `ecdsa-p384`,
-        `rsa-2048`, `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`.
+        Create a transit key stored in the KMS under the tag `vault_transit:{name}`.
+        Supported types: `aes256-gcm96` (default, symmetric encryption key used by
+        the encrypt/decrypt endpoints), `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`,
+        `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`. Creating an existing key
+        is a no-op. The same operation is also accepted with `PUT`.
       operationId: vaultTransitCreateKey
       parameters:
         - name: name
@@ -5568,6 +5738,112 @@ paths:
           description: Key not found.
         '500':
           description: Signing failed.
+
+  /v1/transit/keys/{name}/rotate:
+    post:
+      tags: [Vault Transit]
+      summary: Rotate an encryption transit key
+      description: |
+        Add a new version to an `aes256-gcm96` transit key. New encryptions use the
+        new version; ciphertexts of older versions stay decryptable. Asymmetric
+        signing keys cannot be rotated (`400`). Also accepted with `PUT`.
+      operationId: vaultTransitRotateKey
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: autounseal
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Key rotated. Returns the updated key metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitKeyInfoWrapper'
+        '400':
+          description: The key is an asymmetric signing key.
+        '404':
+          description: Key not found.
+
+  /v1/transit/encrypt/{name}:
+    post:
+      tags: [Vault Transit]
+      summary: Encrypt with a transit key
+      description: |
+        Encrypt base64 plaintext with AES-256-GCM under the latest (or requested)
+        version of an `aes256-gcm96` transit key. The cryptographic operation runs
+        inside the KMS; the key never leaves it. Used by the HashiCorp Vault
+        `seal "transit"` auto-unseal. Also accepted with `PUT` (Vault Go client).
+      operationId: vaultTransitEncrypt
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: autounseal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncryptTransitRequest'
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Vault-formatted ciphertext.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncryptTransitResponse'
+        '400':
+          description: Invalid request (missing `plaintext`, bad base64, unknown key version, unsupported option).
+        '404':
+          description: No `aes256-gcm96` key with this name is owned by the caller.
+
+  /v1/transit/decrypt/{name}:
+    post:
+      tags: [Vault Transit]
+      summary: Decrypt with a transit key
+      description: |
+        Decrypt a `vault:vN:` ciphertext with version N of an `aes256-gcm96`
+        transit key. Also accepted with `PUT` (Vault Go client).
+      operationId: vaultTransitDecrypt
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: autounseal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecryptTransitRequest'
+      security:
+        - vaultToken: []
+      responses:
+        '200':
+          description: Base64 plaintext.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecryptTransitResponse'
+        '400':
+          description: |
+            Malformed ciphertext, unknown key version, or authentication failure. All three
+            return the same message (`cipher: message authentication failed`) so they cannot
+            be told apart. Missing `ciphertext` and unsupported options (`context`,
+            `batch_input`) get their own message.
+        '404':
+          description: No `aes256-gcm96` key with this name is owned by the caller.
 
   # ── Vault PKI ──────────────────────────────────────────────────────────────
 

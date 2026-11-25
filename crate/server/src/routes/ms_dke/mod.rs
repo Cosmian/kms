@@ -190,10 +190,14 @@ pub(crate) async fn decrypt(
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
     let encrypted_data = wrap_request.into_inner();
-    info!("Encrypted Data : {encrypted_data:?}",);
+    info!(
+        "Encrypted Data: alg={:?} value_len={}",
+        encrypted_data.alg,
+        encrypted_data.value.len()
+    );
     let (key_name, key_id) = path.into_inner();
     // let _key_id = key_id.into_inner();
-    trace!("POST /{key_name}/{key_id}/Decrypt {encrypted_data:?}");
+    trace!("POST /{key_name}/{key_id}/Decrypt");
     match internal_decrypt(&key_name, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),

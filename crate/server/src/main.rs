@@ -8,7 +8,6 @@ use cosmian_kms_server::{
 };
 use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
 use dotenvy::dotenv;
-use tracing::span;
 
 /// Get the default `RUST_LOG` configuration if not set
 fn get_default_rust_log() -> String {
@@ -197,10 +196,6 @@ async fn run() -> KResult<()> {
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
-    // TODO: For an unknown reason, this span never goes to OTLP
-    let span = span!(tracing::Level::TRACE, "kms");
-    let _guard = span.enter();
-
     let (ossl_version, ossl_dir, ossl_number) = safe_openssl_version_info();
     if ossl_number == 0 {
         tracing::error!(
@@ -363,6 +358,7 @@ mod tests {
             },
             default_username: "[default username]".to_owned(),
             force_default_username: false,
+            region_role: cosmian_kms_server::config::RegionRole::Leader,
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             kmip_policy: KmipPolicyConfig::default(),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
@@ -408,6 +404,7 @@ mod tests {
 vendor_identification = "cosmian"
 default_username = "[default username]"
 force_default_username = false
+region_role = "leader"
 ms_dke_service_url = "[ms dke service url]"
 info = false
 hsm_model = ""

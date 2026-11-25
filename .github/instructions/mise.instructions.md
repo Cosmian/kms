@@ -128,7 +128,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 
 | Library | What it provides |
 |---|---|
-| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
+| `.mise/lib/common.sh` | Colors, `print_*`, `kms_init_env`, `require_cmd`, `has_cmd`, `has_env_vars`, `docker_ready`, `get_repo_root`, `setup_test_logging`, `run_isolated`, `ensure_pnpm`, `wait_for_command`, `wait_for_port`, `compute_sha256`, `build_test_deps`, `run_db_tests`, `setup_db_env`, `check_and_test_db`, `kms_wait_ready`, `pkcs11_check_warnings` |
 | `.mise/lib/kms_build.sh` | `kms_build_server`, `kms_build_cli`, `kms_build_all`, `get_kms_bin`, `get_ckms_bin`, `get_cargo_target_dir` |
 | `.mise/lib/kms_server.sh` | `kms_write_config` (**legacy**: no new callers, rule 4.20; see `test-configs.instructions.md`), `kms_start`, `kms_start_from_bin`, `kms_stop`, `kms_write_ckms_conf` + globals `KMS_PID`, `KMS_URL`, `KMS_PORT` |
 | `.mise/lib/pkcs11_helpers.sh` | PKCS#11 slot and object helpers |
@@ -141,6 +141,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 | `.mise/lib/k8s.sh` | Kubernetes helpers (helm, kubectl) |
 | `.mise/lib/bench_helpers.sh` | Benchmark setup helpers |
 | `.mise/lib/test_slots.sh` | Dynamic port-slot allocation |
+| `.mise/lib/multi_region_guards.sh` | Multi-region active-active PostgreSQL guards (source/config/live/behavioral) |
 | `.mise/lib/audit_e2e.sh` | Shared ckms/audit E2E helpers: `audit_ckms(_json/_fail)`, `audit_exercise_kmip_ops`, `audit_assert_events_jsonl` |
 
 **Always check these libraries first.** Do not re-implement `wait_for_port`, TCP probing,
@@ -153,7 +154,7 @@ Every runnable test task lives in `.mise/tasks/test/<group>/<name>` (`db`, `hsm`
 - Prologue, in order: `source common.sh`, `source nix_helpers.sh` (only with `ensure_nix_shell` or `WITH_*`), `kms_init_env "${usage_variant:-<default>}" "${usage_link:-static}"`, `setup_test_logging`, `REPO_ROOT=` (only if used), gates (variant, OS, profile, env, local probes inside `if [ "${CI:-}" != true ]`, apt), `export WITH_*` + `ensure_nix_shell`, `docker compose up -d` (skip on failure). Snippets are listed in `.mise/tasks/test/README.md` § 1.
 - An upstream leaf (repository secrets) calls `print_error` before `skip_test` when `CI=true` and a secret is unset, so a green upstream CI leg proves it ran.
 - Never hand-roll a test aggregator: a group's `_default` is `run_test_leaves "$(dirname "$0")" <leaf>...`; add the new leaf to that list.
-- To run a leaf in CI, add its id to a leg of `.github/workflows/test_all.yml` (the leaf must declare `-v --variant`).
+- To run a leaf in CI, add it to its group's `_default` (the leaf must declare `-v --variant`); `.github/ci-paths.toml` decides which pull requests run the group.
 
 ## Aggregator tasks — collect failures, report at the end
 

@@ -25,14 +25,13 @@ use super::{
     },
 };
 use crate::{
-    SafeBigInt,
+    SafeBigInt, SensitiveBytes,
     error::KmipError,
     kmip_0::kmip_types::{
         DRBGAlgorithm, DestroyAction, ErrorReason, FIPS186Variation, HashingAlgorithm,
         RNGAlgorithm, ShreddingAlgorithm, UnwrapMode,
     },
     kmip_2_1::{kmip_attributes::Attribute, kmip_types::ItemType},
-    len_display::LenDisplay,
     pad_be_bytes,
     ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };
@@ -46,14 +45,14 @@ pub struct DerivationParameters {
     /// Depends on the PRF and mode of operation: an empty IV is assumed if not
     /// provided.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub initialization_vector: Option<Vec<u8>>,
+    pub initialization_vector: Option<SensitiveBytes>,
     /// Mandatory unless the Unique Identifier of a Secret Data object is
     /// provided. May be repeated.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub derivation_data: Option<Zeroizing<Vec<u8>>>,
+    pub derivation_data: Option<SensitiveBytes>,
     /// Mandatory if Derivation method is PBKDF2.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub salt: Option<Vec<u8>>,
+    pub salt: Option<SensitiveBytes>,
     /// Mandatory if derivation method is PBKDF2.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iteration_count: Option<i32>,
@@ -68,19 +67,13 @@ impl Display for DerivationParameters {
             ));
         }
         if let Some(initialization_vector) = &self.initialization_vector {
-            parts.push(format!(
-                "initialization_vector: {}",
-                initialization_vector.len_display()
-            ));
+            parts.push(format!("initialization_vector: {initialization_vector}"));
         }
         if let Some(derivation_data) = &self.derivation_data {
-            parts.push(format!(
-                "derivation_data: {}",
-                derivation_data.len_display()
-            ));
+            parts.push(format!("derivation_data: {derivation_data}"));
         }
         if let Some(salt) = &self.salt {
-            parts.push(format!("salt: {}", salt.len_display()));
+            parts.push(format!("salt: {salt}"));
         }
         if let Some(iteration_count) = &self.iteration_count {
             parts.push(format!("iteration_count: {iteration_count}"));
@@ -119,7 +112,7 @@ pub struct KeyBlock {
 impl Zeroize for KeyBlock {
     /// Zero the key material inside this `KeyBlock`.
     ///
-    /// Delegates to `KeyValue::zeroize()` which in turn zeroes `Zeroizing<Vec<u8>>`
+    /// Delegates to `KeyValue::zeroize()` which in turn zeroes the `Zeroizing`
     /// byte buffers and triggers `SafeBigInt::drop()` on private-key `BigInt` fields.
     fn zeroize(&mut self) {
         if let Some(kv) = &mut self.key_value {
@@ -308,7 +301,7 @@ impl KeyBlock {
         })?;
 
         match key_value {
-            KeyValue::ByteString(v) => Ok(v.clone()),
+            KeyValue::ByteString(v) => Ok(v.to_zeroizing()),
             KeyValue::Structure { .. } => Err(KmipError::InvalidKmip21Value(
                 ErrorReason::Invalid_Object_Type,
                 "wrapped_key_bytes: the key is not wrapped".to_owned(),
@@ -344,8 +337,8 @@ impl KeyBlock {
                 "Key bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => match key_material {
-                KeyMaterial::ByteString(v) => Ok(v.as_slice()),
-                KeyMaterial::TransparentSymmetricKey { key } => Ok(key.as_slice()),
+                KeyMaterial::ByteString(v) => Ok(&v[..]),
+                KeyMaterial::TransparentSymmetricKey { key } => Ok(&key[..]),
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
                     "Key bytes can only be recovered from RSA and symmetric keys".to_owned(),
@@ -370,7 +363,7 @@ impl KeyBlock {
             )),
             KeyValue::Structure { key_material, .. } => {
                 if let KeyMaterial::ByteString(v) = key_material {
-                    return Ok(v.clone());
+                    return Ok(v.to_zeroizing());
                 }
                 Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
@@ -396,7 +389,7 @@ impl KeyBlock {
             )),
             KeyValue::Structure { key_material, .. } => {
                 if let KeyMaterial::ByteString(v) = key_material {
-                    return Ok(v.clone());
+                    return Ok(v.to_zeroizing());
                 }
                 Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
@@ -470,7 +463,7 @@ impl KeyBlock {
                 "secret_data_bytes: key bytes cannot be recovered from wrapped keys".to_owned(),
             )),
             KeyValue::Structure { key_material, .. } => match key_material {
-                KeyMaterial::ByteString(v) => Ok(v.clone()),
+                KeyMaterial::ByteString(v) => Ok(v.to_zeroizing()),
                 _ => Err(KmipError::InvalidKmip21Value(
                     ErrorReason::Invalid_Object_Type,
                     "Secret Data Key bytes can only be recovered from raw secret data".to_owned(),
@@ -604,7 +597,6 @@ impl KeyBlock {
             .map_or(Ok(None), |link| match &link.linked_object_identifier {
                 // If the linked object identifier is a text string, return it
                 LinkedObjectIdentifier::TextString(s) => Ok(Some(s.clone())),
-                // Enumeration and index identifiers are not yet supported
                 LinkedObjectIdentifier::Enumeration(_) => Err(KmipError::NotSupported(
                     "Link Enumeration not yet supported".to_owned(),
                 )),
@@ -648,7 +640,7 @@ impl KeyBlock {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum KeyValue {
     /// The key value is a byte string when key wrapped
-    ByteString(Zeroizing<Vec<u8>>),
+    ByteString(SensitiveBytes),
     /// The key value is a structure when the key is not wrapped
     Structure {
         key_material: KeyMaterial,
@@ -659,7 +651,7 @@ pub enum KeyValue {
 impl Zeroize for KeyValue {
     /// Zero sensitive key material within this `KeyValue`.
     ///
-    /// * `ByteString` — calls `zeroize()` on the inner `Zeroizing<Vec<u8>>`.
+    /// * `ByteString` — calls `zeroize()` on the inner `Zeroizing` bytes.
     /// * `Structure`  — delegates to `KeyMaterial::zeroize()` which replaces the
     ///   key material with an empty `ByteString`, triggering the appropriate `Drop`
     ///   implementations on all private-key variants.
@@ -776,7 +768,7 @@ impl<'de> DeserializeSeed<'de> for KeyValueDeserializer {
                 while let Some(byte) = seq.next_element()? {
                     bytestring.push(byte);
                 }
-                Ok(KeyValue::ByteString(Zeroizing::new(bytestring)))
+                Ok(KeyValue::ByteString(bytestring.into()))
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
@@ -1067,7 +1059,7 @@ impl KeyWrappingSpecification {
 /// bytes, or `SafeBigInt` type.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyMaterial {
-    ByteString(Zeroizing<Vec<u8>>),
+    ByteString(SensitiveBytes),
     TransparentDHPrivateKey {
         p: Box<BigInt>,
         q: Option<Box<BigInt>>,
@@ -1095,7 +1087,7 @@ pub enum KeyMaterial {
         y: Box<BigInt>,
     },
     TransparentSymmetricKey {
-        key: Zeroizing<Vec<u8>>,
+        key: SensitiveBytes,
     },
     TransparentRSAPublicKey {
         modulus: Box<BigInt>,
@@ -1153,10 +1145,10 @@ impl Zeroize for KeyMaterial {
     /// Zero sensitive key material by replacing `self` with an empty `ByteString`.
     ///
     /// The assignment triggers the `Drop` of the previous value:
-    /// * `Zeroizing<Vec<u8>>` variants call `zeroize()` on their bytes.
+    /// * `ByteString` variants call `zeroize()` on their bytes.
     /// * `SafeBigInt` fields call `BigInt::zeroize()` in their `Drop` impl.
     fn zeroize(&mut self) {
-        *self = Self::ByteString(Zeroizing::new(Vec::new()));
+        *self = Self::ByteString(SensitiveBytes::default());
     }
 }
 
@@ -1413,12 +1405,10 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                     | KeyFormatType::CoverCryptSecretKey
                     | KeyFormatType::OpenPgpSecretKey
                     | KeyFormatType::OpenPgpPublicKey => {
-                        Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
+                        Ok(KeyMaterial::ByteString(bytestring.into()))
                     }
                     #[cfg(feature = "non-fips")]
-                    KeyFormatType::Pkcs12Legacy => {
-                        Ok(KeyMaterial::ByteString(Zeroizing::new(bytestring)))
-                    }
+                    KeyFormatType::Pkcs12Legacy => Ok(KeyMaterial::ByteString(bytestring.into())),
                     _ => Err(de::Error::custom(format!(
                         "KeyMaterialVisitor: {:?} key format type is not expected to have a byte \
                          string key material",
@@ -1561,7 +1551,7 @@ impl<'de> DeserializeSeed<'de> for KeyMaterialDeserializer {
                 }
 
                 if let Some(key) = key {
-                    Ok(KeyMaterial::TransparentSymmetricKey { key })
+                    Ok(KeyMaterial::TransparentSymmetricKey { key: key.into() })
                 } else {
                     Ok(match &self.key_format_type {
                         KeyFormatType::TransparentDHPublicKey

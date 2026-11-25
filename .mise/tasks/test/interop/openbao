@@ -13,7 +13,7 @@ kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 
 REPO_ROOT="$(get_repo_root)"
-source "${REPO_ROOT}/.mise/scripts/test/openbao/bao_verifier.sh"
+source "${REPO_ROOT}/.mise/scripts/test/interop/openbao/bao_verifier.sh"
 WORK_DIR="$(mktemp -d /tmp/kms-openbao-XXXXXX)"
 
 # Keep the original exit status: kms_stop succeeding must not mask a failed scenario.
@@ -87,6 +87,6 @@ BAO_ADDR="${BAO_ADDR_FOR_CONTAINER}" \
   BAO_TOKEN="${TOKEN_OWNER}" \
   BAO_TOKEN_OTHER="${TOKEN_OTHER}" \
   KV_MOUNT="kv" \
-  bash "${REPO_ROOT}/.mise/scripts/test/openbao/test_openbao_kv.sh"
+  bash "${REPO_ROOT}/.mise/scripts/test/interop/openbao/test_openbao_kv.sh"
 
 print_success "OpenBao integration tests completed"

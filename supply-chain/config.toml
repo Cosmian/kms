@@ -220,10 +220,6 @@ version = "1.6.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.base64]]
-version = "0.20.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.base64]]
 version = "0.23.1"
 criteria = "safe-to-deploy"
 notes = "transitive or direct dependency of the workspace (dependency bump to 0.23.1) — unaudited, pending review"
@@ -328,12 +324,7 @@ version = "0.10.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.cookie]]
-version = "0.16.2"
-criteria = "safe-to-deploy"
-notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
-
-[[exemptions.cookie]]
-version = "0.18.1"
+version = "0.18.3"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
@@ -591,6 +582,11 @@ criteria = "safe-to-deploy"
 [[exemptions.float-cmp]]
 version = "0.10.0"
 criteria = "safe-to-run"
+
+[[exemptions.form_urlencoded]]
+version = "1.2.3"
+criteria = "safe-to-deploy"
+notes = "required by url 2.5.9 (RUSTSEC-2026-0592 fix) — unaudited, pending review"
 
 [[exemptions.fragile]]
 version = "2.1.0"
@@ -1123,6 +1119,16 @@ version = "0.42.0"
 criteria = "safe-to-deploy"
 notes = "transitive or direct dependency of the workspace (dependency bump to 0.42.0) — unaudited, pending review"
 
+[[exemptions.quinn-proto]]
+version = "0.11.19"
+criteria = "safe-to-deploy"
+notes = "RUSTSEC-2026-0523/0524 fix for the lock-only QUIC stack — unaudited, pending review"
+
+[[exemptions.quinn-udp]]
+version = "0.5.16"
+criteria = "safe-to-deploy"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+
 [[exemptions.r-efi]]
 version = "5.3.0"
 criteria = "safe-to-deploy"
@@ -1211,6 +1217,11 @@ criteria = "safe-to-deploy"
 [[exemptions.rusticata-macros]]
 version = "4.1.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.rustix]]
+version = "1.1.6"
+criteria = "safe-to-deploy"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.rustls-platform-verifier]]
 version = "0.7.1"
@@ -1521,6 +1532,11 @@ criteria = "safe-to-deploy"
 version = "0.9.10"
 criteria = "safe-to-deploy"
 notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
+
+[[exemptions.url]]
+version = "2.5.9"
+criteria = "safe-to-deploy"
+notes = "bump fixes RUSTSEC-2026-0592 (>=2.5.9) — unaudited, pending review"
 
 [[exemptions.uuid]]
 version = "1.28.0"

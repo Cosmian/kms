@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, future::Future, sync::Arc};
 
 use cosmian_logger::{debug, info, warn};
 use tokio::sync::oneshot;
@@ -7,6 +7,143 @@ use crate::core::{
     KMS,
     operations::{dispatch_renewal_warnings, run_auto_rotation},
 };
+
+const CLUSTER_HEARTBEAT_INTERVAL_SECS: u64 = 5;
+pub(crate) const CLUSTER_NODE_TIMEOUT_SECS: i64 = 15;
+
+/// Whether this node belongs to a follower region of a multi-region deployment.
+///
+/// The job locks of [`run_with_cluster_lock`] live in the node's own database, and each region has
+/// its own, so they do not exclude a job running in another region: a job that must run in one
+/// region only is skipped on a follower.
+fn is_follower_region(kms: &KMS) -> bool {
+    kms.params.region_role == crate::config::RegionRole::Follower
+}
+
+/// One run of the auto-rotation job. Rotation creates a new key version and a renewal warning is a
+/// notification: run in every region, both would be duplicated, so only the leader region runs them.
+async fn run_auto_rotation_job(kms: &Arc<KMS>, warned: &mut HashMap<String, i64>) {
+    if is_follower_region(kms) {
+        debug!("[auto-rotate-cron] Skipping auto-rotation on follower region");
+        return;
+    }
+    run_with_cluster_lock(kms, "auto-rotation", || async {
+        run_auto_rotation(kms).await;
+        dispatch_renewal_warnings(kms, warned).await;
+    })
+    .await;
+}
+
+async fn run_with_cluster_lock<F, Fut>(kms: &Arc<KMS>, lock_name: &str, action: F)
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = ()>,
+{
+    match kms.database.with_cron_lock(lock_name, action).await {
+        Ok(true) => {}
+        Ok(false) => debug!("[{lock_name}] Skipping scheduled work; another node holds the lock"),
+        Err(e) => warn!("[{lock_name}] Failed to acquire or release cluster lock: {e}"),
+    }
+}
+
+/// Publish this node's heartbeat and elect a leader, shown by `/cluster/status` only.
+pub fn spawn_cluster_heartbeat_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                warn!("[cluster-heartbeat] Failed to build runtime: {e}");
+                return;
+            }
+        };
+
+        rt.block_on(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                CLUSTER_HEARTBEAT_INTERVAL_SECS,
+            ));
+            let mut shutdown_rx = shutdown_rx;
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        update_cluster_heartbeat(&kms).await;
+                    }
+                    _ = &mut shutdown_rx => {
+                        debug!("[cluster-heartbeat] Shutdown signal received; stopping");
+                        break;
+                    }
+                }
+            }
+        });
+    });
+
+    shutdown_tx
+}
+
+pub(crate) async fn update_cluster_heartbeat(kms: &Arc<KMS>) {
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let stale_before = now.saturating_sub(CLUSTER_NODE_TIMEOUT_SECS);
+    let node_id = &kms.node_id;
+    let version = env!("CARGO_PKG_VERSION");
+    let existing_nodes = match kms.database.list_cluster_nodes(stale_before).await {
+        Ok(nodes) => nodes,
+        Err(e) => {
+            warn!("[cluster-heartbeat] Failed to list nodes before heartbeat: {e}");
+            return;
+        }
+    };
+    let is_leader = existing_nodes
+        .iter()
+        .any(|node| node.node_id == node_id.as_str() && node.is_leader);
+
+    if let Err(e) = kms
+        .database
+        .record_cluster_heartbeat(node_id, version, now, is_leader, stale_before)
+        .await
+    {
+        warn!("[cluster-heartbeat] Failed to persist node heartbeat: {e}");
+        return;
+    }
+
+    // Only elect when no live leader exists; the check is repeated under the lock.
+    if !existing_nodes.iter().any(|node| node.is_leader)
+        && let Err(e) = kms
+            .database
+            .with_cron_lock("cluster-heartbeat-leader", || async {
+                match kms.database.list_cluster_nodes(stale_before).await {
+                    Ok(nodes) if nodes.iter().any(|node| node.is_leader) => {}
+                    Ok(_) => {
+                        if let Err(e) = kms
+                            .database
+                            .record_cluster_heartbeat(node_id, version, now, true, stale_before)
+                            .await
+                        {
+                            warn!("[cluster-heartbeat] Failed to publish leader status: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[cluster-heartbeat] Failed to list nodes during election: {e}");
+                    }
+                }
+            })
+            .await
+    {
+        warn!("[cluster-heartbeat] Leader election failed: {e}");
+    }
+
+    match kms.database.list_cluster_nodes(stale_before).await {
+        Ok(nodes) => {
+            if let Some(metrics) = &kms.metrics {
+                metrics.update_cluster_nodes_count(i64::try_from(nodes.len()).unwrap_or(i64::MAX));
+            }
+        }
+        Err(e) => warn!("[cluster-heartbeat] Failed to list live nodes: {e}"),
+    }
+}
 
 /// Spawns the KV TTL-expiry cron thread: periodically destroys secret
 /// versions whose `options.ttl` (issue #863) has elapsed.
@@ -34,13 +171,15 @@ pub fn spawn_kv_ttl_cron(kms: Arc<KMS>, interval_secs: u64) -> oneshot::Sender<(
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        match Box::pin(crate::routes::kv::metadata::sweep_expired_versions(&kms)).await {
-                            Ok(0) => {}
-                            Ok(destroyed) => {
-                                info!("[kv-ttl-cron] destroyed {destroyed} expired KV secret version(s)");
+                        run_with_cluster_lock(&kms, "kv-ttl", || async {
+                            match Box::pin(crate::routes::kv::metadata::sweep_expired_versions(&kms)).await {
+                                Ok(0) => {}
+                                Ok(destroyed) => {
+                                    info!("[kv-ttl-cron] destroyed {destroyed} expired KV secret version(s)");
+                                }
+                                Err(e) => warn!("[kv-ttl-cron] sweep failed: {e}"),
                             }
-                            Err(e) => warn!("[kv-ttl-cron] sweep failed: {e}"),
-                        }
+                        }).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[kv-ttl-cron] Shutdown signal received; stopping");
@@ -83,8 +222,7 @@ pub fn spawn_auto_rotation_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                 tokio::select! {
                     _ = interval.tick() => {
                         debug!("[auto-rotate-cron] Running scheduled key auto-rotation check");
-                        run_auto_rotation(&kms).await;
-                        dispatch_renewal_warnings(&kms, &mut warned).await;
+                        run_auto_rotation_job(&kms, &mut warned).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[auto-rotate-cron] Shutdown signal received; stopping cron thread");
@@ -136,7 +274,9 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                 tokio::select! {
                     _ = interval.tick() => {
                         debug!("[crl-refresh-cron] Running scheduled CRL refresh check");
-                        refresh_expiring_crls(&kms, overlap_hours).await;
+                        run_with_cluster_lock(&kms, "crl-refresh", || async {
+                            refresh_expiring_crls(&kms, overlap_hours).await;
+                        }).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[crl-refresh-cron] Shutdown signal received; stopping");
@@ -150,8 +290,17 @@ pub fn spawn_crl_refresh_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     shutdown_tx
 }
 
-/// Scan all stored CRLs and regenerate those expiring within `overlap_hours`.
-async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
+/// Scan all stored CRLs and regenerate those expiring within `overlap_hours`, or whose set of
+/// revoked certificates is out of date.
+pub(crate) async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
+    // CRL content is public information (RFC 5280 §3) — no special role required.
+    let _signer = crate::middlewares::UserId::from(kms.params.default_username.as_str());
+
+    if is_follower_region(kms) {
+        debug!("[crl-refresh-cron] Skipping background CRL refresh on follower region");
+        return;
+    }
+
     // Enumerate all issuer IDs stored in the `crls` table.
     let issuers = match kms.database.list_crl_issuers().await {
         Ok(ids) => ids,
@@ -171,14 +320,46 @@ async fn refresh_expiring_crls(kms: &Arc<KMS>, overlap_hours: i64) {
         )
         .map_or(true, |next_update| next_update <= threshold); // stale if unparsable
 
-        if !needs_refresh {
+        let refresh_reason = if needs_refresh {
+            Some(format!("expires within {overlap_hours}h"))
+        } else {
+            // Not near expiry: still republish when a revocation (e.g. served by a follower
+            // region and replicated here) is missing from the stored CRL.
+            match kms.database.get_crl(&issuer_id).await {
+                Ok(Some((der, _))) => match Box::pin(
+                    crate::core::operations::generate_crl::crl_revocations_changed(
+                        kms, &issuer_id, &der,
+                    ),
+                )
+                .await
+                {
+                    Ok(true) => Some("revoked certificates changed".to_owned()),
+                    Ok(false) => None,
+                    Err(e) => {
+                        warn!(
+                            issuer_id = issuer_id.as_str(),
+                            "[crl-refresh-cron] Revocation check failed for '{issuer_id}': {e}"
+                        );
+                        None
+                    }
+                },
+                Ok(None) => None,
+                Err(e) => {
+                    warn!(
+                        issuer_id = issuer_id.as_str(),
+                        "[crl-refresh-cron] Failed to load CRL for '{issuer_id}': {e}"
+                    );
+                    None
+                }
+            }
+        };
+        let Some(refresh_reason) = refresh_reason else {
             continue;
-        }
+        };
 
         info!(
             issuer_id = issuer_id.as_str(),
-            "[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' \
-             (expires within {overlap_hours}h)"
+            "[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})"
         );
 
         // Server-triggered: `default_username` usually has no grant on the CA key.
@@ -232,8 +413,8 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
             loop {
                 tokio::select! {
                     _ = interval.tick(), if count_interval_secs > 0 => {
+                        // Not cluster-locked: the gauges live in this process's OTel exporter.
                         if let Some(ref metrics) = kms.metrics {
-                            // ── Non-destroyed key objects count ────────────────────────────────
                             // Privileged backend count: no ACL filtering, covers all backends.
                             match kms.database.count_non_destroyed_key_objects().await {
                                 Ok(count) => {
@@ -246,8 +427,6 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                                     );
                                 }
                                 Err(e) => {
-                                    // A persistently failing query (e.g. a backend-specific
-                                    // SQL bug) should be visible without debug logging.
                                     warn!(
                                         "[metrics-cron] Failed to sync kms.keys.active.count: {}",
                                         e
@@ -255,7 +434,6 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                                 }
                             }
 
-                            // ── Objects-total absolute sync ────────────────────────────────────
                             match kms.database.count_all_non_destroyed_objects().await {
                                 Ok(count) => {
                                     debug!(
@@ -276,11 +454,11 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                         }
                     }
                     _ = reconcile_interval.tick() => {
-                        // Authoritative reconcile of Redis O(1) counters (no-op for SQL).
-                        // Prevents permanent counter drift from partial failures.
-                        if let Err(e) = kms.database.reconcile_all_object_counts().await {
-                            debug!("[metrics-cron] reconcile_all_object_counts failed: {}", e);
-                        }
+                        run_with_cluster_lock(&kms, "metrics-reconcile", || async {
+                            if let Err(e) = kms.database.reconcile_all_object_counts().await {
+                                debug!("[metrics-cron] reconcile_all_object_counts failed: {}", e);
+                            }
+                        }).await;
                     }
                     _ = uptime_interval.tick() => {
                         if let Some(ref metrics) = kms.metrics {
@@ -297,4 +475,77 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
     });
 
     shutdown_tx
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Result-returning tests assert with assert!/assert_eq!"
+)]
+mod tests {
+    use std::{collections::HashMap, time::Duration};
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attribute,
+        kmip_operations::SetAttribute,
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+        requests::symmetric_key_create_request,
+    };
+
+    use super::run_auto_rotation_job;
+    use crate::{
+        config::RegionRole,
+        middlewares::UserId,
+        result::KResult,
+        tests::test_utils::{https_clap_config, test_kms_follower, test_kms_with_config},
+    };
+
+    /// A key due for rotation is rotated by the leader region, and left alone by a follower
+    /// region: each region has its own job lock, so a follower rotating it too would fork the key.
+    #[tokio::test]
+    async fn test_auto_rotation_runs_on_leader_region_only() -> KResult<()> {
+        for (role, rotated) in [(RegionRole::Follower, false), (RegionRole::Leader, true)] {
+            let conf = https_clap_config();
+            let kms = match role {
+                RegionRole::Follower => test_kms_follower(conf).await?,
+                RegionRole::Leader => test_kms_with_config(conf).await?,
+            };
+            let owner = UserId::from("alice");
+            let request = symmetric_key_create_request(
+                VENDOR_ID_COSMIAN,
+                None,
+                256,
+                CryptographicAlgorithm::AES,
+                EMPTY_TAGS,
+                false,
+                None,
+            )?;
+            let uid = kms.create(request, &owner).await?.unique_identifier;
+            kms.set_attribute(
+                SetAttribute {
+                    unique_identifier: Some(uid.clone()),
+                    new_attribute: Attribute::RotateInterval(1),
+                },
+                &owner,
+            )
+            .await?;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let is_due = async || -> KResult<bool> {
+                let due = kms
+                    .database
+                    .find_due_for_rotation(time::OffsetDateTime::now_utc())
+                    .await?;
+                Ok(due
+                    .iter()
+                    .any(|(id, _)| UniqueIdentifier::TextString(id.clone()) == uid))
+            };
+            assert!(is_due().await?, "the key must be due before the job runs");
+
+            run_auto_rotation_job(&kms, &mut HashMap::new()).await;
+
+            assert_eq!(is_due().await?, !rotated, "{role:?}: rotated={rotated}");
+        }
+        Ok(())
+    }
 }

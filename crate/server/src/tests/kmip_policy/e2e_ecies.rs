@@ -79,7 +79,10 @@ async fn e2e_ecies_roundtrip_with_policy(
     .expect("encrypt_request should build");
     let enc_resp: EncryptResponse = post_2_1(&app, &enc_req).await?;
 
-    let ciphertext = enc_resp.data.expect("encrypt response should include data");
+    let ciphertext = enc_resp
+        .data
+        .expect("encrypt response should include data")
+        .to_vec();
 
     let dec_req = decrypt_request(
         &sk_uid,

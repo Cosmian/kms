@@ -2,6 +2,8 @@
 HashiCorp = "HashiCorp"
 # openssl::encrypt::Encrypter (the crate's own spelling).
 Encrypter = "Encrypter"
+# flate2 crate name (the zlib wrapper), not a typo of "flat2".
+flate2 = "flate2"
 
 [default.extend-words]
 Veeam = "Veeam"
@@ -51,6 +53,6 @@ PROBABLISTIC = "PROBABLISTIC"
 # (typos would "fix" the `flate2` crate name to `flat2`.)
 extend-exclude = [
   "supply-chain/",
-  ".mise/scripts/test/requirements-*.txt",
+  ".mise/scripts/test/**/requirements-*.txt",
   ".mise/scripts/docs/requirements.txt",
 ]

@@ -19,7 +19,6 @@ use openssl::{
     pkey::{Id, PKey, Private},
     rsa::{Rsa, RsaPrivateKeyBuilder},
 };
-use zeroize::Zeroizing;
 
 use crate::{
     crypto::elliptic_curves::{
@@ -448,7 +447,7 @@ pub fn openssl_private_key_to_kmip(
             KeyBlock {
                 key_format_type: KeyFormatType::PKCS8,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(
+                    key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::from(
                         private_key.private_key_to_pkcs8()?,
                     )),
                     attributes: Some(Box::new(Attributes {
@@ -478,7 +477,7 @@ pub fn openssl_private_key_to_kmip(
             KeyBlock {
                 key_format_type,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(
+                    key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::from(
                         ec_key.private_key_to_der()?,
                     )),
                     attributes: Some(Box::new(Attributes {
@@ -503,7 +502,7 @@ pub fn openssl_private_key_to_kmip(
             KeyBlock {
                 key_format_type,
                 key_value: Some(KeyValue::Structure {
-                    key_material: KeyMaterial::ByteString(Zeroizing::from(
+                    key_material: KeyMaterial::ByteString(cosmian_kmip::SensitiveBytes::from(
                         rsa_private_key.private_key_to_der()?,
                     )),
                     attributes: Some(Box::new(Attributes {

@@ -439,18 +439,12 @@ impl MultiPartStore {
 }
 
 /// Move the streams matching `pred` from `streams` into `out`.
-// shortcut: collects keys because `HashMap::extract_if` needs Rust 1.88 (MSRV is 1.87).
 fn evict(
     streams: &mut HashMap<Vec<u8>, Stream>,
     out: &mut Vec<Stream>,
     pred: impl Fn(&Stream) -> bool,
 ) {
-    let keys: Vec<Vec<u8>> = streams
-        .iter()
-        .filter(|(_, s)| pred(s))
-        .map(|(cv, _)| cv.clone())
-        .collect();
-    out.extend(keys.iter().filter_map(|cv| streams.remove(cv)));
+    out.extend(streams.extract_if(|_, s| pred(s)).map(|(_, s)| s));
 }
 
 fn new_stream<S: Any + Send>(owner: StreamOwner<'_>, created: Instant, state: S) -> Stream {

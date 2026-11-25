@@ -43,6 +43,12 @@ graph LR
     A --> D[MAC menu and pages stay reachable]
 ```
 
+## SSH and password utilities
+
+### ssh-password-flow
+
+Covers Web UI password generation (32-character alphanumeric value) and client-side role name validation. The SSH CA creation, signing-role creation and in-browser key generation followed by certificate signing need a server where the browser identity is a Crypto Officer; the test skips them on any other server, including the one `test_ui.sh` starts.
+
 ## Symmetric Keys
 
 ### sym-key-flow

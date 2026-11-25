@@ -42,6 +42,10 @@ pub enum AtomicOperation {
     UpdateObjectIfVersion((String, Object, Attributes, Option<HashSet<String>>, u64)),
     /// Update the state (uid, state)
     UpdateState((String, State)),
+    /// Replace the lifecycle state the store has observed (backward transition, e.g. KMIP batch
+    /// UNDO), like `ObjectsStore::update_state_allow_downgrade` but inside the batch. Place it
+    /// before the operations that write the object's payload.
+    ResetState((String, State)),
     /// Delete (uid)
     Delete(String),
 }
@@ -55,6 +59,7 @@ impl AtomicOperation {
             | Self::UpdateObject((uid, _, _, _))
             | Self::UpdateObjectIfVersion((uid, _, _, _, _))
             | Self::UpdateState((uid, _))
+            | Self::ResetState((uid, _))
             | Self::Delete(uid)
             | Self::CompareAndSwapObject { uid, .. } => uid,
         }
@@ -174,6 +179,14 @@ pub trait ObjectsStore {
     /// Update the state of an object in the database.
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()>;
 
+    /// Replace the lifecycle state this store has observed (backward transition, e.g. KMIP
+    /// batch UNDO). On replicated PostgreSQL, higher transitions made concurrently in another
+    /// region and not yet received still win. Default implementation delegates to
+    /// `update_state`.
+    async fn update_state_allow_downgrade(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        self.update_state(uid, state).await
+    }
+
     /// Delete an object from the database.
     async fn delete(&self, uid: &str) -> InterfaceResult<()>;
 
@@ -286,6 +299,18 @@ pub trait ObjectsStore {
         Ok(())
     }
 
+    /// Read a server-internal parameter without inserting or changing it.
+    ///
+    /// Returns `None` when absent. Encrypted stores decrypt the value before returning it.
+    ///
+    /// # Errors
+    /// Fails on database or decryption errors, or when the store does not support parameters.
+    async fn get_parameter(&self, _name: &'static str) -> InterfaceResult<Option<String>> {
+        Err(crate::InterfaceError::NotSupported(
+            "server parameters are not supported by this object store".to_owned(),
+        ))
+    }
+
     /// Return the server-internal parameter `name`, storing `value` first if it is absent.
     ///
     /// The insert is atomic: concurrent callers, including other server replicas sharing the
@@ -331,8 +356,7 @@ pub trait ObjectsStore {
     /// Adding a required method to this trait would force every backend
     /// (SQL, Redis, HSM stubs) to implement it in the same commit. The default
     /// lets backends compile immediately; each one should replace it with a
-    /// real implementation when ready. A `TODO` comment is added at each
-    /// call site that still uses the default.
+    /// real implementation when ready.
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
         warn!(
             "count_all_non_destroyed not implemented for this ObjectsStore backend — \

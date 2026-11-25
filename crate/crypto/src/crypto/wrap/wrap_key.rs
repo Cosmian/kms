@@ -118,7 +118,9 @@ pub fn wrap_object_with_key(
 
     // update the key block with the wrapped key
     let object_key_block = object.key_block_mut()?;
-    object_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped_key)));
+    object_key_block.key_value = Some(KeyValue::ByteString(cosmian_kmip::SensitiveBytes::from(
+        wrapped_key,
+    )));
     let mut kwd = key_wrapping_specification.get_key_wrapping_data();
     // For symmetric wrapping keys, store the resolved block_cipher_mode in the
     // KeyWrappingData so the unwrap path knows which algorithm was actually used.
@@ -207,6 +209,9 @@ pub fn key_data_to_wrap(
             Object::SecretData(SecretData { key_block, .. }) => key_block
                 .key_bytes()
                 .context("cannot recover secret data bytes ")?,
+            Object::SplitKey(SplitKey { key_block, .. }) => key_block
+                .key_bytes()
+                .context("cannot recover split key bytes ")?,
             Object::PrivateKey(PrivateKey { key_block })
             | Object::PublicKey(PublicKey { key_block })
                 if matches!(

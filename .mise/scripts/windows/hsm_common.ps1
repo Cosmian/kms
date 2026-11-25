@@ -12,7 +12,7 @@
 # An OpenSSL-based PKCS#11 backend (SoftHSM2, also behind the Idemia simulator) running in the
 # same process would load that same fips.dll twice and fail (SoftHSM2 answers CKR_PIN_INCORRECT),
 # so every KMS step reaches its HSM through the IV shim, which sets
-# SHIM_BACKEND_ISOLATE_OPENSSL (see .mise\scripts\test\pkcs11_fips_iv_shim.c).
+# SHIM_BACKEND_ISOLATE_OPENSSL (see .mise\scripts\test\hsm\pkcs11_fips_iv_shim.c).
 # ============================================================================
 
 . (Join-Path $PSScriptRoot "common.ps1")
@@ -28,7 +28,7 @@ Remove-Item Env:OPENSSL_MODULES -ErrorAction SilentlyContinue
 # gcc (mingw) is preferred; MSVC (cl through vcvars64.bat) is the fallback.
 function New-IvShims {
     param([string]$OutDir)
-    $source = Join-Path $RepoRoot ".mise\scripts\test\pkcs11_fips_iv_shim.c"
+    $source = Join-Path $RepoRoot ".mise\scripts\test\hsm\pkcs11_fips_iv_shim.c"
     $variants = [ordered]@{
         "shim-v2"       = @()
         "shim-v3"       = @("V3_MESSAGE")
