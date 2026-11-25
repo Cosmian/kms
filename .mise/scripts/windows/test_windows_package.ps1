@@ -251,6 +251,14 @@ try {
     Write-Host "Installed in $installedDir"
     Assert-PackageLayout -Dir $installedDir -Variant $Variant
     if ($Variant -eq "fips") { Assert-ServiceEnvironment -Dir $installedDir }
+    # The packaged kms.toml binds 0.0.0.0 with no auth, which the server refuses to start with:
+    # opt in to unauthenticated mode for this smoke test only, then restart the service.
+    $config = Join-Path $installedDir "kms.toml"
+    $content = Get-Content -LiteralPath $config -Raw
+    $patched = $content -replace '(?m)^# insecure_allow_unauthenticated = false\r?$', 'insecure_allow_unauthenticated = true'
+    if ($patched -eq $content) { throw "kms.toml no longer carries the insecure_allow_unauthenticated placeholder" }
+    Set-Content -LiteralPath $config -Value $patched -NoNewline
+    Restart-Service $ServiceName -Force
     Assert-ServiceAnswers -Dir $installedDir
     if ($Variant -eq "fips") {
         Assert-FailsClosedWithoutProvider -Dir $installedDir
