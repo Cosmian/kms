@@ -199,6 +199,14 @@ Any configured CO candidate may revoke the active CO's ceremony:
 The reconstructed key is **NOT revoked**; only the `crypto_officer_activations` row
 is updated. The demoted CO retains their reconstructed key as an Operator.
 
+!!! warning "Accepted residual risk: replay of a revoked activation"
+    The `crypto_officer_activations.sealed_record` is authenticated by the ceremony key, but
+    nothing binds it to the moment of the activation. A database writer who copied the sealed
+    record of an active activation can insert it again for the same user after that activation
+    was revoked, and the user is CryptoOfficer again. Mitigation: restrict write access to the
+    database and audit changes to `crypto_officer_activations`. See
+    [issue #1519](https://github.com/Cosmian/kms/issues/1519).
+
 ### Emergency revocation (config path)
 
 When all CO candidates are unavailable:

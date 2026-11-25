@@ -475,6 +475,8 @@ rust_log = "info,cosmian_kms_server=info"
 The server transparently unwraps keys when needed, caching them in memory without storing clear-text keys in the database.
 Commonly used with HSM integration to protect all KMS keys with a master KEK stored in the HSM. The cache expires after a configurable duration (default 15 minutes).
 
+Each object wrapped by the KEK is also bound to its database row: the wrapped plaintext records the row UID, and the server refuses an object whose ciphertext was copied from another row. At startup, the server binds the objects wrapped by the KEK before this protection existed (see [Database tables](database/tables.md#objects)). Without a KEK, objects are stored in clear and are not bound.
+
 ---
 
 ### [development-debug](#development-debug) {#development-debug}
