@@ -143,13 +143,21 @@ database, so the coordination above stays **inside a region**:
 | -------- | --------- | ------------------------------- |
 | PostgreSQL | yes | yes |
 | MySQL / MariaDB | yes | yes |
-| Galera: Percona XtraDB Cluster (default `pxc_strict_mode=ENFORCING`), MariaDB Galera | **partial**: the server refuses `GET_LOCK`, so the job lock is a row of `kms_cron_locks`, which excludes only the KMS nodes connected to the same database node | yes |
+| Galera: Percona XtraDB Cluster (default `pxc_strict_mode=ENFORCING`), MariaDB Galera | yes: the server refuses `GET_LOCK`, so the job lock is a replicated TTL lease in `kms_cron_leases`, which excludes the KMS nodes of every Galera node | yes |
 | SQLite | not needed (single node) | yes, shows one node |
 | Redis with Findex (non-FIPS only) | **no**: every node runs every job | **no**: `/cluster/status` returns an empty node list |
 
 When the database refuses `GET_LOCK` (Percona XtraDB Cluster strict mode, MariaDB Galera), the server logs one
-warning and locks a row of the `kms_cron_locks` table instead. The row lock excludes only the KMS nodes connected to
-the same database node: point all the KMS nodes of a site at the same database node so that each job runs once there.
+message and takes a lease on a row of the `kms_cron_leases` table instead. The lease is committed, so Galera
+replicates it: each job runs once across the whole cluster, whichever database node the KMS nodes use.
+
+- The lease lasts 300 seconds and the running job renews it every 100 seconds. A node that dies mid-job loses the
+  lease after at most 300 seconds, then another node takes the job over. A job cancelled by a shutdown keeps its lease
+  until it expires.
+- Expiry uses the clock of the database node that runs each statement: keep the Galera nodes' clocks synchronised
+  (NTP). A skew larger than the 100-second renewal margin can let a second node take over a running job.
+- During a rolling upgrade from a release before 6.0, nodes of different versions do not exclude each other (the
+  older ones still use `kms_cron_locks`): the coordination is **degraded** until every node runs 6.0.
 
 ## Monitoring
 

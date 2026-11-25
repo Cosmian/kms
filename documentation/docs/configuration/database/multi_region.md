@@ -356,9 +356,10 @@ which the KMS already retries, so there is no last-update-wins merge to guard ag
 Operating notes:
 
 - Point all the KMS nodes of a region at the **same** database node, and run an arbitrator (`garbd`) in a third site.
-- Scheduled jobs: Percona XtraDB Cluster in strict mode (and MariaDB Galera) refuses `GET_LOCK`. The KMS then locks a
-  row of `kms_cron_locks`, which excludes only the KMS nodes connected to the same database node. Key auto-rotation
-  is leader-region only anyway.
+- Scheduled jobs: Percona XtraDB Cluster in strict mode (and MariaDB Galera) refuses `GET_LOCK`. The KMS then takes a
+  committed lease on a row of `kms_cron_leases` (300 seconds, renewed every 100 seconds while the job runs, on the clock of the database
+  node: keep the nodes NTP-synchronised), which Galera replicates: a job runs once across the cluster. A rolling upgrade from a release before 6.0 is
+  degraded until every node runs 6.0. Key auto-rotation is leader-region only anyway.
 - `region_role = "follower"` is accepted on PostgreSQL and MySQL only.
 - A node still running the previous release keeps plain state writes until every region is upgraded.
 

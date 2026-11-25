@@ -867,7 +867,8 @@ Crate path: `crate/server_database`
 | `warn` | `serial tag backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | `uid` (object uid), `error` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {id} that failed to deserialize: {e}` | `src/stores/sql/mysql.rs` | `id` (object uid), `e` (deserialization error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
 | `warn` | `serial tag backfill: skipping object {uid} that failed to decrypt or deserialize: {e}` | `src/stores/redis/redis_with_findex.rs` | `uid` (object uid), `e` (error) | One-time startup backfill of `_serial=` tags; the certificate stays untagged. |
-| `warn` | `The database refuses GET_LOCK ({}): scheduled jobs use row locks in kms_cron_locks, which exclude only the KMS nodes connected to the same database node` | `src/stores/sql/mysql.rs` | `{}` (database error message) | Galera (Percona XtraDB Cluster, MariaDB Galera); logged once per process. |
+| `info` | `GET_LOCK refused (Galera/PXC strict mode): using committed leases in kms_cron_leases` | `src/stores/sql/mysql.rs` | - | Galera (Percona XtraDB Cluster, MariaDB Galera); logged once per process. |
+| `error` | `cron lock '{lock_name}' renewal failed, the job keeps running: {e}` | `src/core/mod.rs` | `lock_name`, `e` | The lease in `kms_cron_leases` was lost or could not be renewed; another node may run the same job. |
 | `warn` | `Failed to release database migration lock` | `src/stores/migrate.rs` | - | - |
 | `warn` | `Failed to release Redis migration lock on drop` | `src/stores/redis/migrations/mod.rs` | - | - |
 | `warn` | `Interrupted database migration detected; resuming` | `src/stores/migrate.rs` | - | - |
