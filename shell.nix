@@ -294,14 +294,14 @@ pkgs.mkShell {
         # here caused "libstdc++.so.6: cannot open shared object file" whenever
         # the server dlopen'd the HSM's PKCS#11 library (surfaced by
         # `mise run test:pkcs11:tool`).
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
         # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
         if [ "$(uname)" = "Linux" ]; then
           unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
         fi
       else
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
 
       # Preload bootstrap so even statically linked libcrypto gets providers + properties
@@ -336,14 +336,14 @@ pkgs.mkShell {
       if [ "''${WITH_HSM:-}" = "1" ]; then
         # See the FIPS branch above: softhsm2's PKCS#11 module needs libstdc++.so.6
         # at dlopen time, so the gcc lib path must stay on LD_LIBRARY_PATH here too.
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
         # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
         if [ "$(uname)" = "Linux" ]; then
           unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
         fi
       else
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
     fi
 
