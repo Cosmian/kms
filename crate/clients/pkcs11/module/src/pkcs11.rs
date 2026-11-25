@@ -1044,8 +1044,11 @@ cryptoki_fn!(
             };
             // PKCS#11 §5.7: process every attribute, then report CKR_BUFFER_TOO_SMALL if
             // any caller buffer was too small (its ulValueLen is set to
-            // CK_UNAVAILABLE_INFORMATION and nothing is written to it).
+            // CK_UNAVAILABLE_INFORMATION and nothing is written to it). A sensitive
+            // attribute (`CKA_VALUE` of a sensitive/non-extractable key) is handled the same
+            // way, but reports CKR_ATTRIBUTE_SENSITIVE, which takes precedence.
             let mut buffer_too_small = false;
+            let mut attribute_sensitive = false;
             for attribute in template.iter_mut() {
                 let type_: AttributeType = attribute.type_.try_into().map_err(|e| {
                     let attribute_type = attribute.type_;
@@ -1064,7 +1067,14 @@ cryptoki_fn!(
                     hObject,
                     type_.to_string(),
                 );
-                let attribute_value = object.attribute(type_)?;
+                let attribute_value = match object.attribute(type_) {
+                    Err(ModuleError::AttributeSensitive) => {
+                        attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
+                        attribute_sensitive = true;
+                        continue;
+                    }
+                    other => other?,
+                };
                 if let Some(value) = attribute_value {
                     let value = value.as_raw_value();
                     if attribute.pValue.is_null() {
@@ -1089,6 +1099,9 @@ cryptoki_fn!(
                 } else {
                     attribute.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                 }
+            }
+            if attribute_sensitive {
+                return Err(ModuleError::AttributeSensitive);
             }
             if buffer_too_small {
                 return Err(ModuleError::BufferTooSmall);
