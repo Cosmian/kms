@@ -118,7 +118,9 @@ impl actix_web::error::ResponseError for KmsError {
 }
 
 /// Get the KMS version
-#[get("/version")]
+///
+/// Registered by `start_kms_server::public_endpoints`, which makes it readable by the Web UI
+/// when it is served from another origin.
 pub(crate) async fn get_version(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<Json<String>> {
     info!("GET /version {}", kms.get_user(&req));
     Ok(Json(format!(

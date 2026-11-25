@@ -887,6 +887,10 @@ The same list can be provided via the environment variable
 `KMS_CORS_ALLOWED_ORIGINS` (comma-separated) or the CLI flag
 `--cors-allowed-origins`.
 
+The public `GET /health` and `GET /version` endpoints answer these origins too:
+the Web UI reads them from the browser, so they must be readable when the UI is
+served from another origin.
+
 !!! warning "Security implications"
 Every origin in `cors_allowed_origins` can issue **authenticated**
 cross-origin requests to the KMS — session cookies and credentials are

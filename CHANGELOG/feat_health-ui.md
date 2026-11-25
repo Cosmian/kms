@@ -23,6 +23,13 @@
   (`/ui/hsm-status`) no longer returns a 404: both are now registered UI routes, like the other pages. This fix is not
   related to the Server Health page; it is included in this change.
 
+### Server
+
+- `GET /health` and `GET /version` now answer the origins of `cors_allowed_origins`, like the other endpoints read by the
+  Web UI. When the UI is served from another origin (development, the Playwright E2E tests), the browser blocked their
+  answer, so the footer could not show the server version or the health. Callers that send no `Origin` header (load
+  balancers, `curl`) are not affected.
+
 ## Testing
 
 - Unit tests for the health client, the Server Health page (including server text that contains HTML) and the footer;
