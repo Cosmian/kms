@@ -19,8 +19,8 @@ runtime dependencies. They are available for all build variants:
 |----------|----------|----------|
 | KMS server | `fips` / `non-fips` × `static` / `dynamic` | `sbom/server/<variant>/<link>/` |
 | `ckms` CLI | `fips` / `non-fips` × `static` / `dynamic` | `sbom/ckms/<variant>/<link>/` |
-| OpenSSL FIPS provider derivation | — | `sbom/openssl_fips/` |
-| OpenSSL main (non-FIPS) derivation | — | `sbom/openssl_main/` |
+| OpenSSL FIPS provider derivation | — | `sbom/openssl/fips/` |
+| OpenSSL main (non-FIPS) derivation | — | `sbom/openssl/main/` |
 
 Each output directory contains:
 

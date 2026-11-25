@@ -47,8 +47,8 @@ Options:
   --variant VARIANT    One of: fips | non-fips (server/ckms target only; default: fips)
   --link LINK          One of: static | dynamic (server/ckms target only; default: static)
   --output DIR         Output directory for SBOM files (default:
-                       - openssl_fips: ./sbom/openssl_fips
-                       - openssl_main: ./sbom/openssl_main
+                       - openssl_fips: ./sbom/openssl/fips
+                       - openssl_main: ./sbom/openssl/main
                        - server:        ./sbom/server/<variant>/<link>
                        - ckms:          ./sbom/ckms/<variant>/<link>)
   --retrieve           Download pre-built SBOMs from package.cosmian.com
@@ -260,7 +260,11 @@ case "$TARGET" in
     pkg_component=$([ "$TARGET" = "server" ] && echo server || echo cli)
     pkg_result="$REPO_ROOT/result-${pkg_component}-${VARIANT}-${LINK}"
     if [ -e "$pkg_result" ] && [ -e "$(readlink -f "$pkg_result")" ]; then
-      NIX_RESULT="$pkg_result"
+      ws_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_ROOT/Cargo.toml" | head -1)"
+      case "$(readlink -f "$pkg_result")" in
+        *-"${ws_version}") NIX_RESULT="$pkg_result" ;;
+        *) echo "Ignoring stale packaging build $pkg_result (not version ${ws_version})" >&2 ;;
+      esac
     fi
     ;;
 esac
@@ -275,10 +279,10 @@ if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
       OUTPUT_DIR="$REPO_ROOT/sbom/ckms/$VARIANT/$LINK"
       ;;
     openssl_fips)
-      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_fips"
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl/fips"
       ;;
     openssl_main)
-      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_main"
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl/main"
       ;;
   esac
 fi
