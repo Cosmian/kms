@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import ssl
 import sys
 from dataclasses import dataclass
@@ -353,21 +354,42 @@ def create_recipe(
 
 
 def populate(
-    client: KmipClient, recipes: list[Recipe]
+    client: KmipClient, recipes: list[Recipe], lenient: bool = False
 ) -> tuple[list[JSON], list[JSON]]:
+    """Create every recipe; `lenient` (releases before 5.20.0) skips unsupported ones and their dependents."""
     items, skipped = [], []
     public_ids: dict[str, str] = {}
+    skipped_uids: set[str] = set()
     for recipe in recipes:
+        if lenient and {recipe.kek, recipe.cert_from} & skipped_uids:
+            skipped_uids.add(recipe.uid)
+            skipped.append({'uid': recipe.uid, 'reason': 'dependency skipped'})
+            continue
         try:
-            items.extend(create_recipe(client, recipe, public_ids))
+            created = create_recipe(client, recipe, public_ids)
+            if lenient:
+                # Old releases differ in state semantics: snapshot what they actually hold.
+                for item in created:
+                    attrs = extract_normalized_attributes(
+                        client.kmip(build_get_attributes(item['uid']))
+                    )
+                    actual = attrs['state'][0]
+                    if actual != item['expected_state']:
+                        print(
+                            f"NOTE {item['uid']}: old release holds State={actual}, recipe wanted {item['expected_state']}",
+                            file=sys.stderr,
+                        )
+                    item['expected_state'] = actual
+            items.extend(created)
         except KmipRequestError as error:
-            if (
+            if not lenient and (
                 recipe.kind not in ('ed25519', 'covercrypt')
                 or error.operation != 'CreateKeyPair'
                 or not is_unsupported_feature_error(error)
             ):
                 raise
             print(f'SKIP {recipe.uid}: {error}', file=sys.stderr)
+            skipped_uids.add(recipe.uid)
             skipped.append({'uid': recipe.uid, 'reason': str(error)})
     return items, skipped
 
@@ -579,11 +601,42 @@ def take_snapshot(
     }
 
 
-def _compare_attributes(uid: str, baseline: JSON, current: JSON) -> None:
+# Since 5.13.0 GetAttributes reports the format a Get returns (KMIP 2.1 §4.26), not the stored one.
+KEY_FORMAT_REPORTED = {
+    'TransparentSymmetricKey': 'Raw',
+    'TransparentRSAPrivateKey': 'PKCS1',
+    'TransparentRSAPublicKey': 'PKCS1',
+}
+# Before 5.13.0 the JSON `State` lagged behind the `objects.state` column the server enforces.
+LEGACY_STATE_DRIFT = {'PreActive': 'Active', 'Deactivated': 'Destroyed'}
+
+
+def _before_5_13(old_version: str) -> bool:
+    old = re.match(r'^(\d+)\.(\d+)\.\d+$', old_version)
+    return bool(old) and (int(old[1]), int(old[2])) < (5, 13)
+
+
+def _compare_attributes(
+    uid: str, baseline: JSON, current: JSON, old_version: str = 'unknown'
+) -> None:
     for key, expected in baseline.items():
         actual = current.get(key, [])
         if key == 'digestvalue':
             check(uid, 'DigestValue preserved', True, set(expected) <= set(actual))
+        elif key == 'keyformattype' and _before_5_13(old_version):
+            check(
+                uid,
+                'attribute ' + key,
+                sorted({KEY_FORMAT_REPORTED.get(v, v) for v in expected}),
+                sorted({KEY_FORMAT_REPORTED.get(v, v) for v in actual}),
+            )
+        elif key == 'state' and _before_5_13(old_version):
+            check(
+                uid,
+                'attribute ' + key,
+                sorted({LEGACY_STATE_DRIFT.get(v, v) for v in expected}),
+                sorted({LEGACY_STATE_DRIFT.get(v, v) for v in actual}),
+            )
         else:
             check(uid, 'attribute ' + key, expected, actual)
 
@@ -633,6 +686,7 @@ def verify_against_snapshot(
     phase: str,
     backend: str,
     mutate: bool = False,
+    old_version: str = 'unknown',
 ) -> None:
     """Check the same snapshot on the candidate, its restart, and the untouched backup."""
     if phase in ('candidate-restart', 'restore') and 'candidate' not in snapshot:
@@ -647,7 +701,7 @@ def verify_against_snapshot(
                 **expected,
                 'namevalue': snapshot['candidate']['name_values'],
             }
-        _compare_attributes(uid, expected, attributes)
+        _compare_attributes(uid, expected, attributes, old_version)
         tags = extract_all_tags(
             owner.kmip(build_get_attributes(uid, include_tags=True))
         )
@@ -796,7 +850,9 @@ def main(argv: list[str] | None = None) -> int:
             recipes = fixed_recipes(sample_hex, args.variant) + random_recipes(
                 args.seed, args.count, sample_hex, args.variant
             )
-            items, skipped = populate(owner, recipes)
+            old = re.match(r'^(\d+)\.(\d+)\.\d+$', args.old_version)
+            lenient = bool(old) and (int(old[1]), int(old[2])) < (5, 20)
+            items, skipped = populate(owner, recipes, lenient)
             snapshot = {
                 **take_snapshot(owner, grantee, items, args.seed),
                 'variant': args.variant,
@@ -815,6 +871,7 @@ def main(argv: list[str] | None = None) -> int:
                 phase=args.phase,
                 backend=args.backend,
                 mutate=args.mutate,
+                old_version=args.old_version,
             )
             if args.mutate:
                 write_snapshot(args.snapshot, snapshot)

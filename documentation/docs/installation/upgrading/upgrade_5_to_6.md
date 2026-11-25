@@ -12,6 +12,25 @@ This guide is for operators moving a running KMS from a 5.x release to 6.0. 6.0 
 6. **Stop every node before starting 6.0: there is no rolling upgrade.** A 5.x node running against a database already used by 6.0 does not honour the new object-state triggers (PostgreSQL) nor the Usage Limits accounting; see [database tables](../../configuration/database/tables.md).
 7. **Upgrade `ckms` together with the server.** A 5.29.0 `ckms certificates validate` exits 0 against a 6.0 server even for an invalid chain: 6.0 answers with an `Invalid` validity indicator instead of an error, and the 5.29.0 client prints it without failing.
 
+## Migration matrix by database backend
+
+Result of `mise run test:db:upgrade-all`: a database filled by a published 5.x image (every object kind and KMIP operation reachable through `ckms`), opened by the 6.0 server, then checked after the upgrade, after a restart, and after restoring the pre-upgrade backup with the old image.
+
+| Source release | SQLite | PostgreSQL | MySQL | Redis-with-Findex (non-FIPS) |
+|---|---|---|---|---|
+| 5.9.0 to 5.11.2 | ✅ | ✅ | ✅ | ❌ refused by design |
+| 5.12.0 to 5.12.1 | ✅ | ✅ | ✅ | ✅ |
+| 5.13.0 to 5.28.0 | ✅ | ✅ | ✅ | ➖ |
+| 5.29.0 | ✅ | ✅ | ✅ | ➖ |
+
+- ✅ the upgrade, restart and restore checks all passed.
+- ❌ refused by design: Redis-with-Findex databases written before 5.12.0 are rejected at startup (see [Database Migrations](./database_migrations.md#supported-source-versions)).
+- Reporting change, no data change: for objects created before 5.13.0, Get Attributes now reports `KeyFormatType` as the format a Get returns (`Raw` for symmetric keys, `PKCS1` for RSA keys) instead of the stored `TransparentSymmetricKey`/`TransparentRSA*` form, and reports `State` from the enforced object state (`Active`, `Destroyed`) where 5.9 to 5.12 reported a stale `PreActive` or `Deactivated`. Key material and the server's behaviour are unchanged; update any client that compares these two attributes.
+- Redis-with-Findex 5.12.x only: a certificate re-certified on 5.12.x had lost its user tags in the stored record while the Findex index still listed them, so Locate by that tag still found it. The upgrade rebuilds the index entries from the stored record (while adding the `_serial=` tag), so such a certificate is no longer found by the tag it had already lost.
+- ➖ not tested yet. Do not read it as supported.
+
+Run it yourself before cutting over: `mise run test:db:upgrade-all --backend <sqlite|postgresql|mysql|redis|all> --old-version <all|5.x.y,...>` (Docker required; `--variant non-fips` for Redis).
+
 ## Client changes
 
 Each row is a behaviour that changed to follow KMIP. The last column is what the client or operator must do.
