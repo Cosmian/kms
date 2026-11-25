@@ -30,7 +30,7 @@ resources/cli.zip
 
 # HSM / Crypto Libraries
 .openssl
-resources/tarballs/openssl-3.1.2.tar.gz
+resources/tarballs/openssl-3.5.9.tar.gz
 resources/tarballs/openssl-3.6.5.tar.gz
 .utimaco
 .softhsm2*

@@ -282,6 +282,7 @@ pub(crate) async fn callback(
     let mut validation = Validation::new(header.alg);
     validation.algorithms = vec![header.alg];
     validation.set_audience(&[&client_id]);
+    validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
 
     #[cfg(all(not(test), not(feature = "insecure")))]
     {
@@ -291,7 +292,6 @@ pub(crate) async fn callback(
 
     #[cfg(any(test, feature = "insecure"))]
     {
-        drop(issuer); // not used in insecure/test builds
         validation.validate_exp = false;
     }
 
@@ -312,13 +312,32 @@ pub(crate) async fn callback(
     // Extract the user identity (email claim). The id_token is intentionally not
     // stored in the session — the BFF pattern requires only the user_id to be kept.
     // All subsequent API requests from the UI are authenticated via the session cookie.
-    let Some(user_id) = claims
-        .get("email")
-        .and_then(|v| v.as_str())
-        .map(str::to_owned)
-    else {
-        return HttpResponse::InternalServerError()
+    let Some(email) = claims.get("email").and_then(Value::as_str) else {
+        return HttpResponse::Unauthorized()
             .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
+    };
+    let email_verified = match claims.get("email_verified") {
+        Some(Value::Bool(verified)) => *verified,
+        Some(Value::String(verified)) => verified == "true",
+        _ => false,
+    };
+    if !email_verified {
+        return HttpResponse::Unauthorized().json(serde_json::json!({
+            "error": "JWT email is not verified (email_verified must be true)"
+        }));
+    }
+    if email.trim().is_empty() {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "Empty email claim in id_token" }));
+    }
+    let user_id = if oidc_runtime
+        .primary_jwt_issuer
+        .as_ref()
+        .is_some_and(|primary| primary != &issuer)
+    {
+        format!("{email}#{issuer}")
+    } else {
+        email.to_owned()
     };
     let Ok(user_id) = UserId::try_new(user_id.as_str()) else {
         return HttpResponse::Unauthorized()
@@ -510,7 +529,7 @@ pub(crate) async fn login_as(
                 );
             };
 
-            let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(auth_verifier, &token).await
+            let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(auth_verifier, &token, Some(realm)).await
             {
                 Ok(sub) => sub,
                 Err(e) => {
@@ -1010,6 +1029,7 @@ mod tests {
                 .app_data(web::Data::new(OidcRuntimeConfig {
                     config: OidcConfig::default(),
                     discovered: None,
+                    primary_jwt_issuer: None,
                 }))
                 .app_data(web::Data::new(KMS_URL.to_owned()))
                 .app_data(web::Data::new(test_ui_session_cookie()))
@@ -1182,15 +1202,18 @@ mod tests {
     }
 
     const OIDC_CLIENT_ID: &str = "kms-ui";
+    const OIDC_ISSUER: &str = "https://idp.example.com/";
     const OIDC_EMAIL: &str = "alice@example.com";
     const IDP_SECRET: &[u8] = b"idp-signing-secret-for-the-tests";
     const SPIFFE_ID: &str = "spiffe://example.org/ns/ui/sa/gateway";
 
-    /// What the mock `IdP` saw, and the nonce it puts in the `id_token` it issues.
+    /// What the mock `IdP` saw, the nonce it puts in the `id_token` it issues, and the
+    /// claims overriding its complete default claim set (a `null` value removes the claim).
     #[derive(Default)]
     struct IdpState {
         nonce: std::sync::Mutex<String>,
         token_form: std::sync::Mutex<String>,
+        claims: std::sync::Mutex<serde_json::Map<String, serde_json::Value>>,
     }
 
     /// One HTTP/1.1 request: its request line and its body.
@@ -1221,7 +1244,9 @@ mod tests {
     }
 
     /// A mock `IdP` on a random local port: `GET /jwks` serves its signing key, any other
-    /// request is the token endpoint and answers with an `id_token` carrying `state.nonce`.
+    /// request is the token endpoint and answers with an `id_token` carrying `state.nonce`,
+    /// every claim an OIDC `IdP` issues (`iss`, `sub`, `aud`, `exp`, a verified `email`),
+    /// then `state.claims`.
     async fn mock_idp(state: Arc<IdpState>) -> u16 {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -1242,12 +1267,22 @@ mod tests {
                         let nonce = state.nonce.lock().expect("lock").clone();
                         let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
                         header.kid = Some("idp-key".to_owned());
+                        let mut claims = serde_json::json!({
+                            "iss": OIDC_ISSUER, "sub": "alice-subject", "aud": OIDC_CLIENT_ID,
+                            "email": OIDC_EMAIL, "email_verified": true,
+                            "nonce": nonce, "exp": 4_102_444_800_u64,
+                        });
+                        let claims_map = claims.as_object_mut().expect("claims object");
+                        for (name, value) in state.claims.lock().expect("lock").iter() {
+                            if value.is_null() {
+                                claims_map.remove(name);
+                            } else {
+                                claims_map.insert(name.clone(), value.clone());
+                            }
+                        }
                         let id_token = jsonwebtoken::encode(
                             &header,
-                            &serde_json::json!({
-                                "aud": OIDC_CLIENT_ID, "email": OIDC_EMAIL,
-                                "nonce": nonce, "exp": 4_102_444_800_u64,
-                            }),
+                            &claims,
                             &jsonwebtoken::EncodingKey::from_secret(IDP_SECRET),
                         )
                         .expect("sign id_token");
@@ -1293,13 +1328,16 @@ mod tests {
         .to_request()
     }
 
-    /// The whole OIDC browser flow through the real `login_flow`, `callback` and `whoami`
-    /// handlers with a mock `IdP`: the PKCE verifier, state and nonce travel in the sealed
-    /// cookie, and the cookie issued at login holds nothing but the user.
-    #[actix_web::test]
-    async fn oidc_login_round_trips_through_the_sealed_session_cookie() {
-        let idp = Arc::new(IdpState::default());
-        let port = mock_idp(idp.clone()).await;
+    /// The `login_flow`/`callback`/`whoami` handlers configured for the mock `IdP` on `port`,
+    /// the KMS trusting `primary_jwt_issuer` as its first JWT provider.
+    async fn oidc_app(
+        port: u16,
+        primary_jwt_issuer: Option<&str>,
+    ) -> impl actix_web::dev::Service<
+        actix_http::Request,
+        Response = ServiceResponse<impl actix_web::body::MessageBody>,
+        Error = actix_web::Error,
+    > {
         let jwks_manager = Arc::new(
             JwksManager::new(vec![format!("http://127.0.0.1:{port}/jwks")], None)
                 .await
@@ -1308,12 +1346,12 @@ mod tests {
         let kms = test_kms_with_config(https_clap_config())
             .await
             .expect("kms");
-        let app = test::init_service(
+        test::init_service(
             App::new()
                 .app_data(web::Data::new(OidcRuntimeConfig {
                     config: OidcConfig {
                         client_id: Some(OIDC_CLIENT_ID.to_owned()),
-                        issuer_url: Some("https://idp.example.com/".to_owned()),
+                        issuer_url: Some(OIDC_ISSUER.to_owned()),
                         ..OidcConfig::default()
                     },
                     discovered: Some(OidcDiscoveredEndpoints {
@@ -1321,6 +1359,7 @@ mod tests {
                         token_endpoint: format!("http://127.0.0.1:{port}/token"),
                         jwks_manager,
                     }),
+                    primary_jwt_issuer: primary_jwt_issuer.map(str::to_owned),
                 }))
                 .app_data(web::Data::new(saml_runtime(None).await))
                 .app_data(web::Data::new(KMS_URL.to_owned()))
@@ -1330,10 +1369,21 @@ mod tests {
                 .service(callback)
                 .service(whoami),
         )
-        .await;
+        .await
+    }
 
-        // login_flow: redirect to the IdP, flow values sealed in the cookie.
-        let resp = test::call_service(&app, get("/login_flow", None)).await;
+    /// `GET /login_flow`: the `state`, `nonce` and `code_challenge` sent to the `IdP`, and the
+    /// flow cookie sealing them.
+    async fn begin_oidc_login<S, B>(app: &S) -> (String, String, String, String)
+    where
+        S: actix_web::dev::Service<
+                actix_http::Request,
+                Response = ServiceResponse<B>,
+                Error = actix_web::Error,
+            >,
+        B: actix_web::body::MessageBody,
+    {
+        let resp = test::call_service(app, get("/login_flow", None)).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
         let location = Url::parse(
             resp.headers()
@@ -1357,6 +1407,20 @@ mod tests {
             !flow_cookie.contains(&state) && !flow_cookie.contains(&nonce),
             "flow values must not appear in clear in the cookie"
         );
+        (state, nonce, challenge, flow_cookie)
+    }
+
+    /// The whole OIDC browser flow through the real `login_flow`, `callback` and `whoami`
+    /// handlers with a mock `IdP`: the PKCE verifier, state and nonce travel in the sealed
+    /// cookie, and the cookie issued at login holds nothing but the user.
+    #[actix_web::test]
+    async fn oidc_login_round_trips_through_the_sealed_session_cookie() {
+        let idp = Arc::new(IdpState::default());
+        let port = mock_idp(idp.clone()).await;
+        let app = oidc_app(port, None).await;
+
+        // login_flow: redirect to the IdP, flow values sealed in the cookie.
+        let (state, nonce, challenge, flow_cookie) = begin_oidc_login(&app).await;
 
         // callback refusals: no cookie, forged state, nonce not the one of the login.
         let url = format!("/callback?state={state}&code=auth-code");
@@ -1422,6 +1486,91 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
+    /// F-046 / F-014: the `id_token` must carry `iss`, `aud` and `sub`, and a verified email
+    /// (`email_verified: true`); any of them missing (or the email unverified) refuses the
+    /// login with 401 and no session, while the complete token still logs in, nonce check
+    /// intact.
+    #[actix_web::test]
+    async fn oidc_callback_requires_iss_aud_sub_and_a_verified_email() {
+        let idp = Arc::new(IdpState::default());
+        let port = mock_idp(idp.clone()).await;
+        let app = oidc_app(port, None).await;
+        let (state, nonce, _, flow_cookie) = begin_oidc_login(&app).await;
+        *idp.nonce.lock().expect("lock") = nonce.clone();
+        let url = format!("/callback?state={state}&code=auth-code");
+
+        for (name, value) in [
+            ("exp", serde_json::Value::Null),
+            ("iss", serde_json::Value::Null),
+            ("aud", serde_json::Value::Null),
+            ("sub", serde_json::Value::Null),
+            ("email", serde_json::Value::Null),
+            ("email", serde_json::json!("")),
+            ("email_verified", serde_json::json!(false)),
+            ("email_verified", serde_json::json!("false")),
+            ("email_verified", serde_json::Value::Null),
+        ] {
+            *idp.claims.lock().expect("lock") =
+                serde_json::Map::from_iter([(name.to_owned(), value.clone())]);
+            let resp = test::call_service(&app, get(&url, Some(&flow_cookie))).await;
+            let (status, cookies) = (resp.status(), set_cookies(&resp));
+            let body = test::read_body(resp).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{name}={value}: {body:?}");
+            assert!(
+                cookies.is_empty(),
+                "{name}={value}: a refused login sets no session"
+            );
+        }
+
+        // The complete token: the nonce is still checked, then the login succeeds.
+        idp.claims.lock().expect("lock").clear();
+        *idp.nonce.lock().expect("lock") = "another-nonce".to_owned();
+        let resp = test::call_service(&app, get(&url, Some(&flow_cookie))).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        *idp.nonce.lock().expect("lock") = nonce;
+        let resp = test::call_service(&app, get(&url, Some(&flow_cookie))).await;
+        assert_eq!(resp.status(), StatusCode::FOUND);
+        assert_eq!(
+            opened(&session_pair(&resp)),
+            Some(UiSession {
+                user_id: Some(UserId::from(OIDC_EMAIL)),
+                ..UiSession::default()
+            })
+        );
+    }
+
+    /// F-014: the UI identity is namespaced `email#issuer` unless the UI `IdP` is the first
+    /// JWT provider (or no JWT provider is configured), so it matches the identity the same
+    /// user gets with a bearer token and a secondary `IdP` cannot take over a primary user.
+    #[actix_web::test]
+    async fn oidc_login_namespaces_the_identity_unless_the_idp_is_the_primary_jwt_issuer() {
+        for (primary_jwt_issuer, expected) in [
+            (None, OIDC_EMAIL.to_owned()),
+            (Some(OIDC_ISSUER), OIDC_EMAIL.to_owned()),
+            (
+                Some("https://primary-idp.example.com/"),
+                format!("{OIDC_EMAIL}#{OIDC_ISSUER}"),
+            ),
+        ] {
+            let idp = Arc::new(IdpState::default());
+            let port = mock_idp(idp.clone()).await;
+            let app = oidc_app(port, primary_jwt_issuer).await;
+            let (state, nonce, _, flow_cookie) = begin_oidc_login(&app).await;
+            *idp.nonce.lock().expect("lock") = nonce;
+            let url = format!("/callback?state={state}&code=auth-code");
+            let resp = test::call_service(&app, get(&url, Some(&flow_cookie))).await;
+            assert_eq!(resp.status(), StatusCode::FOUND, "{primary_jwt_issuer:?}");
+            assert_eq!(
+                opened(&session_pair(&resp)),
+                Some(UiSession {
+                    user_id: Some(UserId::from(expected.as_str())),
+                    ..UiSession::default()
+                }),
+                "{primary_jwt_issuer:?}"
+            );
+        }
+    }
+
     /// SPIFFE JWT-SVID login through `login_svid`: a fresh cookie holding only the SPIFFE ID,
     /// whatever session cookie the browser presented, and no cookie for a rejected token.
     #[actix_web::test]
@@ -1429,6 +1578,7 @@ mod tests {
         let jwt_configs = Arc::new(vec![JwtConfig {
             jwt_issuer_uri: "https://issuer.example.com".to_owned(),
             jwt_audience: Some(vec!["cosmian-kms".to_owned()]),
+            issuer_namespace: None,
             jwks: Arc::new(JwksManager::new(vec![], None).await.expect("jwks manager")),
             accept_spiffe_subject: true,
         }]);

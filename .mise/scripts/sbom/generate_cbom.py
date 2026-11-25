@@ -1216,8 +1216,8 @@ def find_in_sources(root: Path, patterns: list[str]) -> bool:
         return True  # grep not available (Windows); skip scan
 
 
-# OpenSSL FIPS Provider 3.1.2: CMVP certificate #4985, overall security level 1
-# (https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4985).
+# CMVP-validated OpenSSL FIPS Provider (version: crate/crypto/openssl_versions.json), overall
+# security level 1 (https://csrc.nist.gov/projects/cryptographic-module-validation-program).
 FIPS_CERTIFICATION_LEVEL = 'fips140-3-l1'
 
 # CycloneDX 1.6 vocabularies (validate_cbom.py checks them against the official schema).

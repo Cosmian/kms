@@ -131,7 +131,7 @@ def _load_overrides(sbom_dir: Path) -> dict[str, str]:
     The file maps component names to full CPE strings, e.g.::
 
         {
-          "openssl": "cpe:2.3:a:openssl:openssl:3.1.2:*:*:*:*:*:*:*",
+          "openssl": "cpe:2.3:a:openssl:openssl:3.6.5:*:*:*:*:*:*:*",
           "glibc":   "cpe:2.3:a:gnu:glibc:2.34:*:*:*:*:*:*:*"
         }
     """

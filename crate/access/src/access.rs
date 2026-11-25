@@ -144,7 +144,6 @@ impl Role {
             | Op::Certify
             | Op::ReCertify
             | Op::ReKey
-            | Op::DeriveKey
             | Op::Activate
             | Op::Revoke
             | Op::Destroy
@@ -164,7 +163,8 @@ impl Role {
             | Op::CreateKeyPair
             | Op::Register
             | Op::ReKeyKeyPair
-            | Op::CreateSplitKey => match self {
+            | Op::CreateSplitKey
+            | Op::DeriveKey => match self {
                 Self::Operator => RoleDecision::RequireCreatePermission,
                 Self::CryptoOfficer => RoleDecision::Allow,
             },
@@ -509,6 +509,7 @@ mod tests {
             Op::Register,
             Op::ReKeyKeyPair,
             Op::CreateSplitKey,
+            Op::DeriveKey,
         ] {
             assert_eq!(Role::Operator.decide(op), RequireCreatePermission, "{op}");
             assert_eq!(Role::CryptoOfficer.decide(op), Allow, "{op}");

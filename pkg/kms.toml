@@ -199,6 +199,9 @@ port = 9998
 # The KMS HTTP server hostname
 hostname = "0.0.0.0"
 
+# Allow starting without any authentication method on a non-loopback address. Development only.
+# insecure_allow_unauthenticated = false
+
 # An optional API token to use for authentication on the HTTP server.
 # api_token_id = "<secret-api-token>"
 

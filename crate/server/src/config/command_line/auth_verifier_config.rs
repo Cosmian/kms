@@ -40,12 +40,12 @@ pub struct AuthVerifierConfig {
     #[clap(long, env = "KMS_AUTH_VERIFIER_JWKS_URI", verbatim_doc_comment)]
     pub auth_verifier_jwks_uri: Option<String>,
 
-    /// Realm to authenticate the Web UI against on the Auth Verifier server.
+    /// Realm for Auth Verifier Web UI login and bearer tokens.
     ///
-    /// Required only to enable the Web UI login form for the Auth Verifier
-    /// server (`POST /ui/login_as`); bearer-token validation of already-issued tokens
-    /// does not need a realm. When unset, the UI falls back to any other configured
-    /// authentication method (OIDC/JWT or client certificate).
+    /// Required to enable the Web UI login form (`POST /ui/login_as`).
+    /// When set, bearer tokens must also have been issued for this realm.
+    /// Tokens from the admin realm are always rejected. When unset, the UI
+    /// falls back to another configured authentication method (OIDC/JWT or client certificate).
     #[clap(long, env = "KMS_AUTH_VERIFIER_REALM", verbatim_doc_comment)]
     pub auth_verifier_realm: Option<String>,
 
@@ -93,6 +93,21 @@ impl AuthVerifierConfig {
         self.auth_verifier_url
             .as_ref()
             .and(self.auth_verifier_saml_realm.as_deref())
+    }
+
+    /// Checks `auth_verifier_realm`: the Auth Verifier admin realm (`_`) is always rejected
+    /// at login and for bearer tokens, so configuring it would only fail at runtime.
+    ///
+    /// # Errors
+    /// Returns the reason when `auth_verifier_realm` is the admin realm `_`.
+    pub fn validate_realm(&self) -> Result<(), String> {
+        if self.auth_verifier_realm.as_deref() == Some("_") {
+            return Err(
+                "auth_verifier_realm: the admin realm `_` cannot be used for KMS authentication; create a dedicated realm"
+                    .to_owned(),
+            );
+        }
+        Ok(())
     }
 
     /// Checks the SAML settings: the realm must not be empty or the Auth Verifier admin
@@ -162,6 +177,17 @@ mod tests {
             Ok(())
         );
         assert_eq!(AuthVerifierConfig::default().validate_saml(), Ok(()));
+    }
+
+    #[test]
+    fn test_validate_realm_rejects_admin_realm() {
+        let with_realm = |realm: Option<&str>| AuthVerifierConfig {
+            auth_verifier_realm: realm.map(str::to_owned),
+            ..AuthVerifierConfig::default()
+        };
+        assert!(with_realm(Some("_")).validate_realm().is_err());
+        assert_eq!(with_realm(Some("kms")).validate_realm(), Ok(()));
+        assert_eq!(with_realm(None).validate_realm(), Ok(()));
     }
 
     #[test]
@@ -285,7 +311,7 @@ mod tests {
             cfg.auth_verifier_url.as_deref(),
             Some("https://localhost:8443")
         );
-        assert_eq!(cfg.auth_verifier_realm.as_deref(), Some("_"));
+        assert_eq!(cfg.auth_verifier_realm.as_deref(), Some("kms"));
         assert!(cfg.auth_verifier_accept_invalid_certs);
         assert_eq!(
             cfg.jwks_uri().as_deref(),

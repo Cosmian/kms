@@ -415,24 +415,8 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                     _ = interval.tick(), if count_interval_secs > 0 => {
                         // Not cluster-locked: the gauges live in this process's OTel exporter.
                         if let Some(ref metrics) = kms.metrics {
-                            // Privileged backend count: no ACL filtering, covers all backends.
-                            match kms.database.count_non_destroyed_key_objects().await {
-                                Ok(count) => {
-                                    debug!(
-                                        "[metrics-cron] kms.keys.active.count synced to {}",
-                                        count
-                                    );
-                                    metrics.update_active_keys_count(
-                                        i64::try_from(count).unwrap_or(i64::MAX),
-                                    );
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        "[metrics-cron] Failed to sync kms.keys.active.count: {}",
-                                        e
-                                    );
-                                }
-                            }
+                            // ── Key inventory and expiry gauges ────────────────────────────────
+                            metrics.sync_key_gauges(&kms.database).await;
 
                             match kms.database.count_all_non_destroyed_objects().await {
                                 Ok(count) => {

@@ -179,7 +179,6 @@ Crate path: `crate/server`
 | `debug` | `Imported object with uid: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing leaf certificate with attributes: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}` | `src/core/operations/import.rs` | - | - |
-| `debug` | `JWT Access granted to {email}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `email`: user email address | - |
 | `debug` | `JWT authentication failed: {e:?}` | `src/middlewares/jwt/jwt_middleware.rs` | `e`: caught error | - |
 | `debug` | `Key successfully unwrapped with wrapping key: {}` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Key wrap type: {:?}` | `src/core/operations/export_get.rs` | - | - |
@@ -391,7 +390,6 @@ Crate path: `crate/server`
 | `debug` | `...wrapping the key block with key uid: {wrapping_key_uid} using the KMS, user:              {user}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`, `user` | — |
 | `debug` | `[kms-init] Failed to seed kms.objects.total: {e}` | `src/core/kms/mod.rs` | `e` | — |
 | `debug` | `[metrics-cron] Failed to sync kms.objects.total: {}` | `src/cron.rs` | — | — |
-| `debug` | `[metrics-cron] kms.keys.active.count synced to {}` | `src/cron.rs` | — | — |
 | `debug` | `[metrics-cron] kms.objects.total synced to {}` | `src/cron.rs` | — | — |
 | `debug` | `[metrics-cron] reconcile_all_object_counts failed: {}` | `src/cron.rs` | — | — |
 | `debug` | `API Token Middleware: An authenticated user was found; there is no need to                      authenticate twice...` | `src/middlewares/api_token/api_token_middleware.rs` | — | — |
@@ -577,7 +575,6 @@ Crate path: `crate/server`
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
-| `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is              configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers              these operations on your behalf — configure a Crypto Officer identity backed by a              real credential (TLS certificate CN / OIDC subject matching `default_username`) so              XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
 | `error` | `AWS XKS: failed to spawn key access migration thread: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: failed to start key access migration runtime: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: pre-existing key access migration failed: {error}` | `src/start_kms_server.rs` | `error` | - |
@@ -602,14 +599,12 @@ Crate path: `crate/server`
 | `warn` | `no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | Emitted when a validated JWT has no email claim and `--jwt-svid-auth` is not enabled or sub is not a valid SPIFFE ID |
 | `debug` | `JWT-SVID access granted to {sub}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID (URI) from JWT sub claim | Workload authenticated via SPIFFE JWT-SVID with full URI mapped to KMS UserId |
 | `debug` | `DeriveKey asymmetric operation completed successfully` | `src/core/operations/derive_key.rs` | - | Emitted after a non-FIPS X25519 ECDH `DeriveKey` request has validated both referenced keys, derived the shared secret, and persisted the resulting `SecretData` object. |
-| `warn` | `[kms-init] Failed to seed kms.keys.active.count: {e}` | `src/core/kms/mod.rs` | `e` | - |
-| `warn` | `[metrics-cron] Failed to sync kms.keys.active.count: {}` | `src/cron.rs` | - | - |
 | `warn` | `JWK serialization failed uid={uid}: {e}` | `src/routes/jwks.rs` | `uid`: unique identifier of the key object being published in the JWKS; `e`: the `serde_json` serialization error | Emitted when a typed `Jwk` fails to serialize to JSON; the affected key is skipped and omitted from the JWKS `keys` array rather than emitting an invalid `null` entry. |
 | `warn` | `JWKS refresh failed while validating a JWT-SVID: {error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | JWKS endpoint unreachable |
 | `warn` | `JWT-SVID for {sub} rejected: missing or empty 'aud' claim` | `src/middlewares/jwt/jwt_token_auth.rs` | `sub`: SPIFFE ID of the rejected SVID | Possible cross-service SVID replay attempt |
 | `warn` | `{:?} {} 401 unauthorized: {error}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error` | - |
 | `debug` | `CRL cache entry stale, refetching: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
-| `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `vault transit: key '{name}' already exists, not re-creating` | `src/routes/spire/transit.rs` | `name` | ×2 in this file |
 | `trace` | `import pgp_key: uid={}` | `src/core/operations/import.rs` | - | - |
 | `error` | `AuditFileStore: audit sink failed to resume ({e}) — audit logging is disabled for this process` | `src/core/audit/store.rs` | `e` | Only reachable if the recovered log file's metadata cannot be `stat`'d at all (lock acquisition and recovery/open faults retry indefinitely and never reach here). The writer task exits and audit logging stays off for the rest of the process lifetime — it is not retried. |
 | `error` | `AuditFileStore: failed to write recovery sentinel id={}: {e} — event dropped` | `src/core/audit/file_sink.rs` | `id`: sentinel event ID<br>`e`: I/O error | A torn-write-recovered or reanchor sentinel written during recovery (before the writer task exists) failed to persist; the chain does not advance past this `id` and the sentinel is dropped. |
@@ -800,6 +795,16 @@ Crate path: `crate/server`
 | `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})` | `src/cron.rs` | `issuer_id` (CA certificate UID), `refresh_reason` (`expires within <N>h` or `revoked certificates changed`) | Leader region only. |
 | `debug` | `Session: authenticated user '{username}'` | `src/middlewares/session_auth.rs` | `username` | - |
 | `debug` | `UI session cookie rejected: {reason}` | `src/middlewares/ui_session.rs` | `reason` | - |
+| `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers these operations on your behalf — configure a Crypto Officer and use the API token to manage XKS keys as `default_username`. External TLS/JWT identities must differ from `default_username`. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
+| `warn` | `External identity collides with the KMS default_username` | `src/middlewares/ensure_auth.rs` | - | - |
+| `debug` | `vault transit: created {AES256_GCM96} key '{name}' version {version}` | `src/routes/spire/transit_encryption.rs` | `AES256_GCM96`, `name`, `version` | - |
+| `debug` | `vault transit: decryption failed: {reason}` | `src/routes/spire/transit_encryption.rs` | `reason` | - |
+| `trace` | `{} vault transit decrypt/{name}` | `src/routes/spire/transit_encryption.rs` | `name` | - |
+| `trace` | `{} vault transit encrypt/{name}` | `src/routes/spire/transit_encryption.rs` | `name` | - |
+| `trace` | `{} vault transit keys/{name}/rotate` | `src/routes/spire/transit_encryption.rs` | `name` | - |
+| `warn` | `[metrics] Failed to sync kms.keys.active.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
+| `warn` | `[metrics] Failed to sync kms.keys.expiring_soon.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
+| `debug` | `[metrics] kms.keys.active.count synced: {} bucket(s)` | `src/core/otel_metrics.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -863,6 +868,7 @@ Crate path: `crate/server_database`
 | `info` | `Database migration completed` | `src/stores/migrate.rs` | - | - |
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
 | `error` | `ceremony record verification failed (tampered record, or ceremony_keys mismatch across regions); treating as inactive` | `src/core/database_permissions.rs` | `role`, `user`, `error` | Security: audit event on every check of the user. Tampered record, or `ceremony_secret`/`ceremony_key_id` differing between regions. |
+| `debug` | `[metrics] skipping unparsable DeactivationDate {json}: {e}` | `src/stores/sql/mod.rs` | `json`, `e` | - |
 
 ### `cosmian_kms_crypto`
 
@@ -1108,6 +1114,11 @@ Crate path: `crate/interfaces`
 | `debug` | `signature_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `mac: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
 | `debug` | `mac_verify: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`, `uid` | - |
+| `warn` | `HSM key_inventory: failed to list slots: {e}` | `src/hsm/hsm_store.rs` | `e` | - |
+| `warn` | `HSM key_inventory: slot {slot_id} typed query failed, slot skipped: {e}` | `src/hsm/hsm_store.rs` | `slot_id`, `e` | - |
+| `warn` | `key_deactivation_dates not implemented for this ObjectsStore backend — kms.keys.expiring_soon.count will not include its keys` | `src/stores/objects_store.rs` | - | - |
+| `warn` | `key_inventory not implemented for this ObjectsStore backend — kms.keys.active.count will not include its keys` | `src/stores/objects_store.rs` | - | - |
+| `debug` | `HSM key_inventory: slot {slot_id} query failed: {e}` | `src/hsm/hsm_store.rs` | `slot_id`, `e` | - |
 
 ### `cosmian_kms_access`
 

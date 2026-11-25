@@ -97,7 +97,8 @@ docker run --rm --user nobody --entrypoint /usr/bin/ckms "${IMAGE_TAG}" --versio
 
 echo "=== Starting server (variant=${VARIANT}) ==="
 # Let Docker pick a free ephemeral host port (loopback only): no pick-then-bind race.
-docker run -d --name "${CONTAINER_NAME}" -p 127.0.0.1::9998 "${IMAGE_TAG}" \
+docker run -d --name "${CONTAINER_NAME}" -p 127.0.0.1::9998 \
+  -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true "${IMAGE_TAG}" \
   --database-type sqlite --sqlite-path /tmp/data
 HOST_PORT="$(docker port "${CONTAINER_NAME}" 9998/tcp | head -n1 | sed 's/.*://')"
 echo "Server mapped to 127.0.0.1:${HOST_PORT}"

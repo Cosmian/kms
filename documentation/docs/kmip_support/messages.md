@@ -25,7 +25,8 @@ along with any relevant result data or error messages.
 - On `Stop` and `Undo`, processing ends at the first failure and later items are not returned.
 - The response `BatchCount` is the number of returned items.
 - `Undo` reverts earlier items (limit 1,000 items, else `Server_Limit_Exceeded`). Only items really reverted report
-  `Operation Undone`; the others keep `Success`.
+  `Operation Undone`; the others keep `Success`. Usage Limits consumed by an undone item stay consumed: its response
+  is still returned.
 - A critical Message Extension fails every item with `Unknown_Message_Extension`.
 - A Hashed Password credential returns `Feature_Not_Supported`.
 - Maximum Response Size is applied to Query only: a Query response that would exceed it becomes `Response_Too_Large`.

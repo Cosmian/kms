@@ -32,9 +32,7 @@ const fn pin_default_provider() {}
 #[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
 #[ctor::ctor]
 fn initialize_openssl_env_from_build() {
-    let conf_is_set = std::env::var_os("OPENSSL_CONF").is_some();
     let modules_is_set = std::env::var_os("OPENSSL_MODULES").is_some();
-    let _ = conf_is_set; // reserved for future use; avoid overriding OPENSSL_CONF here
 
     if !modules_is_set
         && let Some(mods) = option_env!("OPENSSL_MODULES")
@@ -86,6 +84,29 @@ mod tests {
 
     static INIT: Once = Once::new();
 
+    /// `true` when `modules` holds the provider this build needs: the FIPS provider in FIPS mode.
+    #[cfg(not(feature = "non-fips"))]
+    fn has_required_provider(modules: &std::path::Path) -> bool {
+        modules.join("fips.so").exists() || modules.join("fips.dylib").exists()
+    }
+
+    /// `true` when `modules` holds the provider this build needs: any module in non-FIPS mode.
+    #[cfg(feature = "non-fips")]
+    fn has_required_provider(modules: &std::path::Path) -> bool {
+        modules.exists()
+    }
+
+    /// `(conf, modules)` of an `OPENSSL_DIR` tree (e.g. provided by the Nix shell) holding what
+    /// this build needs, so a locally built OpenSSL compiled against an incompatible glibc is not
+    /// used instead. Under Nix, `OPENSSL_CONF` is left untouched.
+    fn openssl_dir_paths(dir: &str) -> Option<(Option<PathBuf>, PathBuf)> {
+        let root = PathBuf::from(dir);
+        let conf = root.join("ssl").join("openssl.cnf");
+        let modules = root.join("lib").join("ossl-modules");
+        (conf.exists() && has_required_provider(&modules))
+            .then(|| ((!dir.starts_with("/nix/store/")).then_some(conf), modules))
+    }
+
     /// Ensure OpenSSL environment variables are set for tests (both FIPS and non-FIPS).
     /// Called automatically before any test runs.
     #[expect(unsafe_code, reason = "std::env::set_var is unsafe in edition 2024")]
@@ -96,112 +117,24 @@ mod tests {
             return;
         }
 
-        #[cfg(feature = "non-fips")]
-        {
-            // Non-FIPS mode: prefer OPENSSL_DIR if provided
-            if let Ok(dir) = env::var("OPENSSL_DIR") {
-                let openssl_dir = PathBuf::from(&dir);
-                let conf_path = openssl_dir.join("ssl").join("openssl.cnf");
-                let modules_dir = openssl_dir.join("lib").join("ossl-modules");
-                if conf_path.exists() {
-                    if !conf_is_set {
-                        unsafe { env::set_var("OPENSSL_CONF", &conf_path) }
-                    }
-                    if !modules_is_set && modules_dir.exists() {
-                        unsafe { env::set_var("OPENSSL_MODULES", &modules_dir) }
-                    }
-                    return;
-                }
-            }
-
-            // Fallback to cargo-built non-fips prefix under target/openssl-non-fips-3.6.5-<os>-<arch>
-            let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            let workspace_root = crate_dir
-                .parent()
-                .and_then(|p| p.parent())
-                .unwrap_or(&crate_dir)
-                .to_path_buf();
-            let os = std::env::consts::OS;
-            let arch = std::env::consts::ARCH;
-            let main_prefix = workspace_root
-                .join("target")
-                .join(format!("openssl-non-fips-3.6.5-{os}-{arch}"));
-            let conf_path = main_prefix.join("ssl").join("openssl.cnf");
-            let modules_dir = main_prefix.join("lib").join("ossl-modules");
-            if conf_path.exists() && modules_dir.exists() {
-                if !conf_is_set {
-                    unsafe { env::set_var("OPENSSL_CONF", &conf_path) }
-                }
-                if !modules_is_set {
-                    unsafe { env::set_var("OPENSSL_MODULES", &modules_dir) }
-                }
-            }
+        // Otherwise use the prefix `build.rs` built and exported at compile time.
+        let Some((conf, modules)) = env::var("OPENSSL_DIR")
+            .ok()
+            .and_then(|dir| openssl_dir_paths(&dir))
+            .or_else(|| {
+                Some((
+                    Some(PathBuf::from(option_env!("OPENSSL_CONF")?)),
+                    PathBuf::from(option_env!("OPENSSL_MODULES")?),
+                ))
+            })
+        else {
+            return;
+        };
+        if !conf_is_set && let Some(conf) = conf {
+            unsafe { env::set_var("OPENSSL_CONF", conf) }
         }
-
-        #[cfg(not(feature = "non-fips"))]
-        {
-            // Compute workspace root from the current crate path
-            // `lib.rs` lives under `crate/crypto`, so go up two levels
-            let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            let workspace_root = crate_dir
-                .parent()
-                .and_then(|p| p.parent())
-                .unwrap_or(&crate_dir)
-                .to_path_buf();
-
-            // FIPS mode: prefer an existing OPENSSL_DIR (e.g. provided by Nix shell) if it contains
-            // FIPS artifacts. This avoids falling back to a locally built OpenSSL that
-            // may have been compiled against an incompatible glibc version.
-            if let Ok(dir) = env::var("OPENSSL_DIR") {
-                let openssl_dir = PathBuf::from(&dir);
-                let conf_path = openssl_dir.join("ssl").join("openssl.cnf");
-                let modules_dir = openssl_dir.join("lib").join("ossl-modules");
-                // Detect fips module (Linux .so / macOS .dylib)
-                let fips_so = modules_dir.join("fips.so");
-                let fips_dylib = modules_dir.join("fips.dylib");
-                if conf_path.exists() && (fips_so.exists() || fips_dylib.exists()) {
-                    // If under Nix (/nix/store), do not override OPENSSL_CONF.
-                    let in_nix = dir.starts_with("/nix/store/");
-                    unsafe {
-                        if !in_nix && !conf_is_set {
-                            env::set_var("OPENSSL_CONF", &conf_path);
-                        }
-                        if !modules_is_set {
-                            env::set_var("OPENSSL_MODULES", &modules_dir);
-                        }
-                    }
-                } else {
-                    // Fall back to cargo-built FIPS main prefix under target/openssl-3.6.5-<os>-<arch>
-                    let os = std::env::consts::OS;
-                    let arch = std::env::consts::ARCH;
-                    let main_prefix = workspace_root
-                        .join("target")
-                        .join(format!("openssl-3.6.5-{os}-{arch}"));
-                    let openssl_conf = main_prefix.join("ssl").join("openssl.cnf");
-                    let modules_dir = main_prefix.join("lib").join("ossl-modules");
-                    if !conf_is_set {
-                        unsafe { env::set_var("OPENSSL_CONF", &openssl_conf) }
-                    }
-                    if !modules_is_set {
-                        unsafe { env::set_var("OPENSSL_MODULES", &modules_dir) }
-                    }
-                }
-            } else {
-                // No OPENSSL_DIR set, prefer cargo-built FIPS main prefix
-                let os = std::env::consts::OS;
-                let arch = std::env::consts::ARCH;
-                let main_prefix = workspace_root
-                    .join("target")
-                    .join(format!("openssl-3.6.5-{os}-{arch}"));
-                let openssl_conf = main_prefix.join("ssl").join("openssl.cnf");
-                let modules_dir = main_prefix.join("lib").join("ossl-modules");
-                if !conf_is_set {
-                    unsafe { env::set_var("OPENSSL_CONF", &openssl_conf) }
-                }
-                if !modules_is_set {
-                    unsafe { env::set_var("OPENSSL_MODULES", &modules_dir) }
-                }
-            }
+        if !modules_is_set {
+            unsafe { env::set_var("OPENSSL_MODULES", modules) }
         }
     }
 
