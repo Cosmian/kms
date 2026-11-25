@@ -77,8 +77,8 @@ pub(crate) static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static FAULTED: AtomicBool = AtomicBool::new(false);
 
 /// Contains unwinding panics and permanently rejects work after one occurs.
-/// Captured state is abandoned, not reused; already-admitted calls can have partial effects.
-/// Aborts, invalid pointers, and repeated panics during payload disposal remain fatal.
+/// Captured state and the panic payload are abandoned, not dropped or reused;
+/// already-admitted calls can have partial effects. Aborts and invalid pointers remain fatal.
 pub fn ffi_guard(operation: impl FnOnce() -> CK_RV) -> CK_RV {
     if FAULTED.load(Ordering::SeqCst) {
         return pkcs11_sys::CKR_GENERAL_ERROR;
@@ -88,7 +88,7 @@ pub fn ffi_guard(operation: impl FnOnce() -> CK_RV) -> CK_RV {
         Ok(result) => result,
         Err(payload) => {
             FAULTED.store(true, Ordering::SeqCst);
-            drop(catch_unwind(AssertUnwindSafe(|| drop(payload))));
+            std::mem::forget(payload);
             pkcs11_sys::CKR_GENERAL_ERROR
         }
     }

@@ -1,3 +1,8 @@
+#[cfg(panic = "abort")]
+compile_error!(
+    "cosmian_pkcs11 runs inside foreign hosts and must unwind: build with `--profile pkcs11-provider`"
+);
+
 use std::{path::PathBuf, ptr::addr_of_mut, str::FromStr, sync::Once};
 
 use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient;
@@ -26,6 +31,8 @@ use crate::{
 /// the second entry is needed to satisfy §5.4.6's exact-version-match rule.
 const INTERFACE_COUNT: CK_ULONG = 2;
 
+static FUNC_LIST_INIT: Once = Once::new();
+
 /// Guards the one-time population of the v3.0 `FUNC_LIST_3_0*` function-pointer tables. Both
 /// `C_GetInterfaceList` and `C_GetInterface` write the same constant function pointers into
 /// these `static mut`s; without synchronization, concurrent calls from different threads would
@@ -50,6 +57,17 @@ fn register_client(client: KmsClient, registration: BackendRegistration) -> Resu
         BackendRegistration::PreserveExisting => register_backend_if_absent(backend),
     }
     Ok(())
+}
+
+fn ensure_func_list_registered() {
+    FUNC_LIST_INIT.call_once(|| {
+        // SAFETY: `Once::call_once` serializes this single write before any reader receives the
+        // `FUNC_LIST` address, avoiding concurrent `static mut` writes across threads.
+        #[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
+        unsafe {
+            FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
+        }
+    });
 }
 
 /// PKCS#11 v3.0 Interfaces API gap-fill: populates the `FUNC_LIST_3_0*` tables exactly once,
@@ -243,12 +261,13 @@ fn ensure_backend_registered(registration: BackendRegistration) -> Result<(), CK
     Ok(())
 }
 
+/// Returns the PKCS#11 v2.40 function list, or `CKR_FUNCTION_FAILED` when the KMS client
+/// cannot be instantiated. Unexpected unwinding panics return `CKR_GENERAL_ERROR` and require
+/// host restart.
+///
 /// # Safety
-/// This function is the first one called by the PKCS#11 library client
-/// to get the PKCS#11 functions list.
-/// Returns `CKR_FUNCTION_FAILED` if the KMS client cannot be instantiated
-/// (e.g. missing or invalid configuration). Unexpected unwinding panics return
-/// `CKR_GENERAL_ERROR` and require host restart.
+/// `pp_function_list` must be null or point to valid, writable storage for one
+/// `CK_FUNCTION_LIST_PTR`.
 #[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "PKCS#11 provider C ABI")]
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
@@ -259,8 +278,9 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         if let Err(rv) = ensure_backend_registered(BackendRegistration::Replace) {
             return rv;
         }
+        ensure_func_list_registered();
+        // SAFETY: `pp_function_list` is non-null (checked above) and writable per `# Safety`.
         unsafe {
-            FUNC_LIST.C_GetFunctionList = Some(C_GetFunctionList);
             *pp_function_list = addr_of_mut!(FUNC_LIST);
         }
         CKR_OK
@@ -295,20 +315,29 @@ pub unsafe extern "C" fn C_GetInterfaceList(
             return rv;
         }
         ensure_func_list_3_0_registered();
-        // SAFETY: `pul_count` is non-null (checked above); `p_interfaces_list` is written only when
-        // non-null and `*pul_count >= INTERFACE_COUNT`, so the caller's array holds both entries.
+        if p_interfaces_list.is_null() {
+            // SAFETY: `pul_count` is non-null (checked above) and writable per `# Safety`.
+            unsafe {
+                *pul_count = INTERFACE_COUNT;
+            }
+            return CKR_OK;
+        }
+        // SAFETY: `pul_count` is non-null (checked above) and readable per `# Safety`.
+        let capacity = unsafe { *pul_count };
+        // SAFETY: `pul_count` is non-null (checked above) and writable per `# Safety`.
         unsafe {
-            if p_interfaces_list.is_null() {
-                *pul_count = INTERFACE_COUNT;
-                return CKR_OK;
-            }
-            if *pul_count < INTERFACE_COUNT {
-                *pul_count = INTERFACE_COUNT;
-                return CKR_BUFFER_TOO_SMALL;
-            }
-            *p_interfaces_list = PKCS11_INTERFACE;
-            p_interfaces_list.add(1).write(PKCS11_INTERFACE_V3_0);
             *pul_count = INTERFACE_COUNT;
+        }
+        if capacity < INTERFACE_COUNT {
+            return CKR_BUFFER_TOO_SMALL;
+        }
+        // SAFETY: `p_interfaces_list` is non-null and holds at least `INTERFACE_COUNT` (2) slots.
+        unsafe {
+            *p_interfaces_list = PKCS11_INTERFACE;
+        }
+        // SAFETY: `capacity >= 2` guarantees slot 1 is in bounds and writable.
+        unsafe {
+            p_interfaces_list.add(1).write(PKCS11_INTERFACE_V3_0);
         }
         CKR_OK
     })

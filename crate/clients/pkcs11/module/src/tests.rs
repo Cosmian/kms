@@ -89,7 +89,7 @@ struct PanicOnDrop;
 
 impl Drop for PanicOnDrop {
     fn drop(&mut self) {
-        std::panic::resume_unwind(Box::new("payload drop fault"));
+        std::panic::resume_unwind(Box::new(Self));
     }
 }
 
