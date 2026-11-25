@@ -33,6 +33,7 @@ mod pgedge_crl_tests;
 mod pqc_import_tests;
 mod revocation_authority_tests;
 mod revoke_tests;
+mod row_binding_tests;
 mod secret_data_tests;
 mod security_regression;
 mod sub_ca_tests;

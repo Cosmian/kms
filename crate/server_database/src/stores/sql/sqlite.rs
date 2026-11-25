@@ -981,6 +981,22 @@ impl ObjectsStore for SqlitePool {
         Ok(rows)
     }
 
+    async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        let sql: &'static str = get_sqlite_query!("select-ids-wrapped-by");
+        let uid_s = wrapping_key_uid.to_owned();
+        let ids = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<String>, rusqlite::Error> {
+                    let mut stmt = c.prepare(sql)?;
+                    stmt.query_map([uid_s.as_str()], |r| r.get(0))?
+                        .collect::<Result<Vec<String>, _>>()
+                },
+            )
+            .await?;
+        Ok(ids)
+    }
+
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,

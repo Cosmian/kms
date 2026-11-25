@@ -1402,6 +1402,17 @@ impl ObjectsStore for PgPool {
         })
     }
 
+    async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        pg_retry!(self.pool, |client| {
+            let sql = get_pgsql_query!("select-ids-wrapped-by");
+            let rows = client
+                .query(sql, &[&wrapping_key_uid])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(rows.iter().map(|row| row.get::<_, String>(0)).collect())
+        })
+    }
+
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,

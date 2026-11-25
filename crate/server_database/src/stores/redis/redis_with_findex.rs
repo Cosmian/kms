@@ -1387,6 +1387,28 @@ impl ObjectsStore for RedisWithFindex {
         Ok(results)
     }
 
+    async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+        let indexed_uids = self
+            .findex
+            .search(&keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching wrapped_by keyword: {e:?}")))?;
+        let candidate_uids: HashSet<String> = indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+            .collect();
+        Ok(self
+            .objects_db
+            .objects_get(&candidate_uids)
+            .await?
+            .into_iter()
+            // Discard stale index hits: the object must still carry the keyword.
+            .filter(|(_, dbo)| has_all_keywords(dbo, [&keyword]))
+            .map(|(uid, _)| uid)
+            .collect())
+    }
+
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,

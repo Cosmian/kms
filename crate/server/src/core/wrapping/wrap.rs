@@ -14,9 +14,9 @@ use cosmian_kms_server_database::reexport::{
         },
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
-    cosmian_kms_interfaces::{CryptoAlgorithm, EncryptedContent, KeyType},
+    cosmian_kms_interfaces::{AtomicOperation, CryptoAlgorithm, EncryptedContent, KeyType},
 };
-use cosmian_logger::{debug, info, trace, warn};
+use cosmian_logger::{debug, error, info, trace, warn};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -24,7 +24,10 @@ use crate::{
         KMS,
         otel_metrics::outcome_label,
         uid_utils::ObjectHandle,
-        wrapping::{authorize_unwrap_with, unwrap_stored_object},
+        wrapping::{
+            authorize_unwrap_with, bind_to_row, is_wrapped_by_server_kek, take_row_binding,
+            unwrap::unwrap, unwrap_stored_object,
+        },
     },
     error::KmsError,
     kms_bail,
@@ -44,9 +47,17 @@ pub(crate) async fn wrap_and_cache(
     unique_identifier: &UniqueIdentifier,
     object: &mut Object,
 ) -> Result<(), KmsError> {
-    if object.is_wrapped() {
+    let uid_str = unique_identifier.to_string();
+    let rebind = object.is_wrapped();
+    if rebind {
         reject_server_kek_wrapped(kms, owner, object).await?;
-        return Ok(());
+        if !is_wrapped_by_server_kek(kms, object) {
+            return Ok(());
+        }
+        // Wrapped by the server KEK, but not bound to this row: unwrap (the user may decrypt
+        // with the KEK, see above) and wrap again below.
+        unwrap(object, kms, owner, true).await?;
+        take_row_binding(object);
     }
 
     // This is a Cosmian-specific extension
@@ -54,11 +65,14 @@ pub(crate) async fn wrap_and_cache(
     // or in the HSM.
     // Either the user has provided a wrapping key ID or a key wrapping key is
     // provided in the parameters.
-    let uid_str = unique_identifier.to_string();
-    let explicit_wrapping_key_id = object
-        .attributes_mut()
-        .ok()
-        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()));
+    let explicit_wrapping_key_id = if rebind {
+        None
+    } else {
+        object
+            .attributes_mut()
+            .ok()
+            .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()))
+    };
     let wrapping_key_id = if let Some(id) = explicit_wrapping_key_id {
         id
     } else {
@@ -93,18 +107,44 @@ pub(crate) async fn wrap_and_cache(
     // this entails.
     // So If we can recover bytes from a symmetric key, we
     // use the more compact No Encoding, otherwise we use the default TTLV Encoding.
-    let encoding = if object
+    // Wrapping with the server KEK always uses TTLV encoding: the wrapped plaintext then
+    // carries the row binding (see `bind_to_row`).
+    let key_has_bytes = object
         .key_block()
         .map_err(|e| {
             KmsError::InvalidRequest(format!("wrap_object: no key block to wrap in object: {e}"))
         })?
         .key_bytes()
-        .is_ok()
-    {
+        .is_ok();
+    let by_server_kek = kms.params.key_wrapping_key.as_deref() == Some(wrapping_key_id.as_str());
+    let encoding = if key_has_bytes && !by_server_kek {
         EncodingOption::NoEncoding
     } else {
         EncodingOption::TTLVEncoding
     };
+    if by_server_kek {
+        if key_has_bytes {
+            // as with the former compact encoding, the stored plaintext holds the key material
+            // only: the attributes live in the row, not in the wrapped key value
+            if let Some(KeyValue::Structure { attributes, .. }) =
+                &mut object.key_block_mut()?.key_value
+            {
+                *attributes = None;
+            }
+        }
+        bind_to_row(object, &uid_str)?;
+    }
+    {
+        let kb = object.key_block()?;
+        eprintln!(
+            "PLAINTEXT {} {:?} {}",
+            uid_str,
+            object.object_type(),
+            kb.key_value.as_ref().map_or(0, |kv| kv
+                .to_ttlv_bytes(kb.key_format_type)
+                .map_or(0, |b| b.len()))
+        );
+    } // TMPDEBUG
 
     trace!("Wrapping key with id: {wrapping_key_id}");
     // An operator-selected algorithm applies to the server KEK. Otherwise, HSM wrapping
@@ -148,6 +188,68 @@ pub(crate) async fn wrap_and_cache(
         .await?;
 
     Ok(())
+}
+
+/// Startup backfill of the row binding (see [`bind_to_row`]): wrap again, bound to their row,
+/// the objects wrapped by the server `key_encryption_key` before binding existed, so that unbound
+/// rows can then be refused on read.
+///
+/// An object whose binding names another row was moved: it is left untouched and fails on read.
+/// Per-row errors are logged and skipped. Legacy rows are trusted as found: this cannot tell a
+/// row moved before the first start of this version from a genuine one.
+pub(crate) async fn bind_stored_objects(kms: &KMS) -> KResult<()> {
+    let Some(kek) = kms.params.key_wrapping_key.as_deref() else {
+        return Ok(());
+    };
+    let mut bound = 0_usize;
+    for uid in kms.database.find_all_wrapped_by(kek).await? {
+        match bind_stored_object(kms, &uid).await {
+            Ok(true) => bound += 1,
+            Ok(false) => {}
+            Err(e) => error!("cannot bind stored object {uid} to its row: {e}"),
+        }
+    }
+    info!("bound {bound} stored objects to their row");
+    Ok(())
+}
+
+/// Bind one stored object to its row. Returns `false` when it already is.
+async fn bind_stored_object(kms: &KMS, uid: &str) -> KResult<bool> {
+    let Some(owm) = kms.database.retrieve_object(uid).await? else {
+        return Ok(false);
+    };
+    let user = UserId::from(kms.params.default_username.as_str());
+    let mut object = owm.object().clone();
+    if !is_wrapped_by_server_kek(kms, &object) {
+        return Ok(false);
+    }
+    Box::pin(unwrap(&mut object, kms, &user, true)).await?;
+    match take_row_binding(&mut object) {
+        Some(bound_uid) if bound_uid == uid => return Ok(false),
+        Some(bound_uid) => kms_bail!("the object is bound to row {bound_uid}"),
+        None => {}
+    }
+    Box::pin(wrap_and_cache(
+        kms,
+        &UserId::from(owm.owner()),
+        &UniqueIdentifier::TextString(uid.to_owned()),
+        &mut object,
+    ))
+    .await?;
+    let operation = match owm.version() {
+        Some(version) => AtomicOperation::UpdateObjectIfVersion((
+            uid.to_owned(),
+            object,
+            owm.attributes().clone(),
+            None,
+            version,
+        )),
+        None => {
+            AtomicOperation::UpdateObject((uid.to_owned(), object, owm.attributes().clone(), None))
+        }
+    };
+    kms.database.atomic(&user, &[operation]).await?;
+    Ok(true)
 }
 
 /// HSM algorithm requested by KMIP parameters; `None` = HSM default (AES-GCM / RSA-OAEP-SHA256).
@@ -458,26 +560,43 @@ async fn wrap_using_kms(
         key_wrapping_specification,
         kms,
         user,
-        wrapping_key.object(),
-        wrapping_key.attributes(),
-        wrapping_key.owner(),
+        &LocalWrappingKey {
+            uid: wrapping_key.id(),
+            object: wrapping_key.object(),
+            attributes: wrapping_key.attributes(),
+            owner: wrapping_key.owner(),
+        },
     )
     .await
+}
+
+/// A software wrapping key, as stored in the database or as an unpublished replacement.
+pub(crate) struct LocalWrappingKey<'a> {
+    /// The UID of the row holding `object`: the key itself, or the public key of a private
+    /// wrapping key.
+    pub uid: &'a str,
+    pub object: &'a Object,
+    pub attributes: &'a Attributes,
+    /// The owner of the wrapping key: a certificate's linked public key must share it.
+    pub owner: &'a str,
 }
 
 /// Wrap with an already authorized, Active software key, including an unpublished replacement.
 ///
 /// Callers must check ownership/grants and lifecycle state before calling this helper.
-/// `wrapping_key_owner` owns the wrapping key: a certificate's linked public key must share it.
 pub(crate) async fn wrap_with_local_key(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
     user: &UserId,
-    wrapping_key: &Object,
-    wrapping_attributes: &Attributes,
-    wrapping_key_owner: &str,
+    local_key: &LocalWrappingKey<'_>,
 ) -> KResult<()> {
+    let LocalWrappingKey {
+        uid: wrapping_key_row_uid,
+        object: wrapping_key,
+        attributes: wrapping_attributes,
+        owner: wrapping_key_owner,
+    } = *local_key;
     let wrapping_key_uid = key_wrapping_specification
         .encryption_key_information
         .as_ref()
@@ -490,7 +609,13 @@ pub(crate) async fn wrap_with_local_key(
     // If the wrapping key is itself wrapped, we must unwrap it first.
     let mut wrapping_key_object = wrapping_key.clone();
     if wrapping_key_object.is_wrapped() {
-        Box::pin(unwrap_stored_object(&mut wrapping_key_object, kms, user)).await?;
+        Box::pin(unwrap_stored_object(
+            &mut wrapping_key_object,
+            wrapping_key_row_uid,
+            kms,
+            user,
+        ))
+        .await?;
     }
 
     // If unwrap produced a KeyValue::Structure without attributes, reattach attributes

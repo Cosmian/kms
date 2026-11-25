@@ -531,6 +531,9 @@ pub async fn start_kms_server(
     crate::core::wrapping::ensure_kek_wrapping(&kms_server)
         .await
         .context("start KMS server: key_encryption_key wrapping check")?;
+    crate::core::wrapping::bind_stored_objects(&kms_server)
+        .await
+        .context("start KMS server: binding stored objects to their database row")?;
 
     let cluster_heartbeat_shutdown_tx = cron::spawn_cluster_heartbeat_cron(kms_server.clone());
 
@@ -1168,7 +1171,8 @@ pub async fn prepare_kms_server(
     if kms_server.params.key_wrapping_key.is_none() {
         cosmian_logger::warn!(
             "SECURITY: no key_encryption_key is configured: objects are stored without \
-             server-side KEK wrapping. Configure a KEK for production deployments."
+             server-side KEK wrapping and are not bound to their database row. Configure a KEK \
+             for production deployments."
         );
     }
     if kms_server.params.rate_limit_per_second.is_none() {

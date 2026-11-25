@@ -545,12 +545,14 @@ async fn test_kek_wrapped_import_is_refused() -> KResult<()> {
         "a key wrapped by the server KEK must not be registered: {refused:?}"
     );
 
-    // The HSM admin, and a user granted Decrypt on the KEK: accepted, and Get unwraps it
+    // The HSM admin, and a user granted Decrypt on the KEK: accepted, wrapped again by the KEK
+    // (bound to the new row), and Get unwraps it
     grant(&kms, HSM_KEK, GRANTEE, KmipOperation::Decrypt).await?;
     for user in [ADMIN, GRANTEE] {
         for kek_uid in [HSM_KEK, kek_pk.as_str()] {
             let uid = import_as(&kms, user, key_wrapped_by(kek_uid, &ciphertext), None).await?;
-            assert!(is_stored_wrapped_by(&kms, &uid, kek_uid).await?);
+            // stored wrapped by the KEK itself, bound to the new row, also when named by its alias
+            assert!(is_stored_wrapped_by(&kms, &uid, HSM_KEK).await?);
             assert_eq!(
                 export_unwrapped_bytes(&kms, user, &uid).await?,
                 bitwise_not(&ciphertext)

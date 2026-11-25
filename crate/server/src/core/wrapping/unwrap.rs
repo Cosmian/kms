@@ -18,8 +18,13 @@ use cosmian_logger::{debug, warn};
 
 use crate::{
     core::{
-        KMS, otel_metrics::outcome_label, uid_utils::ObjectHandle,
-        wrapping::wrap::requested_hsm_algorithm,
+        KMS,
+        otel_metrics::outcome_label,
+        uid_utils::ObjectHandle,
+        wrapping::{
+            is_server_kek, is_wrapped_by_server_kek, take_row_binding,
+            wrap::requested_hsm_algorithm,
+        },
     },
     error::KmsError,
     kms_bail,
@@ -48,12 +53,24 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &UserId)
 /// Same as [`unwrap_object`], except that the server `key_encryption_key`, when the key block
 /// names it literally, is usable by every user: it wrapped the object at rest on their behalf
 /// (mirrors `wrap_and_cache`).
+///
+/// `uid` is the database row the object was read from. An object wrapped by the server KEK must
+/// carry that UID in its wrapped plaintext (see [`bind_to_row`](super::bind_to_row)), otherwise
+/// it was moved from another row, or never bound, and is refused.
 pub(crate) async fn unwrap_stored_object(
     object: &mut Object,
+    uid: &str,
     kms: &KMS,
     user: &UserId,
 ) -> KResult<()> {
-    unwrap(object, kms, user, true).await
+    let kek_wrapped = is_wrapped_by_server_kek(kms, object);
+    unwrap(object, kms, user, true).await?;
+    if kek_wrapped && take_row_binding(object).as_deref() != Some(uid) {
+        return Err(KmsError::ServerError(format!(
+            "stored object {uid}: key material is not bound to this row"
+        )));
+    }
+    Ok(())
 }
 
 /// Check that `user` may unwrap the stored `object`, without unwrapping it.
@@ -106,7 +123,7 @@ async fn authorize_unwrapping_key(
     Ok(())
 }
 
-async fn unwrap(
+pub(super) async fn unwrap(
     object: &mut Object,
     kms: &KMS,
     user: &UserId,
@@ -177,12 +194,7 @@ fn unwrapping_key_uid(key_block: &KeyBlock) -> KResult<String> {
 /// Literal match only: the key a UID resolves to through a link is never exempt, since the
 /// link of a user-made public key or certificate is caller-controlled.
 fn is_exempt_server_kek(kms: &KMS, allow_server_kek: bool, uid: &str) -> bool {
-    allow_server_kek
-        && kms
-            .params
-            .key_wrapping_key
-            .as_deref()
-            .is_some_and(|kek| uid.strip_suffix(SYSTEM_TAG_PUBLIC_KEY).unwrap_or(uid) == kek)
+    allow_server_kek && is_server_kek(kms, uid)
 }
 
 /// Fetch the database key `unwrapping_key_uid` (the private key for a public key or
@@ -289,7 +301,13 @@ async fn unwrap_using_kms(
             unwrapping_key.id()
         );
         let mut object = unwrapping_key.object().clone();
-        Box::pin(unwrap_stored_object(&mut object, kms, user)).await?;
+        Box::pin(unwrap_stored_object(
+            &mut object,
+            unwrapping_key.id(),
+            kms,
+            user,
+        ))
+        .await?;
         // the unwrapped key value carries no attributes: reattach the stored ones, which the
         // crypto layer reads to check the usage mask
         if let Some(KeyValue::Structure { attributes, .. }) = object

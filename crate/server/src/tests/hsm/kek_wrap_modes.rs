@@ -184,10 +184,11 @@ pub(super) async fn test_hsm_kek_wrap_modes() -> KResult<()> {
         Some(BlockCipherMode::AESKeyWrapPadding)
     );
     let key_bytes_plain = key_bytes(&export_unwrapped(&kms, &owner, &key_uid).await?)?;
-    assert_eq!(
-        *rfc5649_unwrap(&wrapped_bytes(&stored)?, &kek_bytes)?,
-        key_bytes_plain
-    );
+    // the server KEK wraps the TTLV key value, which carries the key bytes and the row binding
+    let ttlv = rfc5649_unwrap(&wrapped_bytes(&stored)?, &kek_bytes)?;
+    let contains = |needle: &[u8]| ttlv.windows(needle.len()).any(|w| w == needle);
+    assert!(contains(&key_bytes_plain));
+    assert!(contains(key_uid.as_bytes()));
     drop(kms);
 
     // A KEK created before AES templates carried CKA_WRAP/CKA_UNWRAP gets them at startup.

@@ -276,6 +276,14 @@ pub trait ObjectsStore {
         _user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
 
+    /// Return the UID of every object wrapped by `wrapping_key_uid`, whoever owns it. Used at
+    /// startup to bind the objects wrapped by the server key encryption key to their row.
+    ///
+    /// HSM backends return an empty list: HSM keys are never wrapped in KMIP format.
+    async fn find_all_wrapped_by(&self, _wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        Ok(vec![])
+    }
+
     /// Return UIDs of all Active objects that have a `rotate_interval > 0` and whose
     /// next rotation instant is ≤ `now`.
     ///

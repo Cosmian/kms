@@ -763,6 +763,16 @@ impl Database {
         Ok(results)
     }
 
+    /// Return the UID of every object wrapped by the given wrapping key, whoever owns it.
+    pub async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> DbResult<Vec<String>> {
+        let map = self.objects.read().await;
+        let mut results = Vec::new();
+        for db in map.values() {
+            results.extend(db.find_all_wrapped_by(wrapping_key_uid).await?);
+        }
+        Ok(results)
+    }
+
     /// Find all Active objects that have a `rotate_interval > 0` and whose next
     /// rotation instant is ≤ `now`. Returns `(uid, owner)` pairs.
     pub async fn find_due_for_rotation(
@@ -1887,6 +1897,13 @@ mod tests {
             user: &UserId,
         ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
             self.0.find_wrapped_by(wrapping_key_uid, user).await
+        }
+
+        async fn find_all_wrapped_by(
+            &self,
+            wrapping_key_uid: &str,
+        ) -> InterfaceResult<Vec<String>> {
+            self.0.find_all_wrapped_by(wrapping_key_uid).await
         }
 
         async fn find_due_for_rotation(

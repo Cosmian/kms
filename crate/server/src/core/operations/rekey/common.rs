@@ -36,7 +36,10 @@ use crate::{
         KMS,
         operations::key_ops::ObjectLifecycleExt,
         uid_utils::ObjectHandle,
-        wrapping::{unwrap_stored_object, wrap_and_cache, wrap_object, wrap_with_local_key},
+        wrapping::{
+            LocalWrappingKey, bind_to_row, is_server_kek, unwrap_stored_object, wrap_and_cache,
+            wrap_object, wrap_with_local_key,
+        },
     },
     error::KmsError,
     middlewares::UserId,
@@ -274,13 +277,21 @@ impl KMS {
                 encoding_option: kwd.encoding_option,
             });
 
-        let Some(spec) = dep_wrap_spec else {
+        let Some(mut spec) = dep_wrap_spec else {
             return Ok(None);
         };
 
-        if let Err(e) = Box::pin(unwrap_stored_object(dep_object, self, owner)).await {
+        if let Err(e) = Box::pin(unwrap_stored_object(dep_object, dep_uid, self, owner)).await {
             warn!("failed to unwrap dependant {dep_uid}: {e}, skipping");
             return Ok(None);
+        }
+        // Wrapped by the server KEK from now on: TTLV encoding carries the row binding.
+        if is_server_kek(self, new_uid) {
+            if let Err(e) = bind_to_row(dep_object, dep_uid) {
+                warn!("failed to bind dependant {dep_uid} to its row: {e}, skipping");
+                return Ok(None);
+            }
+            spec.encoding_option = Some(EncodingOption::TTLVEncoding);
         }
         let result = if let Some(key) = new_key {
             if key.attributes.state == Some(State::Active) {
@@ -290,9 +301,12 @@ impl KMS {
                     &spec,
                     self,
                     owner,
-                    &key.object,
-                    &key.attributes,
-                    owner.as_str(),
+                    &LocalWrappingKey {
+                        uid: &key.new_uid,
+                        object: &key.object,
+                        attributes: &key.attributes,
+                        owner: owner.as_str(),
+                    },
                 )
                 .await
             } else {

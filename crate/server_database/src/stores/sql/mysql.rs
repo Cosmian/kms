@@ -961,6 +961,18 @@ impl ObjectsStore for MySqlPool {
         Ok(out)
     }
 
+    async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        let sql = get_mysql_query!("select-ids-wrapped-by");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
+        conn.exec(sql, (wrapping_key_uid,))
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))
+    }
+
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,
