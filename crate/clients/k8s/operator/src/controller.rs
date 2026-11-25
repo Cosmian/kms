@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use k8s_openapi::{
     api::{
@@ -28,6 +32,56 @@ pub struct Context {
     pub k8s: Client,
     pub kms: Arc<KmsClientWrapper>,
     pub default_refresh: Duration,
+    /// Namespace → KMS UIDs a `KMSSecret` of that namespace may fetch (fail closed).
+    pub allowed_uids_by_namespace: BTreeMap<String, BTreeSet<String>>,
+}
+
+/// Label recording which `KMSSecret` owns a target `Secret`.
+const OWNER_LABEL: &str = "kms.cosmian.com/kmssecret";
+/// Label written by operator versions that predate [`OWNER_LABEL`].
+const MANAGED_BY_LABEL: &str = "app.kubernetes.io/managed-by";
+const MANAGED_BY_VALUE: &str = "cosmian-kms-operator";
+
+/// Refuse a KMS UID that is not allowlisted for `namespace` (confused-deputy guard: the
+/// operator's KMS credentials must not be usable by any tenant to read any key).
+fn check_secret_access(
+    policy: &BTreeMap<String, BTreeSet<String>>,
+    namespace: &str,
+    uid: &str,
+) -> Result<(), OperatorError> {
+    if policy.get(namespace).is_some_and(|uids| uids.contains(uid)) {
+        Ok(())
+    } else {
+        Err(OperatorError::Config(format!(
+            "KMS UID '{uid}' is not allowed for namespace '{namespace}'"
+        )))
+    }
+}
+
+/// Refuse to overwrite a target `Secret` that is not owned by this `KMSSecret`. A legacy
+/// operator-managed `Secret` (no owner label) is adopted.
+fn check_secret_ownership(
+    existing: Option<&Secret>,
+    kmssecret_name: &str,
+) -> Result<(), OperatorError> {
+    let Some(existing) = existing else {
+        return Ok(());
+    };
+    let labels = existing.metadata.labels.as_ref();
+    let owner = labels.and_then(|l| l.get(OWNER_LABEL));
+    let legacy = owner.is_none()
+        && labels
+            .and_then(|l| l.get(MANAGED_BY_LABEL))
+            .map(String::as_str)
+            == Some(MANAGED_BY_VALUE);
+    if owner.map(String::as_str) == Some(kmssecret_name) || legacy {
+        Ok(())
+    } else {
+        Err(OperatorError::Config(format!(
+            "target Secret '{}' is not owned by KMSSecret '{kmssecret_name}'",
+            existing.metadata.name.as_deref().unwrap_or_default()
+        )))
+    }
 }
 
 // ── Controller entry point ────────────────────────────────────────────────────
@@ -98,7 +152,12 @@ async fn do_reconcile(
 
     info!(name, namespace, secret_id = %obj.spec.secret_id, "reconciling KMSSecret");
 
-    // 1. Fetch secret bytes from KMS.
+    // 1. Fetch secret bytes from KMS, only for UIDs allowlisted for this namespace.
+    check_secret_access(
+        &ctx.allowed_uids_by_namespace,
+        namespace,
+        &obj.spec.secret_id,
+    )?;
     let bytes = ctx.kms.get_secret_bytes(&obj.spec.secret_id).await?;
     let current_hash = hex::encode(Sha256::digest(&bytes));
 
@@ -143,8 +202,9 @@ async fn upsert_secret(
     let mut labels = owner.spec.labels.clone();
     labels.insert(
         "app.kubernetes.io/managed-by".to_owned(),
-        "cosmian-kms-operator".to_owned(),
+        MANAGED_BY_VALUE.to_owned(),
     );
+    labels.insert(OWNER_LABEL.to_owned(), owner.name_any());
 
     let mut data: BTreeMap<String, k8s_openapi::ByteString> = BTreeMap::new();
     data.insert(owner.spec.key.clone(), k8s_openapi::ByteString(bytes));
@@ -160,7 +220,9 @@ async fn upsert_secret(
         ..Secret::default()
     };
 
-    if secrets.get_opt(&owner.spec.target_secret).await?.is_none() {
+    let existing = secrets.get_opt(&owner.spec.target_secret).await?;
+    check_secret_ownership(existing.as_ref(), &owner.name_any())?;
+    if existing.is_none() {
         secrets.create(&PostParams::default(), &secret).await?;
         info!(name = %owner.spec.target_secret, "created K8s Secret");
     } else {
@@ -373,6 +435,7 @@ mod characterization_tests {
             k8s,
             kms: Arc::new(KmsClientWrapper::new(KmsClientConfig::default()).unwrap()),
             default_refresh: Duration::from_secs(3600),
+            allowed_uids_by_namespace: BTreeMap::new(),
         };
         let err = OperatorError::Config("boom".to_owned());
         let action = error_policy(&secret(Some("5s")), &err, &ctx);
@@ -452,5 +515,84 @@ mod parse_duration_tests {
             parse_duration("18446744073709551615s"),
             Some(Duration::from_secs(u64::MAX))
         );
+    }
+}
+
+#[cfg(test)]
+mod confused_deputy_tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use k8s_openapi::{api::core::v1::Secret, apimachinery::pkg::apis::meta::v1::ObjectMeta};
+
+    use super::{check_secret_access, check_secret_ownership};
+
+    fn policy() -> BTreeMap<String, BTreeSet<String>> {
+        BTreeMap::from([("team-a".to_owned(), BTreeSet::from(["uid-1".to_owned()]))])
+    }
+
+    fn secret(labels: &[(&str, &str)]) -> Secret {
+        Secret {
+            metadata: ObjectMeta {
+                name: Some("target".to_owned()),
+                labels: Some(
+                    labels
+                        .iter()
+                        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                        .collect(),
+                ),
+                ..ObjectMeta::default()
+            },
+            ..Secret::default()
+        }
+    }
+
+    #[test]
+    fn access_allowed_uid_in_namespace() {
+        check_secret_access(&policy(), "team-a", "uid-1").unwrap();
+    }
+
+    #[test]
+    fn access_refuses_wrong_uid_unknown_namespace_and_empty_policy() {
+        for (p, ns, uid) in [
+            (policy(), "team-a", "uid-2"),
+            (policy(), "team-b", "uid-1"),
+            (BTreeMap::new(), "team-a", "uid-1"),
+        ] {
+            let err = check_secret_access(&p, ns, uid).unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                format!("Configuration error: KMS UID '{uid}' is not allowed for namespace '{ns}'")
+            );
+        }
+    }
+
+    #[test]
+    fn ownership_accepts_none_owned_and_legacy() {
+        check_secret_ownership(None, "ks").unwrap();
+        check_secret_ownership(Some(&secret(&[("kms.cosmian.com/kmssecret", "ks")])), "ks")
+            .unwrap();
+        check_secret_ownership(
+            Some(&secret(&[(
+                "app.kubernetes.io/managed-by",
+                "cosmian-kms-operator",
+            )])),
+            "ks",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn ownership_refuses_foreign_unmanaged_and_other_owner() {
+        let owned_by_other = secret(&[
+            ("kms.cosmian.com/kmssecret", "other"),
+            ("app.kubernetes.io/managed-by", "cosmian-kms-operator"),
+        ]);
+        for existing in [secret(&[]), secret(&[("app", "x")]), owned_by_other] {
+            let err = check_secret_ownership(Some(&existing), "ks").unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                "Configuration error: target Secret 'target' is not owned by KMSSecret 'ks'"
+            );
+        }
     }
 }

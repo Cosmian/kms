@@ -125,6 +125,13 @@ kubectl create configmap "$CFG_NAME" -n kube-system \
 cosmian_kms:
   server_url: http://${CLUSTER_IP}:9998
   socket_path: ${PROVIDER_SOCK}
+  # Required allowlist (fail closed): the test pods run in the 'default' namespace.
+  allowed_uids_by_namespace:
+    default:
+      - ${SECRET_UID}
+      - ${ROTATE_UID_V1}
+      - ${ROTATE_UID_V2}
+      - ${REVOKE_UID}
 EOF
   )" --dry-run=client -o yaml | kubectl apply -f -
 

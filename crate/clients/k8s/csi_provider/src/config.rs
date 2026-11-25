@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::Deserialize;
 
 /// Top-level structure of the CSI provider YAML configuration file.
@@ -11,6 +13,8 @@ use serde::Deserialize;
 ///   tls_key: /etc/cosmian-kms-csi/client.key
 ///   ca_cert: /etc/cosmian-kms-csi/ca.crt
 ///   socket_path: /var/run/cosmian-kms-provider.sock
+///   allowed_uids_by_namespace:
+///     team-a: ["550e8400-e29b-41d4-a716-446655440000"]
 /// ```
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -61,6 +65,12 @@ pub struct KmsCsiSettings {
     /// Filesystem path of the Unix domain socket the provider listens on.
     #[serde(default = "default_socket_path")]
     pub socket_path: String,
+
+    /// Required allowlist: pod namespace → set of KMS UIDs a pod of that namespace may
+    /// mount. A namespace or UID that is not listed is refused; an empty map refuses every
+    /// mount.
+    #[serde(default)]
+    pub allowed_uids_by_namespace: BTreeMap<String, BTreeSet<String>>,
 }
 
 fn default_socket_path() -> String {

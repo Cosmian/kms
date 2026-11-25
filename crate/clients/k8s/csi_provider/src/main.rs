@@ -47,6 +47,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let settings = CsiProviderConfig::from_file(&args.config)?.cosmian_kms;
 
+    if settings.allowed_uids_by_namespace.is_empty() {
+        tracing::warn!("allowed_uids_by_namespace is empty: every mount will be refused");
+    }
+
     info!(
         server_url = %settings.server_url,
         socket_path = %settings.socket_path,
@@ -72,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..KmsClientConfig::default()
     })?;
 
-    let service = CsiProviderService::new(kms_client);
+    let service = CsiProviderService::new(kms_client, settings.allowed_uids_by_namespace);
 
     // Ensure the socket directory exists.
     // The directory is typically a Kubernetes hostPath volume managed by the

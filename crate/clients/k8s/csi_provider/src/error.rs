@@ -30,6 +30,15 @@ pub enum CsiProviderError {
         actual: String,
     },
 
+    /// The pod may not mount the requested KMS object (namespace unknown or UID not
+    /// allowlisted for it).
+    #[error("{0}")]
+    PermissionDenied(String),
+
+    /// `objectName` is not a relative path confined to the volume.
+    #[error("{0}")]
+    InvalidObjectPath(String),
+
     /// I/O error (e.g. writing to tmpfs).
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -45,9 +54,10 @@ impl From<CsiProviderError> for tonic::Status {
             CsiProviderError::KmsClient(_)
             | CsiProviderError::UnextractableObject { .. }
             | CsiProviderError::Io(_) => Self::internal(err.to_string()),
-            CsiProviderError::InvalidAttributes(_) | CsiProviderError::NoObjects => {
-                Self::invalid_argument(err.to_string())
-            }
+            CsiProviderError::InvalidAttributes(_)
+            | CsiProviderError::NoObjects
+            | CsiProviderError::InvalidObjectPath(_) => Self::invalid_argument(err.to_string()),
+            CsiProviderError::PermissionDenied(_) => Self::permission_denied(err.to_string()),
             CsiProviderError::Config(_) | CsiProviderError::VersionMismatch { .. } => {
                 Self::failed_precondition(err.to_string())
             }

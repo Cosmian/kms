@@ -5,10 +5,9 @@ use clap::Parser;
 use cosmian_kms_client::{KmsClient, KmsClientConfig, http_client::HttpClientConfig};
 use cosmian_kms_k8s_plugin::{
     config::PluginConfig, kmsv2::key_management_service_server::KeyManagementServiceServer,
-    service::KmsPluginService,
+    peer::allowed_peers, service::KmsPluginService,
 };
 use tokio::net::UnixListener;
-use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::Server;
 use tracing::info;
 
@@ -100,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // connections.  The DaemonSet should chown the socket to the apiserver
     // UID/GID (65532) for maximum security; 0o660 is the secure fallback.
     std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o660))?;
-    let incoming = UnixListenerStream::new(listener);
+    let incoming = allowed_peers(listener, settings.allowed_peer_uids);
 
     info!(socket = %socket_path, "gRPC server listening on Unix socket");
     // Graceful shutdown on SIGTERM (systemd) or Ctrl-C.

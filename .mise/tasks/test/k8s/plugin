@@ -141,6 +141,7 @@ cosmian_kms:
   tls_key: ${CFG_DIR}/tls/client.key
   wrapping_key_uid: ${KEK_UID}
   socket_path: ${SOCK_PATH}
+  allowed_peer_uids: [0, 65532] # kube-apiserver: root (kubeadm static pod) or distroless nonroot
 EOF
 else
   cat >"$WORK/config.yaml" <<EOF
@@ -148,6 +149,7 @@ cosmian_kms:
   server_url: http://${CLUSTER_IP}:9998
   wrapping_key_uid: ${KEK_UID}
   socket_path: ${SOCK_PATH}
+  allowed_peer_uids: [0, 65532] # kube-apiserver: root (kubeadm static pod) or distroless nonroot
 EOF
 fi
 minikube cp "$WORK/config.yaml" /tmp/plugin-config.yaml

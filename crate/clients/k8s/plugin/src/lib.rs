@@ -1,5 +1,7 @@
 pub mod config;
 pub mod error;
+#[cfg(unix)]
+pub mod peer;
 pub mod service;
 
 #[cfg(all(test, unix))]

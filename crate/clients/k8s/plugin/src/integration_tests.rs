@@ -7,7 +7,6 @@ use cosmian_kms_client::{
 };
 use test_kms_server::start_default_test_kms_server;
 use tokio::net::UnixListener;
-use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::{Channel, Endpoint, Uri};
 use tower::service_fn;
 
@@ -17,6 +16,7 @@ use crate::{
         key_management_service_client::KeyManagementServiceClient,
         key_management_service_server::KeyManagementServiceServer,
     },
+    peer::allowed_peers,
     service::KmsPluginService,
 };
 
@@ -29,6 +29,7 @@ use crate::{
 async fn start_plugin_on_tmp_socket(
     kms_url: &str,
     wrapping_key_uid: String,
+    allowed_peer_uids: Vec<u32>,
 ) -> (
     KeyManagementServiceClient<Channel>,
     String,
@@ -51,7 +52,7 @@ async fn start_plugin_on_tmp_socket(
 
     let service = KmsPluginService::new(kms_client, wrapping_key_uid);
     let listener = UnixListener::bind(&socket_path).expect("bind unix socket");
-    let incoming = UnixListenerStream::new(listener);
+    let incoming = allowed_peers(listener, allowed_peer_uids);
 
     let socket_path_clone = socket_path.clone();
     let handle = tokio::spawn(async move {
@@ -79,18 +80,30 @@ async fn start_plugin_on_tmp_socket(
     // with TokioIo to implement the hyper::rt::io::Read/Write traits.
     let channel = Endpoint::try_from("http://[::]:50051")
         .expect("endpoint")
-        .connect_with_connector(service_fn(move |_: Uri| {
+        .connect_with_connector_lazy(service_fn(move |_: Uri| {
             let path = socket_path_for_connect.clone();
             async move {
                 let stream = tokio::net::UnixStream::connect(path).await?;
                 Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
             }
-        }))
-        .await
-        .expect("connect to unix socket");
+        }));
 
     let client = KeyManagementServiceClient::new(channel);
     (client, socket_path, handle)
+}
+
+/// UID of the current process, read from the credentials of a local socket pair.
+#[expect(
+    clippy::expect_used,
+    reason = "test helper; module is cfg(all(test, unix)), outside clippy test exemption"
+)]
+fn current_uid() -> u32 {
+    tokio::net::UnixStream::pair()
+        .expect("socket pair")
+        .0
+        .peer_cred()
+        .expect("peer credentials")
+        .uid()
 }
 
 /// Creates an AES-256-GCM KEK via the Cosmian KMS, then exercises the full
@@ -126,7 +139,7 @@ async fn test_grpc_encrypt_decrypt_roundtrip() {
 
     // Start the gRPC plugin server pointing at the same KMS.
     let (mut plugin_client, socket_path, server_handle) =
-        start_plugin_on_tmp_socket(&kms_url, kek_uid.clone()).await;
+        start_plugin_on_tmp_socket(&kms_url, kek_uid.clone(), vec![current_uid()]).await;
 
     // ── Status ────────────────────────────────────────────────────────────
     let status = plugin_client
@@ -184,6 +197,31 @@ async fn test_grpc_encrypt_decrypt_roundtrip() {
     assert!(bad_dec.is_err(), "wrong key_id must be rejected");
 
     // Cleanup
+    server_handle.abort();
+    drop(std::fs::remove_file(&socket_path));
+}
+
+/// A peer whose UID is not in `allowed_peer_uids` is disconnected: no RPC succeeds.
+#[tokio::test]
+async fn test_grpc_rejects_peer_not_in_allowed_peer_uids() {
+    test_kms_server::init_test_logging();
+
+    let ctx = start_default_test_kms_server().await;
+    let kms_url = ctx.owner_client_config.http_config.server_url.clone();
+
+    let (mut plugin_client, socket_path, server_handle) = start_plugin_on_tmp_socket(
+        &kms_url,
+        "any-kek".to_owned(),
+        vec![current_uid().wrapping_add(1)],
+    )
+    .await;
+
+    let status = plugin_client.status(StatusRequest {}).await;
+    assert!(
+        status.is_err(),
+        "peer with a non-allowlisted UID must be rejected"
+    );
+
     server_handle.abort();
     drop(std::fs::remove_file(&socket_path));
 }

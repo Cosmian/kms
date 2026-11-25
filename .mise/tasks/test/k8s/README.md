@@ -58,7 +58,7 @@ sequenceDiagram
     R->>PF: kubectl port-forward svc/…-cosmian-kms 9998
     ck->>K: sym keys create AES-256 → kek-uid
     R->>N: minikube cp plugin binary → /usr/local/bin/
-    R->>N: write /etc/kubernetes-kms-plugin/config.yaml<br/>(server_url, wrapping_key_uid, socket_path)
+    R->>N: write /etc/kubernetes-kms-plugin/config.yaml<br/>(server_url, wrapping_key_uid, socket_path,<br/>allowed_peer_uids)
     R->>N: systemd enable+start kubernetes-kms-plugin.service
     P-->>N: Unix socket created: /var/run/kubernetes-kms-plugin/kms.sock
     R->>N: write /etc/kubernetes/enc/config.yaml (KMS v2 EncryptionConfiguration)
@@ -146,7 +146,7 @@ sequenceDiagram
     ck->>K: secret-data revoke + destroy revoke-uid
     R->>PF: close
 
-    R->>M: kubectl apply ConfigMap (server_url, socket_path)
+    R->>M: kubectl apply ConfigMap (server_url, socket_path,<br/>allowed_uids_by_namespace)
     R->>M: kubectl apply DaemonSet<br/>hostPath: /etc/kubernetes/secrets-store-csi-providers<br/>imagePullPolicy: Never · securityContext.privileged: true
     DS-->>M: /etc/kubernetes/secrets-store-csi-providers/cosmian-kms.sock created on host
 
