@@ -134,17 +134,6 @@ pub(crate) async fn wrap_and_cache(
         }
         bind_to_row(object, &uid_str)?;
     }
-    {
-        let kb = object.key_block()?;
-        eprintln!(
-            "PLAINTEXT {} {:?} {}",
-            uid_str,
-            object.object_type(),
-            kb.key_value.as_ref().map_or(0, |kv| kv
-                .to_ttlv_bytes(kb.key_format_type)
-                .map_or(0, |b| b.len()))
-        );
-    } // TMPDEBUG
 
     trace!("Wrapping key with id: {wrapping_key_id}");
     // An operator-selected algorithm applies to the server KEK. Otherwise, HSM wrapping
