@@ -139,4 +139,15 @@ pub trait PermissionsStore {
     /// so that CRL Numbers remain strictly greater than any previously issued
     /// number across server restarts (RFC 5280 §5.2.3).
     async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>>;
+
+    // ── Web UI session revocation ──────────────────────────────────────────
+
+    /// Record the Web UI session `sid` as revoked until `expires_at` (Unix seconds), so that
+    /// every KMS instance sharing this store refuses its cookie. Entries expired at `now`
+    /// (Unix seconds) are dropped. Re-revoking a session is a no-op.
+    async fn revoke_ui_session(&self, sid: &str, expires_at: i64, now: i64) -> InterfaceResult<()>;
+
+    /// Whether the Web UI session `sid` was revoked. An entry may outlive the session's
+    /// expiry until the next revocation purges it; the expired session is refused anyway.
+    async fn is_ui_session_revoked(&self, sid: &str) -> InterfaceResult<bool>;
 }

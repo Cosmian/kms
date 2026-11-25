@@ -307,6 +307,28 @@ SELECT 1;
 -- name: select-max-crl-number
 SELECT MAX(crl_number) FROM crls;
 
+-- Web UI sessions revoked by logout, shared by every KMS instance on this database.
+-- A row is useful until the session's absolute expiry; revoking purges the expired rows.
+
+-- name: create-table-ui_session_revocations
+CREATE TABLE IF NOT EXISTS ui_session_revocations (
+    sid        VARCHAR(64) NOT NULL PRIMARY KEY,
+    expires_at BIGINT      NOT NULL
+);
+
+-- name: purge-ui-session-revocations
+DELETE FROM ui_session_revocations WHERE expires_at <= $1;
+
+-- name: insert-ui-session-revocation
+INSERT INTO ui_session_revocations (sid, expires_at) VALUES ($1, $2)
+    ON CONFLICT (sid) DO NOTHING;
+
+-- name: select-ui-session-revocation
+SELECT 1 FROM ui_session_revocations WHERE sid = $1;
+
+-- name: clean-table-ui_session_revocations
+DELETE FROM ui_session_revocations;
+
 -- name: alter-column-attributes-jsonb
 ALTER TABLE objects ALTER COLUMN attributes TYPE jsonb USING attributes::jsonb;
 

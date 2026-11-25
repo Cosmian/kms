@@ -4522,10 +4522,21 @@ paths:
                   next_step:
                     type: string
                     enum: [Authenticated, TotpRequired]
+        '400':
+          description: Username longer than 256 bytes
         '401':
           description: Invalid credentials or TOTP code
         '403':
           description: Account requires a password change on the Cosmian authentication server
+        '429':
+          description: |
+            Too many login attempts (10 per minute per client IP, 5 per minute per username),
+            or the authentication server is rate-limiting. `Retry-After` carries the wait.
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Seconds (or HTTP date) to wait before retrying
         '500':
           description: Cosmian authentication server not configured for Web UI login
         '502':

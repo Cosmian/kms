@@ -370,7 +370,8 @@ ui_index_html_folder = "./ui/dist"
 # Session salt used to derive the UI session cookie encryption key.
 # This value MUST be identical across all KMS instances behind the
 # same load balancer so any instance can decrypt the UI session cookie.
-ui_session_salt = "change-me-and-keep-secret"
+# It must be random: >= 32 bytes encoded as hex or base64.
+ui_session_salt = "<output of openssl rand -hex 32>"
 
 [logging]
 rust_log = "info,cosmian_kms_server=info"

@@ -1245,6 +1245,7 @@ impl Migrate for MySqlPool {
             "create-table-tags",
             "create-table-crypto_officer_activations",
             "create-table-crls",
+            "create-table-ui_session_revocations",
             "create-table-gcm_invocations",
             "create-table-cluster-nodes",
             "create-table-cron-locks",
@@ -1344,6 +1345,7 @@ impl Migrate for MySqlPool {
                 "clean-table-read_access",
                 "clean-table-tags",
                 "clean-table-crls",
+                "clean-table-ui_session_revocations",
                 "clean-table-gcm_invocations",
             ] {
                 if let Some(sql) = queries.get(name) {
@@ -1568,6 +1570,41 @@ impl PermissionsStore for MySqlPool {
             .and_then(|mut row| row.take::<Option<i64>, _>(0))
             .flatten()
             .map(crl_number_from_sql))
+    }
+
+    async fn revoke_ui_session(&self, sid: &str, expires_at: i64, now: i64) -> InterfaceResult<()> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        conn.exec_drop(
+            get_mysql_query!("insert-ui-session-revocation"),
+            (sid, expires_at),
+        )
+        .await
+        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        // Housekeeping only: a failed purge must not lose the revocation just written.
+        if let Err(e) = conn
+            .exec_drop(get_mysql_query!("purge-ui-session-revocations"), (now,))
+            .await
+        {
+            warn!("Failed to purge expired UI session revocations: {e}");
+        }
+        Ok(())
+    }
+
+    async fn is_ui_session_revoked(&self, sid: &str) -> InterfaceResult<bool> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let row_opt: Option<mysql_async::Row> = conn
+            .exec_first(get_mysql_query!("select-ui-session-revocation"), (sid,))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(row_opt.is_some())
     }
 }
 

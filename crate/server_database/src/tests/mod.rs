@@ -27,8 +27,8 @@ use crate::{
             atomic, block_cipher_mode_migration_after_json_deserialization, compare_and_swap_test,
             count_non_destroyed_keys_test, create_duplicate_uid_test, find_due_for_rotation_test,
             find_with_options_test, gcm_invocations_orphan_purge_test, gcm_invocations_test,
-            key_inventory_test, lifecycle_state_contract_test, update_if_version_test,
-            wrapping_key_link_test,
+            key_inventory_test, lifecycle_state_contract_test, ui_session_revocation_test,
+            update_if_version_test, wrapping_key_link_test,
         },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
@@ -139,6 +139,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_redis_with_findex().await?)).await?;
     Box::pin(update_if_version_test(&get_redis_with_findex().await?)).await?;
     gcm_invocations_test(&get_redis_with_findex().await?).await?;
+    ui_session_revocation_test(&get_redis_with_findex().await?).await?;
     gcm_invocations_orphan_purge_test(&get_redis_fixed_key(true).await?, || {
         get_redis_fixed_key(false)
     })
@@ -185,6 +186,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_sqlite(&db_file).await?)).await?;
     Box::pin(update_if_version_test(&get_sqlite(&db_file).await?)).await?;
     gcm_invocations_test(&get_sqlite(&db_file).await?).await?;
+    ui_session_revocation_test(&get_sqlite(&db_file).await?).await?;
     gcm_invocations_orphan_purge_test(&get_sqlite(&db_file).await?, || {
         SqlitePool::instantiate(&db_file, false, None)
     })
@@ -251,6 +253,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_pgsql().await?)).await?;
     Box::pin(update_if_version_test(&get_pgsql().await?)).await?;
     gcm_invocations_test(&get_pgsql().await?).await?;
+    ui_session_revocation_test(&get_pgsql().await?).await?;
     lifecycle_state_contract_test(&get_pgsql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_pgsql().await?, || async {
         PgPool::instantiate(
@@ -1110,6 +1113,31 @@ ALTER TABLE gcm_invocations ALTER COLUMN count SET (log_old_value = true, delta_
         ));
     }
 
+    // S9: `ui_session_revocations` replicates, so a Web UI logout in one region is honoured by
+    // the others, even when both regions revoke the same session while partitioned.
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    let sid = Uuid::new_v4().to_string();
+    pg1.revoke_ui_session(&sid, now + 3600, now).await?;
+    sync_both(&pg1, &pg2).await?;
+    if !pg2.is_ui_session_revoked(&sid).await? {
+        return Err(DbError::ServerError(
+            "S9: ui_session_revocations was not replicated".to_owned(),
+        ));
+    }
+    let sid = Uuid::new_v4().to_string();
+    set_replication(&pg1, &pg2, false).await?;
+    pg1.revoke_ui_session(&sid, now + 3600, now).await?;
+    pg2.revoke_ui_session(&sid, now + 3600, now).await?;
+    set_replication(&pg1, &pg2, true).await?;
+    sync_both(&pg1, &pg2).await?;
+    for (name, pg) in [("pg1", &pg1), ("pg2", &pg2)] {
+        if !pg.is_ui_session_revoked(&sid).await? {
+            return Err(DbError::ServerError(format!(
+                "S9 {name}: concurrent revocation of one session was lost"
+            )));
+        }
+    }
+
     // Grants: whole-row last-update-wins is the accepted contract; the nodes must agree and
     // the row is either gone or holds both operations.
     let uid = new_object(false).await?;
@@ -1166,6 +1194,7 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     Box::pin(wrapping_key_link_test(&get_mysql().await?)).await?;
     Box::pin(update_if_version_test(&get_mysql().await?)).await?;
     gcm_invocations_test(&get_mysql().await?).await?;
+    ui_session_revocation_test(&get_mysql().await?).await?;
     lifecycle_state_contract_test(&get_mysql().await?).await?;
     gcm_invocations_orphan_purge_test(&get_mysql().await?, || async {
         MySqlPool::instantiate(
@@ -1356,6 +1385,15 @@ pub(crate) async fn test_db_galera_active_active() -> DbResult<()> {
     {
         return Err(DbError::ServerError(
             "G7: cluster_nodes was not replicated".to_owned(),
+        ));
+    }
+
+    // G7b: a Web UI session revoked by a logout on one node is refused on the other.
+    let sid = Uuid::new_v4().to_string();
+    my1.revoke_ui_session(&sid, now + 3600, now).await?;
+    if !my2.is_ui_session_revoked(&sid).await? {
+        return Err(DbError::ServerError(
+            "G7b: ui_session_revocations was not replicated".to_owned(),
         ));
     }
 
