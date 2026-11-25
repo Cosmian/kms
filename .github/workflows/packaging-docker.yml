@@ -193,13 +193,21 @@ jobs:
           path: target/image-scan/${{ matrix.features }}/
           if-no-files-found: warn
 
+      # populate_db.sh drives the old servers with the ckms of this branch.
+      - name: Build ckms for the database upgrade gate
+        if: matrix.runner == 'ubuntu-24.04'
+        run: mise run build:cli --variant ${{ matrix.features }}
+
       - name: Run database upgrade gate
         if: matrix.runner == 'ubuntu-24.04'
         timeout-minutes: 150
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
-        # Upgrades a database written by every release >= 5.9.0 to the candidate image on each backend.
-        run: mise run test:upgrade-db --variant ${{ matrix.features }} --old-version all
+        # Fills a database with every object kind on each release >= 5.9.0 (populate_db.sh),
+        # upgrades it to the candidate image on each backend, then re-verifies it.
+        run: |
+          mise run test:upgrade-db --variant ${{ matrix.features }} --old-version all \
+            --ckms "${CARGO_TARGET_DIR:-$PWD/target}/debug/ckms"
 
       - name: Upload database upgrade failure artifacts
         if: failure() && matrix.runner == 'ubuntu-24.04'

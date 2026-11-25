@@ -8,6 +8,7 @@
 #USAGE }
 #USAGE flag "--old-version <version>" env="OLD_VERSION" help="Old KMS version(s) or 'nightly'" default="nightly"
 #USAGE flag "--new-image <image>" env="DOCKER_IMAGE_NAME" help="Candidate KMS Docker image under test"
+#USAGE flag "--ckms <path>" env="CKMS_BIN" help="ckms binary: also fill each old database with populate_db.sh and re-verify it after the upgrade"
 #USAGE flag "--seed <seed>" env="SEED" help="Deterministic seed for random object generation"
 #USAGE flag "--random-count <count>" env="RANDOM_COUNT" help="Number of random recipes per version" default="10"
 #USAGE flag "--rotation-index <index>" env="ROTATION_INDEX" help="Override daily rotation index for testing"
@@ -24,6 +25,7 @@ exec bash "${REPO_ROOT}/.mise/scripts/test/db/run_db_upgrade_gate.sh" \
   --backend "${usage_backend:-all}" \
   --old-version "${usage_old_version:-nightly}" \
   --new-image "${usage_new_image:-${DOCKER_IMAGE_NAME:-}}" \
+  --ckms "${usage_ckms:-}" \
   --seed "${usage_seed:-}" \
   --random-count "${usage_random_count:-10}" \
   --rotation-index "${usage_rotation_index:-}" \
