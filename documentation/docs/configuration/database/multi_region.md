@@ -48,10 +48,19 @@ MySQL has no Spock: the Galera alternative is described [below](#mysql-with-gale
 ### What "public" means
 
 On PostgreSQL, `public` is the default **schema** (namespace) of a database; it is not a visibility setting. The
-KMS creates its tables without a schema name, in the database named in the connection URL, so with the default
-`search_path` (`"$user", public`) they all land in the `public` schema. The KMS never creates another schema, so
-"the `public` tables" are **all the KMS tables of that database**: nothing else lives there. The audit store of a
-PostgreSQL audit backend is a separate database and is not part of this replication.
+KMS never qualifies a schema name (no `CREATE SCHEMA`, `SET SCHEMA` or `search_path` in its code): its tables are
+created in the database named in the connection URL, in the first existing schema of the connection's
+`search_path`. With the PostgreSQL default (`"$user", public`) that is `public`, so in a database dedicated to the
+KMS "the `public` tables" are **all the KMS tables**. The audit store of a PostgreSQL audit backend is a separate
+database and is not part of this replication.
+
+!!! warning
+    If a schema named like the KMS role exists (for example `kms`), or the URL or the role sets `search_path`,
+    the tables are created there instead, `repset_add_all_tables('default', ARRAY['public'])` replicates nothing
+    of the KMS, and `mr_guard_replication_set_complete` (which only looks at `public`) cannot see it. Check on
+    every node, as the KMS role: `SELECT schemaname, tablename FROM pg_tables WHERE tablename = 'objects';` must
+    return `public`. If the database holds other applications' tables in `public`, `repset_add_all_tables` also
+    adds them: dedicate the database to the KMS.
 
 | Table (PostgreSQL) | Replicated by Spock | Why |
 | ------------------ | ------------------- | --- |
@@ -86,13 +95,14 @@ one-time snapshot, not a rule that stays active, so:
   KMS table has one (checked by `mr_guard_primary_keys`).
 - `cluster_nodes` is removed from the set on purpose (`spock.repset_remove_table`).
 
-To list the tables of the `public` schema that a node does **not** publish (an empty result is correct; the
-deliberate exception is `cluster_nodes`):
+To list the tables of the `public` schema that a node does **not** publish (an empty result is correct;
+`cluster_nodes` is excluded on purpose):
 
 ```sql
 SELECT t.tablename
 FROM pg_tables t
 WHERE t.schemaname = 'public'
+  AND t.tablename <> 'cluster_nodes'
   AND NOT EXISTS (SELECT 1 FROM spock.replication_set_table r
                   WHERE r.set_reloid = format('public.%I', t.tablename)::regclass);
 ```
@@ -102,12 +112,14 @@ WHERE t.schemaname = 'public'
 
 ### How Galera selects the tables
 
-Galera has no replication set and no schema filter: every committed change to an **InnoDB** table of any schema is
-replicated to every node of the cluster. The KMS tables are all InnoDB, in the `kms` database. The rules that
+Galera has no replication set and no schema filter, and MySQL has no `public` schema: every committed change to an
+**InnoDB** table with a primary key, in any database of the cluster, is replicated to every node (the system
+`mysql.*` tables and non-InnoDB tables aside). The KMS tables are all InnoDB, in the `kms` database. The rules that
 matter:
 
 - A new table is replicated from its creation: `CREATE TABLE` is replicated as a schema change
-  (total order isolation, the default of `wsrep_OSU_method`), so the KMS startup on one node creates it everywhere and there is no operator step
+  (total order isolation, the default of `wsrep_OSU_method`, shown as `TOI` by `SHOW VARIABLES LIKE
+  'wsrep_OSU_method'`), so the KMS startup on one node creates it everywhere and there is no operator step
   on upgrade.
 - Tables of another storage engine are not replicated (`wsrep_replicate_myisam = OFF`); the KMS creates none.
 - Every table needs a `PRIMARY KEY`; Percona XtraDB Cluster in strict mode (`pxc_strict_mode = ENFORCING`)
