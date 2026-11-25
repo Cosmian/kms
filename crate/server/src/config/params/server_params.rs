@@ -1496,6 +1496,10 @@ impl fmt::Debug for ServerParams {
                         .migration_key
                         .as_ref()
                         .map(|_| "[PEM key provided]"),
+                )
+                .field(
+                    "google_cse_privileged_users",
+                    &self.google_cse.privileged_users,
                 );
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.enable);

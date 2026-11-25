@@ -341,6 +341,7 @@ mod tests {
                     "[kacls_url_2]".to_owned(),
                 ]),
                 migration_key: None,
+                privileged_users: Some(vec!["[admin_email_1]".to_owned()]),
             },
             azure_ekm_config: AzureEkmConfig {
                 enable: false,

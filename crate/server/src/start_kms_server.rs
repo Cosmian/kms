@@ -1018,7 +1018,7 @@ pub async fn prepare_kms_server(
     // against keys fetched from X's JWKS, never against a key published by another
     // configured identity provider (cross-issuer token forgery).
     let proxy_params = kms_server.params.proxy_params.as_ref();
-    let (jwt_configurations, google_cse_jwks_manager) =
+    let (jwt_configurations, google_cse_jwks_manager, google_cse_migration_authentication) =
         if let Some(identity_provider_configurations) =
             &kms_server.params.identity_provider_configurations
         {
@@ -1065,12 +1065,14 @@ pub async fn prepare_kms_server(
                 });
             }
 
+            let mut migration_configurations = Vec::new();
             let google_cse_jwks_manager = if enable_google_cse_authentication {
-                // Add the whitelisted external KACLS issuers, each bound to its own JWKS
+                // The whitelisted external KACLS issuers, each bound to its own JWKS. They are
+                // kept out of `built_jwt_configurations`: that list authenticates the KMIP API,
+                // which must never accept a KACLS migration token.
                 if let Some(white_list) = google_cse_whitelist {
-                    built_jwt_configurations.extend(
-                        google_cse::list_jwt_configurations(white_list, proxy_params).await?,
-                    );
+                    migration_configurations =
+                        google_cse::list_jwt_configurations(white_list, proxy_params).await?;
                 }
                 // Google-operated token issuers only (no IdP or whitelisted KACLS keys)
                 Some(Arc::new(
@@ -1079,9 +1081,13 @@ pub async fn prepare_kms_server(
             } else {
                 None
             };
-            (Arc::new(built_jwt_configurations), google_cse_jwks_manager)
+            (
+                Arc::new(built_jwt_configurations),
+                google_cse_jwks_manager,
+                Arc::new(migration_configurations),
+            )
         } else {
-            (Arc::new(Vec::new()), None)
+            (Arc::new(Vec::new()), None, Arc::new(Vec::new()))
         };
 
     // Determine if Client Cert Auth should be used for authentication.
@@ -1152,6 +1158,7 @@ pub async fn prepare_kms_server(
         || use_cert_auth
         || use_api_token_auth
         || use_auth_verifier;
+    reject_auth_bypasses(&kms_server.params)?;
     check_unauthenticated_bind(
         &kms_server.params.http_hostname,
         use_any_auth,
@@ -1199,6 +1206,7 @@ pub async fn prepare_kms_server(
         }
         let google_cse_config = GoogleCseConfig {
             authentication: jwt_configurations.clone(),
+            migration_authentication: google_cse_migration_authentication,
             authorization: google_cse::jwt_authorization_config(&jwks_manager),
         };
         // Only log google_cse_config on error - removed trace statement
@@ -1578,7 +1586,7 @@ pub async fn prepare_kms_server(
                         spire_default_username.clone(),
                     ),
                 ))
-                .wrap(Cors::permissive())
+                .wrap(ms_dke_cors())
                 .service(ms_dke::version)
                 .service(ms_dke::get_key)
                 .service(ms_dke::decrypt);
@@ -2153,6 +2161,39 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
     Ok(())
 }
 
+/// CORS policy of the `/ms_dke` scope: Office DKE clients are native applications that send no
+/// browser `Origin`, so every cross-origin browser request is refused (the policy Azure EKM uses).
+fn ms_dke_cors() -> Cors {
+    Cors::default()
+}
+
+/// Whether the authentication bypass settings are allowed: `insecure` builds only.
+#[cfg(feature = "insecure")]
+const AUTH_BYPASS_ALLOWED: bool = true;
+/// Whether the authentication bypass settings are allowed: `insecure` builds only.
+#[cfg(not(feature = "insecure"))]
+const AUTH_BYPASS_ALLOWED: bool = false;
+
+/// Refuse the settings that switch a cloud-provider endpoint's authentication off, unless the
+/// KMS is built with the `insecure` feature.
+fn reject_auth_bypasses(params: &ServerParams) -> KResult<()> {
+    if AUTH_BYPASS_ALLOWED {
+        return Ok(());
+    }
+    let bypass = |setting: &str| {
+        KmsError::ServerError(format!(
+            "{setting} requires a KMS built with the `insecure` feature"
+        ))
+    };
+    if params.google_cse.enable && params.google_cse.disable_tokens_validation {
+        return Err(bypass("google_cse_disable_tokens_validation"));
+    }
+    if params.azure_ekm.enable && params.azure_ekm.disable_client_auth {
+        return Err(bypass("azure_ekm_disable_client_auth"));
+    }
+    Ok(())
+}
+
 /// CORS policy for the scopes that accept session cookies (KMIP, `/v1/crypto`, `/tokenize`):
 /// same-origin plus the configured `cors_allowed_origins`, with credentials. Any method and
 /// header is allowed for those origins so browser clients (WASM `application/octet-stream`
@@ -2422,6 +2463,91 @@ mod tests {
                 "Error message must identify the offending URI, got: {msg}"
             );
         }
+    }
+
+    /// F-013: the authentication bypass settings need a KMS built with the `insecure` feature.
+    #[cfg(not(feature = "insecure"))]
+    #[test]
+    fn reject_auth_bypasses_requires_insecure_build() {
+        let mut params = ServerParams::default();
+        reject_auth_bypasses(&params).unwrap();
+
+        params.google_cse.enable = true;
+        reject_auth_bypasses(&params).unwrap();
+        params.google_cse.disable_tokens_validation = true;
+        let error = reject_auth_bypasses(&params).unwrap_err().to_string();
+        assert!(
+            error.contains(
+                "google_cse_disable_tokens_validation requires a KMS built with the `insecure` \
+                 feature"
+            ),
+            "{error}"
+        );
+
+        // A disabled integration is not refused
+        params.google_cse.enable = false;
+        reject_auth_bypasses(&params).unwrap();
+
+        params.azure_ekm.disable_client_auth = true;
+        reject_auth_bypasses(&params).unwrap();
+        params.azure_ekm.enable = true;
+        let error = reject_auth_bypasses(&params).unwrap_err().to_string();
+        assert!(
+            error.contains(
+                "azure_ekm_disable_client_auth requires a KMS built with the `insecure` feature"
+            ),
+            "{error}"
+        );
+    }
+
+    /// F-026: a browser page of another origin gets no `Access-Control-Allow-Origin` from the
+    /// `/ms_dke` scope, for the preflight or the request itself.
+    #[actix_web::test]
+    async fn ms_dke_scope_denies_cross_origin_requests() {
+        use actix_web::{http::header, test};
+
+        let kms = crate::tests::test_utils::test_kms().await.unwrap();
+        let allow_origin_of = async |cors: Cors, request: test::TestRequest| {
+            let app = test::init_service(
+                App::new()
+                    .app_data(Data::new(kms.clone()))
+                    .service(web::scope("/ms_dke").wrap(cors).service(ms_dke::decrypt)),
+            )
+            .await;
+            // a CORS refusal is a service error: it carries no CORS header either
+            test::try_call_service(&app, request.to_request())
+                .await
+                .ok()
+                .and_then(|response| {
+                    response
+                        .headers()
+                        .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                        .cloned()
+                })
+        };
+        let preflight = || {
+            test::TestRequest::default()
+                .method(actix_web::http::Method::OPTIONS)
+                .uri("/ms_dke/key/id/decrypt")
+                .insert_header((header::ORIGIN, "https://evil.example"))
+                .insert_header((header::ACCESS_CONTROL_REQUEST_METHOD, "POST"))
+        };
+        let post = || {
+            test::TestRequest::post()
+                .uri("/ms_dke/key/id/decrypt")
+                .insert_header((header::ORIGIN, "https://evil.example"))
+                .set_json(serde_json::json!({"alg": "RSA-OAEP-256", "value": "AAAA"}))
+        };
+
+        // control: the previous permissive policy does grant the foreign origin
+        assert!(
+            allow_origin_of(Cors::permissive(), preflight())
+                .await
+                .is_some()
+        );
+
+        assert_eq!(allow_origin_of(ms_dke_cors(), preflight()).await, None);
+        assert_eq!(allow_origin_of(ms_dke_cors(), post()).await, None);
     }
 
     fn sample_aws_xks_params() -> aws_xks::AwsXksParams {
@@ -2744,6 +2870,8 @@ mod tests {
         config.socket_server.start = false;
         config.vault.api_enabled = true;
         config.vault.auth_verifier_url = Some("http://127.0.0.1:9".to_owned());
+        // No CSE endpoint is called: the bypass setting would only make the server refuse to start
+        config.google_cse_config.disable_tokens_validation = false;
         let kms = crate::tests::test_utils::test_kms_with_config(config)
             .await
             .unwrap();

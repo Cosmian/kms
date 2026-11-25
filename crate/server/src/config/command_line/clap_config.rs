@@ -794,6 +794,10 @@ impl fmt::Debug for ClapConfig {
                     "google_cse_migration_key",
                     &self.google_cse_config.migration_key,
                 )
+                .field(
+                    "google_cse_privileged_users",
+                    &self.google_cse_config.privileged_users,
+                )
         } else {
             x.field("google_cse_enable", &self.google_cse_config.enable)
         };

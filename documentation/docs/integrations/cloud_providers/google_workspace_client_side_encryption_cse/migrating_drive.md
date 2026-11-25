@@ -26,6 +26,26 @@ Eviden KMS generates a dedicated RSA key pair at startup (if not already present
 
 Note: the JWT tokens MUST have their audience set to `kacls-migration`.
 
+## Accepting migrations from another KACLS
+
+The KACLS that currently holds the data (the original KACLS) accepts a migration on `privilegedunwrap` only from the
+KACLS URLs listed in `google_cse_incoming_url_whitelist` (`--google-cse-incoming-url-whitelist`). Its token is verified
+against the keys published by the whitelisted KACLS at `<url>/certs`, and it is accepted only when:
+
+- its audience contains `kacls-migration`;
+- its `kacls_url` claim is the URL of this KACLS (`<KMS_PUBLIC_URL>/google_cse`); the claim is mandatory;
+- its `resource_name` claim equals the `resource_name` of the request.
+
+A whitelisted KACLS token is a migration token only: it is never accepted by the other CSE endpoints nor by the KMIP API.
+
+## Privileged endpoints and `google_cse_privileged_users`
+
+`privilegedwrap`, `privilegedunwrap` and `privilegedprivatekeydecrypt` skip the document access control. Besides the
+migration tokens above (`privilegedunwrap` only, since they carry no user identity), they accept the identity-provider
+tokens of the users listed in `google_cse_privileged_users` (`--google-cse-privileged-users`,
+`KMS_GOOGLE_CSE_PRIVILEGED_USERS`), matched case-insensitively on the `google_email` or, when absent, the `email` claim.
+The option is empty by default: no user can then call these endpoints and a migration uses a whitelisted KACLS token.
+
 ## Key Persistence Across Restarts & Multiple Instances
 
 To ensure consistent JWT signatures and seamless privileged unwrap operations across multiple instances or restarts, you can

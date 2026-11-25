@@ -13,6 +13,13 @@ source "${SCRIPT_DIR}/../../common.sh"
 init_build_env "$@"
 setup_test_logging
 
+# azure_ekm_disable_client_auth is refused by a KMS built without the `insecure` feature.
+if [ "${VARIANT}" = "non-fips" ]; then
+  FEATURES_FLAG=(--features non-fips,insecure)
+else
+  FEATURES_FLAG=(--features insecure)
+fi
+
 # Configuration
 KMS_PORT=6790
 EKM_PREFIX="cosmian0"

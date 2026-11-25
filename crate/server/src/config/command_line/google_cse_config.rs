@@ -50,4 +50,17 @@ pub struct GoogleCseConfig {
     )]
     #[serde(rename = "google_cse_migration_key")]
     pub migration_key: Option<String>,
+
+    /// Emails (`IdP` `email`/`google_email` claim) allowed to call privilegedwrap,
+    /// privilegedunwrap and privilegedprivatekeydecrypt.
+    /// Empty: only whitelisted KACLS migration tokens are accepted on privilegedunwrap.
+    #[clap(
+        long = "google-cse-privileged-users",
+        id = "google_cse_privileged_users",
+        value_name = "GOOGLE_CSE_PRIVILEGED_USERS",
+        env = "KMS_GOOGLE_CSE_PRIVILEGED_USERS",
+        value_delimiter = ','
+    )]
+    #[serde(rename = "google_cse_privileged_users")]
+    pub privileged_users: Option<Vec<String>>,
 }

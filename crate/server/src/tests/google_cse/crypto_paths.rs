@@ -23,21 +23,21 @@ use openssl::{
 };
 use serde_json::Value;
 
-use super::{DUMMY_TOKEN, import_google_cse_symmetric_key_with_access};
+use super::{DUMMY_TOKEN, import_google_cse_symmetric_key_with_access, privileged_test_app};
 use crate::{
     error::KmsError,
     routes::google_cse::operations::{
         PrivateKeyDecryptRequest, PrivateKeySignRequest, PrivilegedPrivateKeyDecryptRequest,
         PrivilegedUnwrapRequest, PrivilegedWrapRequest, UnwrapRequest, WrapRequest,
     },
-    tests::test_utils::{self, post_json_raw},
+    tests::test_utils::post_json_raw,
 };
 
 const DEK: [u8; 32] = [7; 32];
 
 async fn app()
 -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = privileged_test_app().await;
     import_google_cse_symmetric_key_with_access(&app)
         .await
         .unwrap();

@@ -21,7 +21,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::{CryptoResultHelper, crypto::rsa::sign_rsa_digest_with_algorithm},
 };
 use cosmian_logger::{debug, trace};
-use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openssl::{
     hash::MessageDigest,
     md::Md,
@@ -50,7 +49,8 @@ use crate::{
     routes::google_cse::{
         build_google_cse_url,
         jwt::{
-            validate_cse_authentication_token, validate_cse_authorization_token, validate_tokens,
+            PrivilegedCaller, privileged_denied, validate_cse_authorization_token,
+            validate_cse_privileged_token, validate_tokens,
         },
     },
 };
@@ -701,6 +701,41 @@ pub async fn digest(
     Ok(DigestResponse { resource_key_hash })
 }
 
+/// Authenticate the caller of a privileged endpoint (see [`validate_cse_privileged_token`]).
+async fn authenticate_privileged(
+    authentication: &str,
+    resource_name: Option<&str>,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
+    kms: &Arc<KMS>,
+) -> KResult<PrivilegedCaller> {
+    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
+    validate_cse_privileged_token(
+        authentication,
+        cse_config,
+        &google_cse_kacls_url,
+        kms.params
+            .google_cse
+            .privileged_users
+            .as_deref()
+            .unwrap_or_default(),
+        resource_name,
+    )
+    .await
+}
+
+/// Authenticate the caller of a privileged endpoint that acts on behalf of a user: a KACLS
+/// migration token carries no user identity and is refused.
+async fn authenticate_privileged_user(
+    authentication: &str,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
+    kms: &Arc<KMS>,
+) -> KResult<String> {
+    match authenticate_privileged(authentication, None, cse_config, kms).await? {
+        PrivilegedCaller::User(email) => Ok(email),
+        PrivilegedCaller::Migration => Err(privileged_denied()),
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PrivilegedWrapRequest {
     pub authentication: String,
@@ -731,16 +766,7 @@ pub async fn privileged_wrap(
 ) -> KResult<PrivilegedWrapResponse> {
     debug!("entering");
 
-    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
-
-    let user = validate_cse_authentication_token(
-        &request.authentication,
-        cse_config,
-        &google_cse_kacls_url,
-        &UserId::from(kms.params.default_username.as_str()),
-        None,
-    )
-    .await?;
+    let user = authenticate_privileged_user(&request.authentication, cse_config, kms).await?;
 
     debug!("wrap dek");
     let resource_name = request.resource_name.into_bytes();
@@ -780,20 +806,19 @@ pub async fn privileged_unwrap(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedUnwrapResponse> {
     debug!("entering");
-    let user = if kms.params.google_cse.disable_tokens_validation {
+    if kms.params.google_cse.disable_tokens_validation {
         debug!("Authentication token check: validation disabled");
-        kms.params.default_username.clone()
     } else {
-        let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
-        validate_cse_authentication_token(
+        // Both a migration token and a privileged user run as the default user
+        authenticate_privileged(
             &request.authentication,
+            Some(&request.resource_name),
             cse_config,
-            &google_cse_kacls_url,
-            &UserId::from(kms.params.default_username.as_str()),
-            Some(request.resource_name.clone()),
+            kms,
         )
-        .await?
-    };
+        .await?;
+    }
+    let user = kms.params.default_username.clone();
     let resource_name = request.resource_name;
 
     debug!("unwrap key");
@@ -852,16 +877,7 @@ pub async fn privileged_private_key_decrypt(
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
     debug!("entering");
-    let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
-
-    let user = validate_cse_authentication_token(
-        &request.authentication,
-        cse_config,
-        &google_cse_kacls_url,
-        &UserId::from(kms.params.default_username.as_str()),
-        None,
-    )
-    .await?;
+    let user = authenticate_privileged_user(&request.authentication, cse_config, kms).await?;
 
     debug!("check algorithm");
 
@@ -991,14 +1007,30 @@ pub fn create_jwt(
         exp: usize::try_from((now + time::Duration::minutes(60)).unix_timestamp())?,
     };
 
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(calculate_hash::<str>(current_kacls_url).to_string());
-
-    let encoding_key = EncodingKey::from_rsa_der(private_key_bytes);
-
-    let token = encode(&header, &claims, &encoding_key)
-        .map_err(|e| KmsError::Default(format!("Error encoding token: {e}")))?;
-    Ok(token)
+    // Signed with OpenSSL: the `jsonwebtoken` RS256 signer runs the `rsa` crate (Marvin timing
+    // attack, RUSTSEC-2023-0071) on the server's migration private key.
+    let header = serde_json::json!({
+        "alg": "RS256",
+        "typ": "JWT",
+        "kid": calculate_hash::<str>(current_kacls_url).to_string(),
+    });
+    let signing_input = format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header)?),
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims)?)
+    );
+    let digest = openssl::hash::hash(MessageDigest::sha256(), signing_input.as_bytes())?;
+    let signature = sign_rsa_digest_with_algorithm(
+        private_key_bytes,
+        "SHA256withRSA",
+        &general_purpose::STANDARD.encode(digest),
+        None,
+    )
+    .map_err(|e| KmsError::Default(format!("Error encoding token: {e}")))?;
+    Ok(format!(
+        "{signing_input}.{}",
+        URL_SAFE_NO_PAD.encode(signature)
+    ))
 }
 
 #[derive(Serialize, Deserialize, Debug)]

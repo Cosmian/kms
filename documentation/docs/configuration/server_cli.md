@@ -473,6 +473,11 @@ Options:
 
           [env: KMS_GOOGLE_CSE_MIGRATION_KEY=]
 
+      --google-cse-privileged-users <GOOGLE_CSE_PRIVILEGED_USERS>
+          Emails (IdP `email`/`google_email` claim) allowed to call privilegedwrap, privilegedunwrap and privilegedprivatekeydecrypt. Empty: only whitelisted KACLS migration tokens are accepted on privilegedunwrap
+
+          [env: KMS_GOOGLE_CSE_PRIVILEGED_USERS=]
+
       --azure-ekm-enable
           This setting turns on/off the endpoints handling Azure EKM features
 

@@ -213,6 +213,7 @@ azure_ekm_ekm_vendor = "Eviden"
 azure_ekm_ekm_product = "Eviden KMS"
 
 # WARNING: Only set to true for testing! Never in production.
+# A KMS built without the `insecure` feature refuses to start when this is true.
 azure_ekm_disable_client_auth = false
 ```
 
@@ -226,7 +227,7 @@ azure_ekm_disable_client_auth = false
 | `azure_ekm_proxy_name` | string | `"EKM Proxy Service"` | Proxy name and version reported in `/info` endpoint. Auto-inserts the KMS package version by default. |
 | `azure_ekm_ekm_vendor` | string | `"Eviden"` | EKMS vendor name reported in `/info` endpoint.|
 | `azure_ekm_ekm_product` | string | `"Eviden KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
-| `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing. |
+| `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing: the server refuses to start with this option unless it is built with the `insecure` feature. |
 
 ### Grant the Managed HSM identity access rights on the KMS
 
@@ -307,7 +308,7 @@ az keyvault role assignment create \
 
 ## Testing the integration
 
-For testing purposes or for debugging, you can temporarily disable client authentication by commenting out the following configuration fields:
+For testing purposes or for debugging, you can temporarily disable client authentication by commenting out the following configuration fields. This requires a KMS built with the `insecure` feature (`cargo build -p cosmian_kms_server --features insecure`): the official release binaries and images refuse to start with `azure_ekm_disable_client_auth = true`.
 
 ```toml
 [tls]

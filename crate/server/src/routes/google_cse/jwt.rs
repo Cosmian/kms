@@ -9,9 +9,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_ensure,
-    middlewares::{
-        JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId, refresh_jwks_for_token,
-    },
+    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, refresh_jwks_for_token},
     result::KResult,
     routes::google_cse::build_google_cse_url,
 };
@@ -220,82 +218,90 @@ pub(super) fn decode_jwt_authorization_token(
     Ok((user_claims, jwt_headers))
 }
 
+/// Audience carried by every KACLS-to-KACLS migration token.
+const MIGRATION_AUDIENCE: &str = "kacls-migration";
+
 /// The configuration for Google CSE:
 ///  - JWT authentication and authorization configurations
 #[derive(Debug, Clone)]
 pub struct GoogleCseConfig {
+    /// Identity providers authenticating end users.
     pub authentication: Arc<Vec<JwtConfig>>,
+    /// Whitelisted external KACLS issuers: only accepted as KACLS migration tokens on
+    /// `privilegedunwrap`. Never used to authenticate an end user or the KMIP API.
+    pub migration_authentication: Arc<Vec<JwtConfig>>,
     pub authorization: HashMap<String, Arc<JwtConfig>>,
 }
 
-/// Validate the authentication token and return the calling user
-/// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
-/// # Errors
-/// Returns an error if the authentication token is invalid, if the configuration is missing
-pub async fn validate_cse_authentication_token(
-    authentication_token: &str,
-    cse_config: &Option<GoogleCseConfig>,
-    google_cse_kacls_url: &str,
-    kms_default_username: &str,
-    is_priv_unwrap: Option<String>,
-) -> KResult<String> {
-    trace!("entering");
-    let cse_config = cse_config.as_ref().ok_or_else(|| {
+/// The caller of a privileged Google CSE endpoint, once its authentication token is validated.
+#[derive(Debug, PartialEq, Eq)]
+pub enum PrivilegedCaller {
+    /// A whitelisted KACLS presenting a migration token (no user identity).
+    Migration,
+    /// An identity-provider user listed in `google_cse_privileged_users` (its email).
+    User(String),
+}
+
+fn cse_config_or_error(cse_config: &Option<GoogleCseConfig>) -> KResult<&GoogleCseConfig> {
+    cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"
                 .to_owned(),
         )
-    })?;
+    })
+}
 
+/// Validate `token` against the first of `configs` accepting it. When none does, refresh the
+/// JWKS of the token's issuer and retry once: the KACLS `/certs` key may have been rotated, or
+/// evicted during a periodic refresh failure (the `JwksManager` replaces the whole map on each
+/// refresh).
+async fn decode_with_refresh<'a>(
+    configs: &'a [JwtConfig],
+    token: &str,
+) -> KResult<Option<(UserClaim, &'a JwtConfig)>> {
+    let try_decode = || {
+        configs.iter().find_map(|config| {
+            config
+                .validate_authentication_token(token, false)
+                .ok()
+                .map(|claims| (claims, config))
+        })
+    };
+    if let Some(found) = try_decode() {
+        return Ok(Some(found));
+    }
+    refresh_jwks_for_token(configs.iter(), token).await?;
+    Ok(try_decode())
+}
+
+/// Validate an end-user authentication token against the identity providers and return its
+/// claims. `resource_name` is set on the privileged endpoints: a Google Drive resource then
+/// also requires the token audience to be one of the configured audiences.
+async fn validate_idp_token(
+    authentication_token: &str,
+    cse_config: &GoogleCseConfig,
+    google_cse_kacls_url: &str,
+    resource_name: Option<&str>,
+) -> KResult<UserClaim> {
     trace!("validate token: KACLS URL {google_cse_kacls_url}");
 
-    let mut decoded_token = None;
-    let mut working_jwt_config: Option<&JwtConfig> = None;
-    for idp_config in cse_config.authentication.iter() {
-        if let Ok(token) = idp_config.validate_authentication_token(authentication_token, false) {
-            // store the decoded claim and break the loop if decoding succeeds
-            decoded_token = Some(token);
-            working_jwt_config = Some(idp_config);
-            break;
-        }
-    }
-
-    // If no config matched, refresh the JWKS of the token's issuer and retry once.
-    // The KACLS `/certs` key may have been rotated, or evicted during a periodic refresh
-    // failure (the JwksManager replaces the entire map on each refresh).
-    if decoded_token.is_none() {
-        refresh_jwks_for_token(cse_config.authentication.iter(), authentication_token).await?;
-        for idp_config in cse_config.authentication.iter() {
-            if let Ok(token) = idp_config.validate_authentication_token(authentication_token, false)
-            {
-                decoded_token = Some(token);
-                working_jwt_config = Some(idp_config);
-                break;
-            }
-        }
-    }
-
-    let authentication_token = decoded_token.ok_or_else(|| {
-        KmsError::Unauthorized(
-            "Fail to decode authentication token with the given config".to_owned(),
-        )
-    })?;
+    let (claims, jwt_config) =
+        decode_with_refresh(&cse_config.authentication, authentication_token)
+            .await?
+            .ok_or_else(|| {
+                KmsError::Unauthorized(
+                    "Fail to decode authentication token with the given config".to_owned(),
+                )
+            })?;
     #[cfg(all(not(test), not(feature = "insecure")))]
-    check_authentication_kacls_url(
-        authentication_token.kacls_url.as_deref(),
-        google_cse_kacls_url,
-    )?;
+    check_authentication_kacls_url(claims.kacls_url.as_deref(), google_cse_kacls_url)?;
 
-    // When the authentication token contains the optional `google_email` claim, it must be compared against the email claim in the authorization token using a case-insensitive approach.
-    // Don't use the email claim within the authentication token for this comparison.
-    // In scenarios where the authentication token lacks the optional google_email claim, the email claim within the authentication token should be compared with the email claim in the authorization token, using a case-insensitive method. (Google Documentation)
     // Post-validation audience membership check under Google Drive resources only
-    if let Some(resource_name) = &is_priv_unwrap
+    if let Some(resource_name) = resource_name
         && resource_name.to_lowercase().contains("/drive/")
-        && let Some(cfg) = working_jwt_config
-        && let Some(allowed_audiences) = &cfg.jwt_audience
+        && let Some(allowed_audiences) = &jwt_config.jwt_audience
     {
-        let token_audiences = authentication_token.aud.clone().unwrap_or_default();
+        let token_audiences = claims.aud.clone().unwrap_or_default();
         let matches_any = token_audiences
             .iter()
             .any(|aud| allowed_audiences.iter().any(|a| a == aud));
@@ -312,24 +318,125 @@ pub async fn validate_cse_authentication_token(
             ))
         );
     }
+    Ok(claims)
+}
 
-    let authentication_email = if let Some(_resource_name) = is_priv_unwrap {
-        // For `privileged_unwrap` endpoint, google_email or email claim are not provided in authentication token
-        kms_default_username.to_owned()
-    } else {
-        authentication_token
-            .google_email
-            .or(authentication_token.email)
-            .ok_or_else(|| {
-                KmsError::Unauthorized(
-                    "Authentication token should contain a google_email or an email".to_owned(),
-                )
-            })?
-    };
+/// The email of an authentication token.
+///
+/// When the token contains the optional `google_email` claim, it is the one compared (case
+/// insensitively) against the email claim of the authorization token; the `email` claim is only
+/// used when `google_email` is absent. (Google Documentation)
+fn authentication_email(claims: UserClaim) -> KResult<String> {
+    claims.google_email.or(claims.email).ok_or_else(|| {
+        KmsError::Unauthorized(
+            "Authentication token should contain a google_email or an email".to_owned(),
+        )
+    })
+}
 
-    trace!("authentication token validated for {authentication_email}");
+/// Validate the authentication token and return the calling user
+/// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
+/// # Errors
+/// Returns an error if the authentication token is invalid, if the configuration is missing
+pub async fn validate_cse_authentication_token(
+    authentication_token: &str,
+    cse_config: &Option<GoogleCseConfig>,
+    google_cse_kacls_url: &str,
+) -> KResult<String> {
+    trace!("entering");
+    let cse_config = cse_config_or_error(cse_config)?;
+    let claims =
+        validate_idp_token(authentication_token, cse_config, google_cse_kacls_url, None).await?;
+    let email = authentication_email(claims)?;
+    trace!("authentication token validated for {email}");
+    Ok(email)
+}
 
-    Ok(authentication_email)
+/// Check the claims of a validated KACLS migration token against this request.
+fn check_migration_claims(
+    claims: &UserClaim,
+    google_cse_kacls_url: &str,
+    resource_name: Option<&str>,
+) -> KResult<()> {
+    // Unlike `check_authentication_kacls_url`, the claim is required and always enforced:
+    // a migration token is only valid for the KACLS it was minted for.
+    let kacls_url = claims.kacls_url.as_deref().ok_or_else(|| {
+        KmsError::Unauthorized("KACLS migration token should contain a kacls_url".to_owned())
+    })?;
+    kms_ensure!(
+        kacls_url == google_cse_kacls_url,
+        KmsError::Unauthorized(format!(
+            "KACLS URLs should match: expected: {google_cse_kacls_url}, got: {kacls_url} "
+        ))
+    );
+    if let Some(resource_name) = resource_name {
+        kms_ensure!(
+            claims.resource_name.as_deref() == Some(resource_name),
+            KmsError::Unauthorized(
+                "Authentication token resource_name does not match request resource_name"
+                    .to_owned()
+            )
+        );
+    }
+    Ok(())
+}
+
+/// Validate the authentication token of a privileged endpoint
+/// (`privilegedwrap`, `privilegedunwrap`, `privilegedprivatekeydecrypt`).
+///
+/// Accepted callers, in order:
+/// 1. a whitelisted KACLS presenting a migration token (`aud` contains `kacls-migration`)
+///    minted for this KACLS and, when `resource_name` is set, for that resource;
+/// 2. an identity-provider user whose email is in `privileged_users` (case insensitive).
+///
+/// # Errors
+/// Returns `Unauthorized` when the token is invalid or its caller is neither of the above.
+pub async fn validate_cse_privileged_token(
+    token: &str,
+    cse_config: &Option<GoogleCseConfig>,
+    google_cse_kacls_url: &str,
+    privileged_users: &[String],
+    resource_name: Option<&str>,
+) -> KResult<PrivilegedCaller> {
+    trace!("entering");
+    let cse_config = cse_config_or_error(cse_config)?;
+
+    // The whitelisted KACLS keys can only verify migration tokens: a token that none of them
+    // validates (a user token, a refresh failure) falls through to the identity providers.
+    match decode_with_refresh(&cse_config.migration_authentication, token).await {
+        Ok(Some((claims, _)))
+            if claims
+                .aud
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .any(|aud| aud == MIGRATION_AUDIENCE) =>
+        {
+            check_migration_claims(&claims, google_cse_kacls_url, resource_name)?;
+            return Ok(PrivilegedCaller::Migration);
+        }
+        Ok(_) => {}
+        Err(e) => debug!("KACLS migration token validation skipped: {e}"),
+    }
+
+    let claims = validate_idp_token(token, cse_config, google_cse_kacls_url, resource_name).await?;
+    if let Ok(email) = authentication_email(claims)
+        && privileged_users
+            .iter()
+            .any(|user| !user.is_empty() && user.eq_ignore_ascii_case(&email))
+    {
+        return Ok(PrivilegedCaller::User(email));
+    }
+    Err(privileged_denied())
+}
+
+/// The error of a caller that may not use a privileged endpoint.
+pub(super) fn privileged_denied() -> KmsError {
+    KmsError::Unauthorized(
+        "Google CSE privileged operations require a whitelisted KACLS migration token or a \
+         google_cse_privileged_users identity"
+            .to_owned(),
+    )
 }
 
 /// Validate the authorization token and return the calling user
@@ -413,14 +520,9 @@ pub(super) async fn validate_tokens(
 ) -> KResult<TokenExtractedContent> {
     let google_cse_kacls_url = build_google_cse_url(kms.params.kms_public_url.as_deref())?;
 
-    let authentication_email = validate_cse_authentication_token(
-        authentication_token,
-        cse_config,
-        &google_cse_kacls_url,
-        &UserId::from(kms.params.default_username.as_str()),
-        None,
-    )
-    .await?;
+    let authentication_email =
+        validate_cse_authentication_token(authentication_token, cse_config, &google_cse_kacls_url)
+            .await?;
 
     let authorization_token = validate_cse_authorization_token(
         authorization_token,
@@ -576,10 +678,11 @@ mod tests {
         routes::google_cse::{
             self,
             jwt::{
-                JWKS_URI, JWT_ISSUER_URI, check_authentication_kacls_url,
+                JWKS_URI, JWT_ISSUER_URI, PrivilegedCaller, check_authentication_kacls_url,
                 check_authorization_audience, check_authorization_claims,
                 decode_jwt_authorization_token, jwt_authorization_config,
                 validate_cse_authentication_token, validate_cse_authorization_token,
+                validate_cse_privileged_token,
             },
             operations::{Role, WrapRequest},
         },
@@ -960,118 +1063,141 @@ mod tests {
         resource_name: String,
     }
 
+    const KMS_A_URL: &str = "https://kms-a.example.com/google_cse";
+    const KMS_B_URL: &str = "https://kms-b.example.com/google_cse";
+    const MIGRATED_RESOURCE: &str = "//googleapis.com/drive/files/test-file-id";
+
+    /// KMS-B's configuration: KMS-A is whitelisted, `kid` is its migration key.
+    fn migration_cse_config(
+        kid: &str,
+        rsa: &Rsa<openssl::pkey::Private>,
+    ) -> super::GoogleCseConfig {
+        super::GoogleCseConfig {
+            authentication: Arc::new(vec![]),
+            // As built by `list_jwt_configurations` for a whitelisted KACLS
+            migration_authentication: Arc::new(vec![JwtConfig {
+                jwt_issuer_uri: KMS_A_URL.to_owned(),
+                issuer_namespace: None,
+                jwks: build_jwks_manager_with_key(kid, rsa),
+                jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+                accept_spiffe_subject: false,
+            }]),
+            authorization: HashMap::new(),
+        }
+    }
+
+    fn migration_token(
+        kid: &str,
+        rsa: &Rsa<openssl::pkey::Private>,
+        aud: &str,
+        kacls_url: &str,
+        resource_name: &str,
+    ) -> String {
+        let now = now_usize();
+        sign_test_jwt(
+            kid,
+            &KaclsMigrationClaims {
+                iss: KMS_A_URL.to_owned(),
+                aud: aud.to_owned(),
+                exp: now + 3600,
+                iat: now,
+                kacls_url: kacls_url.to_owned(),
+                resource_name: resource_name.to_owned(),
+            },
+            rsa,
+        )
+    }
+
     /// Non-regression test for the KACLS-to-KACLS migration authentication flow
     /// (issue #947). When KMS-A calls `privilegedunwrap` on KMS-B, the JWT sent
-    /// by KMS-A must be accepted by `validate_cse_authentication_token` on KMS-B.
+    /// by KMS-A must be accepted by `validate_cse_privileged_token` on KMS-B.
     ///
     /// The token has `aud: "kacls-migration"` and is signed by KMS-A's migration
     /// RSA key. KMS-B's whitelist config must have a matching expected audience.
     #[tokio::test]
     async fn test_kacls_migration_authentication_token_accepted() {
         log_init(option_env!("RUST_LOG"));
-
         let kid = "kacls-migration-kid-001";
-        let kms_a_url = "https://kms-a.example.com/google_cse";
-        let kms_b_url = "https://kms-b.example.com/google_cse";
-
         let rsa = Rsa::generate(2048).unwrap();
-        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
+        let cse_config = Some(migration_cse_config(kid, &rsa));
+        let token = migration_token(kid, &rsa, "kacls-migration", KMS_B_URL, MIGRATED_RESOURCE);
 
-        // Build the whitelist JwtConfig as list_jwt_configurations would
-        let whitelist_config = JwtConfig {
-            jwt_issuer_uri: kms_a_url.to_owned(),
-            issuer_namespace: None,
-            jwks: jwks_manager.clone(),
-            jwt_audience: Some(vec!["kacls-migration".to_owned()]),
-            accept_spiffe_subject: false,
-        };
-
-        let cse_config = super::GoogleCseConfig {
-            authentication: vec![whitelist_config].into(),
-            authorization: HashMap::new(),
-        };
-
-        let now = now_usize();
-        let claims = KaclsMigrationClaims {
-            iss: kms_a_url.to_owned(),
-            aud: "kacls-migration".to_owned(),
-            exp: now + 3600,
-            iat: now,
-            kacls_url: kms_b_url.to_owned(),
-            resource_name: "//googleapis.com/drive/files/test-file-id".to_owned(),
-        };
-
-        let token = sign_test_jwt(kid, &claims, &rsa);
-
-        let result = validate_cse_authentication_token(
+        let caller = validate_cse_privileged_token(
             &token,
-            &Some(cse_config),
-            kms_b_url,
-            "default_user",
-            Some("//googleapis.com/drive/files/test-file-id".to_owned()),
+            &cse_config,
+            KMS_B_URL,
+            &[],
+            Some(MIGRATED_RESOURCE),
         )
-        .await;
-
-        assert!(
-            result.is_ok(),
-            "KACLS migration authentication token should be accepted, got: {:?}",
-            result.err()
-        );
-        // For privilegedunwrap, the returned user is the default username
-        assert_eq!(result.unwrap(), "default_user");
+        .await
+        .unwrap();
+        assert_eq!(caller, PrivilegedCaller::Migration);
     }
 
-    /// Verify that a KACLS migration token with a wrong audience is rejected
-    /// (post-decode audience check on Drive resources).
+    /// A migration token minted for another KACLS, for another resource, or with a wrong
+    /// audience is refused.
     #[tokio::test]
-    async fn test_kacls_migration_token_wrong_audience_rejected() {
+    async fn test_kacls_migration_token_negatives() {
         log_init(option_env!("RUST_LOG"));
-
         let kid = "kacls-migration-kid-002";
-        let kms_a_url = "https://kms-a.example.com/google_cse";
-        let kms_b_url = "https://kms-b.example.com/google_cse";
-
         let rsa = Rsa::generate(2048).unwrap();
-        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
-
-        let whitelist_config = JwtConfig {
-            jwt_issuer_uri: kms_a_url.to_owned(),
-            issuer_namespace: None,
-            jwks: jwks_manager.clone(),
-            jwt_audience: Some(vec!["kacls-migration".to_owned()]),
-            accept_spiffe_subject: false,
+        let cse_config = Some(migration_cse_config(kid, &rsa));
+        let check = |token: String, resource_name: Option<&'static str>| {
+            let cse_config = cse_config.clone();
+            async move {
+                validate_cse_privileged_token(&token, &cse_config, KMS_B_URL, &[], resource_name)
+                    .await
+                    .unwrap_err()
+                    .to_string()
+            }
         };
 
-        let cse_config = super::GoogleCseConfig {
-            authentication: vec![whitelist_config].into(),
-            authorization: HashMap::new(),
-        };
-
-        let now = now_usize();
-        let claims = KaclsMigrationClaims {
-            iss: kms_a_url.to_owned(),
-            aud: "wrong-audience".to_owned(),
-            exp: now + 3600,
-            iat: now,
-            kacls_url: kms_b_url.to_owned(),
-            resource_name: "//googleapis.com/drive/files/test-file-id".to_owned(),
-        };
-
-        let token = sign_test_jwt(kid, &claims, &rsa);
-
-        let result = validate_cse_authentication_token(
-            &token,
-            &Some(cse_config),
-            kms_b_url,
-            "default_user",
-            Some("//googleapis.com/drive/files/test-file-id".to_owned()),
-        )
-        .await;
-
-        assert!(
-            result.is_err(),
-            "KACLS migration token with wrong audience should be rejected"
+        let wrong_url = migration_token(
+            kid,
+            &rsa,
+            "kacls-migration",
+            "https://kms-c.example.com/google_cse",
+            MIGRATED_RESOURCE,
         );
+        assert!(
+            check(wrong_url, Some(MIGRATED_RESOURCE))
+                .await
+                .contains("KACLS URLs should match")
+        );
+
+        let other_resource = migration_token(
+            kid,
+            &rsa,
+            "kacls-migration",
+            KMS_B_URL,
+            "//googleapis.com/drive/files/other",
+        );
+        assert!(
+            check(other_resource, Some(MIGRATED_RESOURCE))
+                .await
+                .contains("resource_name does not match request resource_name")
+        );
+
+        // A wrong audience is not a migration token, and no identity provider accepts it
+        let wrong_aud = migration_token(kid, &rsa, "wrong-audience", KMS_B_URL, MIGRATED_RESOURCE);
+        assert!(
+            check(wrong_aud, Some(MIGRATED_RESOURCE))
+                .await
+                .contains("Fail to decode")
+        );
+    }
+
+    /// Whitelisted KACLS keys never authenticate an end user on the ordinary endpoints.
+    #[tokio::test]
+    async fn test_kacls_migration_token_refused_as_user_token() {
+        let kid = "kacls-migration-kid-003";
+        let rsa = Rsa::generate(2048).unwrap();
+        let cse_config = Some(migration_cse_config(kid, &rsa));
+        let token = migration_token(kid, &rsa, "kacls-migration", KMS_B_URL, MIGRATED_RESOURCE);
+        let err = validate_cse_authentication_token(&token, &cse_config, KMS_B_URL)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Fail to decode"), "{err}");
     }
 
     #[ignore = "Requires Google CSE credentials; not available in CI"]
@@ -1309,7 +1435,7 @@ mod tests {
 
     #[tokio::test]
     async fn cse_config_none() {
-        let err = validate_cse_authentication_token("x", &None, "https://k", "user", None)
+        let err = validate_cse_authentication_token("x", &None, "https://k")
             .await
             .unwrap_err();
         assert!(
@@ -1344,17 +1470,12 @@ mod tests {
                 accept_spiffe_subject: false,
             }]
             .into(),
+            migration_authentication: Arc::new(vec![]),
             authorization: HashMap::new(),
         };
-        let err = validate_cse_authentication_token(
-            "garbage",
-            &Some(cse_config),
-            "https://k",
-            "user",
-            None,
-        )
-        .await
-        .unwrap_err();
+        let err = validate_cse_authentication_token("garbage", &Some(cse_config), "https://k")
+            .await
+            .unwrap_err();
         assert!(
             err.to_string()
                 .contains("Fail to decode authentication token with the given config"),
@@ -1406,6 +1527,7 @@ mod tests {
         let issuer = "gsuitecse-tokenissuer-drive@system.gserviceaccount.com";
         let cse_config = super::GoogleCseConfig {
             authentication: Arc::new(vec![]),
+            migration_authentication: Arc::new(vec![]),
             authorization: HashMap::from([(
                 "drive".to_owned(),
                 Arc::new(JwtConfig {

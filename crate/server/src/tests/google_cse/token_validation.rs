@@ -33,7 +33,7 @@ use super::{
     utils::{
         DRIVE_RESOURCE, LOCAL_AUTHN_ISSUER, LOCAL_KACLS_URL, LOCAL_KID, LOCAL_KMS_PUBLIC_URL,
         authn_token, authn_token_with_aud, authz_token, build_jwks_manager_with_key,
-        gmail_authz_token, local_google_cse_config, migration_authz_token,
+        gmail_authz_token, local_google_cse_config, migration_authn_token, migration_authz_token,
     },
 };
 use crate::{
@@ -44,8 +44,9 @@ use crate::{
         GoogleCseConfig,
         operations::{
             DigestRequest, GOOGLE_CSE_ID, PrivateKeyDecryptRequest, PrivateKeySignRequest,
-            PrivilegedUnwrapRequest, PrivilegedWrapRequest, RewrapRequest, UnwrapRequest,
-            WrapRequest, compute_resource_key_hash, rewrap_with_client,
+            PrivilegedPrivateKeyDecryptRequest, PrivilegedUnwrapRequest, PrivilegedWrapRequest,
+            RewrapRequest, UnwrapRequest, WrapRequest, compute_resource_key_hash,
+            rewrap_with_client,
         },
     },
     tests::test_utils::{
@@ -93,8 +94,22 @@ fn assert_error(reply: &(StatusCode, Value), expected: StatusCode, details_conta
 async fn validating_app_with_config(
     google_cse_config: GoogleCseConfig,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    validating_app_with_privileged_users(google_cse_config, &[]).await
+}
+
+/// A validating app whose `google_cse_privileged_users` is `privileged_users`.
+async fn validating_app_with_privileged_users(
+    google_cse_config: GoogleCseConfig,
+    privileged_users: &[&str],
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let mut clap_config = https_clap_config_opts(Some(LOCAL_KMS_PUBLIC_URL.to_owned()));
     clap_config.google_cse_config.disable_tokens_validation = false;
+    clap_config.google_cse_config.privileged_users = Some(
+        privileged_users
+            .iter()
+            .map(|user| (*user).to_owned())
+            .collect(),
+    );
     let app = Box::pin(test_app_with_google_cse(
         clap_config,
         Some(google_cse_config),
@@ -514,10 +529,68 @@ async fn digest_rejects_authz_without_email() {
     );
 }
 
+/// An ordinary identity-provider user is not a privileged caller: the three privileged
+/// endpoints refuse its token unless its email is in `google_cse_privileged_users`.
 #[tokio::test]
-async fn privileged_wrap_unwrap_roundtrip() {
+async fn privileged_endpoints_reject_ordinary_idp_token() {
     let rsa = Rsa::generate(2048).unwrap();
     let app = validating_app(&rsa).await;
+    let authn = authn_token(&rsa, Some(USER), None);
+    let denied = "google_cse_privileged_users";
+
+    let reply = post_json_raw(
+        &app,
+        PrivilegedWrapRequest {
+            authentication: authn.clone(),
+            key: DEK.to_owned(),
+            perimeter_id: String::new(),
+            resource_name: "resource_name_test".to_owned(),
+            reason: String::new(),
+        },
+        "/google_cse/privilegedwrap",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), denied);
+
+    let reply = post_json_raw(
+        &app,
+        PrivilegedUnwrapRequest {
+            authentication: authn.clone(),
+            reason: String::new(),
+            resource_name: "resource_name_test".to_owned(),
+            wrapped_key: "AAAA".to_owned(),
+        },
+        "/google_cse/privilegedunwrap",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), denied);
+
+    let reply = post_json_raw(
+        &app,
+        PrivilegedPrivateKeyDecryptRequest {
+            authentication: authn,
+            algorithm: "RSA/ECB/PKCS1Padding".to_owned(),
+            encrypted_data_encryption_key: "AAAA".to_owned(),
+            rsa_oaep_label: None,
+            reason: String::new(),
+            wrapped_private_key: "AAAA".to_owned(),
+            spki_hash: String::new(),
+            spki_hash_algorithm: "SHA-256".to_owned(),
+        },
+        "/google_cse/privilegedprivatekeydecrypt",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), denied);
+}
+
+/// A user listed in `google_cse_privileged_users` (case insensitively) can use the privileged
+/// endpoints; an unlisted user still cannot.
+#[tokio::test]
+async fn privileged_wrap_unwrap_roundtrip_for_privileged_user() {
+    let rsa = Rsa::generate(2048).unwrap();
+    let app =
+        validating_app_with_privileged_users(local_google_cse_config(&rsa), &["User@Example.com"])
+            .await;
     let authn = authn_token(&rsa, Some(USER), None);
 
     let (status, body) = post_json_raw(
@@ -547,6 +620,100 @@ async fn privileged_wrap_unwrap_roundtrip() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(field(&body, "key"), DEK);
+
+    let reply = post_json_raw(
+        &app,
+        PrivilegedWrapRequest {
+            authentication: authn_token(&rsa, Some("other@example.com"), None),
+            key: DEK.to_owned(),
+            perimeter_id: String::new(),
+            resource_name: "resource_name_test".to_owned(),
+            reason: String::new(),
+        },
+        "/google_cse/privilegedwrap",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), "google_cse_privileged_users");
+}
+
+/// `config` with a whitelisted KACLS whose migration key is `rsa`.
+fn migration_config(rsa: &Rsa<Private>) -> GoogleCseConfig {
+    let mut config = local_google_cse_config(rsa);
+    config.migration_authentication = Arc::new(vec![JwtConfig {
+        jwt_issuer_uri: LOCAL_AUTHN_ISSUER.to_owned(),
+        issuer_namespace: None,
+        jwks: build_jwks_manager_with_key(LOCAL_KID, rsa),
+        jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+        accept_spiffe_subject: false,
+    }]);
+    config
+}
+
+/// A migration token on `privilegedunwrap` is accepted when minted for this KACLS and resource,
+/// refused otherwise, and never usable on the endpoints that act on behalf of a user.
+#[tokio::test]
+async fn privileged_unwrap_accepts_only_matching_migration_tokens() {
+    let rsa = Rsa::generate(2048).unwrap();
+    let app = validating_app_with_config(migration_config(&rsa)).await;
+    let wrapped_key = wrap_dek(&app, &rsa, "").await;
+    let unwrap = |token: String, resource_name: &str| PrivilegedUnwrapRequest {
+        authentication: token,
+        reason: String::new(),
+        resource_name: resource_name.to_owned(),
+        wrapped_key: wrapped_key.clone(),
+    };
+
+    let (status, body) = post_json_raw(
+        &app,
+        unwrap(
+            migration_authn_token(&rsa, LOCAL_KACLS_URL, DRIVE_RESOURCE),
+            DRIVE_RESOURCE,
+        ),
+        "/google_cse/privilegedunwrap",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(field(&body, "key"), DEK);
+
+    let reply = post_json_raw(
+        &app,
+        unwrap(
+            migration_authn_token(&rsa, "https://other.example.com/google_cse", DRIVE_RESOURCE),
+            DRIVE_RESOURCE,
+        ),
+        "/google_cse/privilegedunwrap",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), "KACLS URLs should match");
+
+    let reply = post_json_raw(
+        &app,
+        unwrap(
+            migration_authn_token(&rsa, LOCAL_KACLS_URL, "//googleapis.com/drive/files/other"),
+            DRIVE_RESOURCE,
+        ),
+        "/google_cse/privilegedunwrap",
+    )
+    .await;
+    assert_error(
+        &reply,
+        unauthorized(),
+        "resource_name does not match request resource_name",
+    );
+
+    let reply = post_json_raw(
+        &app,
+        PrivilegedWrapRequest {
+            authentication: migration_authn_token(&rsa, LOCAL_KACLS_URL, DRIVE_RESOURCE),
+            key: DEK.to_owned(),
+            perimeter_id: String::new(),
+            resource_name: DRIVE_RESOURCE.to_owned(),
+            reason: String::new(),
+        },
+        "/google_cse/privilegedwrap",
+    )
+    .await;
+    assert_error(&reply, unauthorized(), "google_cse_privileged_users");
 }
 
 #[tokio::test]
@@ -691,33 +858,29 @@ async fn two_kacls(
         .await
         .unwrap();
 
-    let mut clap_b = https_clap_config_opts(Some("https://kms-original.example.com".to_owned()));
+    // The original KACLS is reached over loopback HTTP: its public URL is the one the
+    // migration tokens are minted for.
+    let listener_b = std::net::TcpListener::bind("127.0.0.1:0").expect("cannot bind loopback port");
+    let public_url_b = format!("http://{}", listener_b.local_addr().unwrap());
+    let mut clap_b = https_clap_config_opts(Some(public_url_b.clone()));
     clap_b.google_cse_config.disable_tokens_validation = false;
     clap_b.db.sqlite_path.set_extension("original.sqlite");
     let mut config_b = local_google_cse_config(rsa);
-    config_b.authentication = Arc::new(vec![
-        JwtConfig {
-            jwt_issuer_uri: LOCAL_KACLS_URL.to_owned(),
-            issuer_namespace: None,
-            jwt_audience: Some(vec!["kacls-migration".to_owned()]),
-            jwks: Arc::new(JwksManager {
-                uris: vec![LOCAL_KACLS_URL.to_owned()],
-                jwks: RwLock::new(HashMap::from([(LOCAL_KACLS_URL.to_owned(), jwks_a)])),
-                last_update: RwLock::new(Some(time::OffsetDateTime::now_utc())),
-                last_force_refresh: RwLock::new(None),
-                proxy_params: None,
-                accept_invalid_certs: false,
-            }),
-            accept_spiffe_subject: false,
-        },
-        JwtConfig {
-            jwt_issuer_uri: LOCAL_AUTHN_ISSUER.to_owned(),
-            issuer_namespace: None,
-            jwt_audience: None,
-            jwks: build_jwks_manager_with_key(LOCAL_KID, rsa),
-            accept_spiffe_subject: false,
-        },
-    ]);
+    // KMS-A is whitelisted on KMS-B, verified against the keys A publishes at `/certs`
+    config_b.migration_authentication = Arc::new(vec![JwtConfig {
+        jwt_issuer_uri: LOCAL_KACLS_URL.to_owned(),
+        issuer_namespace: None,
+        jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+        jwks: Arc::new(JwksManager {
+            uris: vec![LOCAL_KACLS_URL.to_owned()],
+            jwks: RwLock::new(HashMap::from([(LOCAL_KACLS_URL.to_owned(), jwks_a)])),
+            last_update: RwLock::new(Some(time::OffsetDateTime::now_utc())),
+            last_force_refresh: RwLock::new(None),
+            proxy_params: None,
+            accept_invalid_certs: false,
+        }),
+        accept_spiffe_subject: false,
+    }]);
     let kms_b = Box::pin(test_utils::test_kms_with_google_cse(clap_b)).await;
     let app_b = test_utils::test_app_with_kms(kms_b.clone(), Some(config_b.clone())).await;
     import_google_cse_key_file_with_access(
@@ -727,7 +890,8 @@ async fn two_kacls(
     .await
     .unwrap();
     let wrapped_on_b = wrap_dek(&app_b, rsa, "").await;
-    let original_kacls_url = test_utils::spawn_google_cse_http_server(kms_b, Some(config_b));
+    let original_kacls_url =
+        test_utils::spawn_google_cse_http_server(kms_b, Some(config_b), listener_b);
 
     TwoKacls {
         kms_a,

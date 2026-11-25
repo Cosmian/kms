@@ -152,7 +152,7 @@ See [Ownership and access rights](../configuration/authorization.md) and [Role M
 
 - **Security Headers**: All HTTP responses include `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'` to block clickjacking and prevent framing in unauthorized web contexts.
 - **Payload Size Limits**: Strict **64 MB** deserialization ceiling prevents memory exhaustion and DoS from maliciously oversized KMIP or JSON bodies.
-- **CORS Scope Isolation**: The default KMIP and REST scope (`/kmip`, `/v1/crypto`, `/access`) defaults to same-origin. Cross-origin access requires explicit approval in `cors_allowed_origins`. Cloud provider scopes (`/aws`, `/google_cse`, `/ms_dke`) enable permissive CORS as required by their protocol specifications.
+- **CORS Scope Isolation**: The default KMIP and REST scope (`/kmip`, `/v1/crypto`, `/access`) defaults to same-origin. Cross-origin access requires explicit approval in `cors_allowed_origins`. The cloud provider scopes `/aws` and `/google_cse` enable permissive CORS as required by their protocol specifications. The `/ms_dke` scope (Microsoft Double Key Encryption) denies cross-origin browser requests, like Azure EKM: Office DKE clients are native applications that send no browser `Origin`.
 
 ### 6. Audit Logging & Non-Repudiation
 

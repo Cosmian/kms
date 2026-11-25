@@ -364,6 +364,9 @@ google_cse_enable = false
 # PEM PKCS8 RSA private key used to ensure consistency of certificate handling and privileged unwrap operations across server restarts and multiple server instances. If not provided, a random key will be generated at server startup
 # google_cse_migration_key = "<google_cse_existing_migration_key>"
 
+# Emails (IdP `email`/`google_email` claim) allowed to call privilegedwrap, privilegedunwrap and privilegedprivatekeydecrypt. Empty: only whitelisted KACLS migration tokens are accepted on privilegedunwrap
+# google_cse_privileged_users = ["[admin_email_1]", "[admin_email_2]"]
+
 [azure_ekm_config]
 # This setting turns on/off the endpoints handling Azure EKM features
 azure_ekm_enable = false

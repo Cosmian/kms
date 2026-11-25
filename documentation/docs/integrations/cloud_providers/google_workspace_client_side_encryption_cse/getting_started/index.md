@@ -174,7 +174,17 @@ For example, if you are using the docker image, you can run the following comman
     # Google CSE configuration
     [google_cse_config]
     google_cse_enable = true
+    # Optional: KACLS URLs allowed to migrate data from this server (privilegedunwrap)
+    # google_cse_incoming_url_whitelist = ["https://old-kacls.example.com/google_cse"]
+    # Optional: emails allowed to call privilegedwrap, privilegedunwrap and privilegedprivatekeydecrypt
+    # google_cse_privileged_users = ["admin@example.com"]
     ```
+
+The privileged endpoints skip the document access control, so they are refused by default: set
+`google_cse_privileged_users` (`--google-cse-privileged-users`) to the emails of the administrators allowed to call them.
+A KACLS migration token from a whitelisted KACLS is accepted on `privilegedunwrap` only.
+See [migrating Drive](../migrating_drive.md).
+
 ![external keys service](./images/configure_external_key_service.png)
 
 Then test the connection; it should show:

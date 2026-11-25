@@ -182,6 +182,7 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
             disable_tokens_validation: true,
             incoming_url_whitelist: None,
             migration_key: None,
+            privileged_users: None,
         },
         http: HttpConfig::default(),
         jwks_endpoint: crate::config::JwksEndpointConfig {
@@ -497,15 +498,16 @@ pub(crate) async fn test_app_with_kms(
     test::init_service(app).await
 }
 
-/// Serve the `privilegedunwrap` endpoint of `kms` on a real loopback HTTP socket and return
-/// its KACLS URL (`http://127.0.0.1:<port>/google_cse`). `privilegedunwrap` is the only call
+/// Serve the `privilegedunwrap` endpoint of `kms` on the loopback HTTP `listener` and return
+/// its KACLS URL (`http://127.0.0.1:<port>/google_cse`), which must be `kms`'s public URL
+/// plus `/google_cse`. `privilegedunwrap` is the only call
 /// an original KACLS receives during a migration. Must run inside an actix runtime
 /// (`#[actix_web::test]`).
 pub(crate) fn spawn_google_cse_http_server(
     kms: Arc<KMS>,
     google_cse_config: Option<routes::google_cse::GoogleCseConfig>,
+    listener: std::net::TcpListener,
 ) -> String {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("cannot bind loopback port");
     let port = listener.local_addr().expect("no local address").port();
     let server = actix_web::HttpServer::new(move || {
         App::new().app_data(Data::new(kms.clone())).service(

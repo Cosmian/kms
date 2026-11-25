@@ -1431,6 +1431,8 @@ async fn characterization_prepare_kms_server_with_vault_auth_verifier_url() {
     let mut config = https_clap_config();
     config.vault.api_enabled = true;
     config.vault.auth_verifier_url = Some("http://127.0.0.1:1".to_owned());
+    // No CSE endpoint is called: the bypass setting would only make the server refuse to start
+    config.google_cse_config.disable_tokens_validation = false;
     let kms = crate::tests::test_utils::test_kms_with_config(config)
         .await
         .unwrap();

@@ -383,6 +383,26 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
         .interact_text()
         .prompt_err()?;
 
+    let privileged_users_str: String = Input::with_theme(theme)
+        .with_prompt(
+            "CSE privileged users: emails allowed to call the privileged endpoints \
+             (comma-separated; leave blank for migration tokens only)",
+        )
+        .allow_empty(true)
+        .interact_text()
+        .prompt_err()?;
+    let google_cse_privileged_users = if privileged_users_str.trim().is_empty() {
+        None
+    } else {
+        Some(
+            privileged_users_str
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .filter(|s| !s.is_empty())
+                .collect(),
+        )
+    };
+
     Ok(GoogleCseConfig {
         enable: true,
         disable_tokens_validation: disable_validation,
@@ -392,6 +412,7 @@ fn configure_google_cse(theme: &ColorfulTheme) -> KResult<GoogleCseConfig> {
         } else {
             Some(migration_key)
         },
+        privileged_users: google_cse_privileged_users,
     })
 }
 

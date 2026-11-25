@@ -3906,7 +3906,11 @@ paths:
     post:
       tags: [Google CSE]
       summary: Privileged wrap (admin)
-      description: Wraps a DEK using privileged (admin/service-account) credentials. Bypasses end-user authorization check.
+      description: |
+        Wraps a DEK without an end-user authorization token. The authentication token must be an
+        identity-provider token whose `google_email`/`email` claim is listed in
+        `google_cse_privileged_users` (case insensitive); the DEK is wrapped as that user.
+        KACLS migration tokens are refused (no user identity). Any other caller gets 401.
       operationId: googleCsePrivilegedWrap
       requestBody:
         required: true
@@ -3926,7 +3930,13 @@ paths:
     post:
       tags: [Google CSE]
       summary: Privileged unwrap (admin)
-      description: Unwraps a DEK using privileged credentials. Used by admin workflows and data recovery.
+      description: |
+        Unwraps a DEK without checking the original document ACL. The authentication token must be
+        either a KACLS migration token (`aud` contains `kacls-migration`) signed by a KACLS listed
+        in `google_cse_incoming_url_whitelist`, whose `kacls_url` claim is this KACLS and whose
+        `resource_name` claim equals the request `resource_name`, or an identity-provider token
+        whose `google_email`/`email` claim is listed in `google_cse_privileged_users`. Any other
+        caller gets 401. The unwrap runs as the default user.
       operationId: googleCsePrivilegedUnwrap
       requestBody:
         required: true
@@ -3946,7 +3956,11 @@ paths:
     post:
       tags: [Google CSE]
       summary: Privileged private key decrypt (admin)
-      description: Decrypts a DEK using a wrapped private key under privileged credentials, with SPKI hash verification.
+      description: |
+        Decrypts a DEK using a wrapped private key, with SPKI hash verification. The authentication
+        token must be an identity-provider token whose `google_email`/`email` claim is listed in
+        `google_cse_privileged_users` (case insensitive); the key is unwrapped as that user.
+        KACLS migration tokens are refused (no user identity). Any other caller gets 401.
       operationId: googleCsePrivilegedPrivateKeyDecrypt
       requestBody:
         required: true
