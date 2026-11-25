@@ -465,6 +465,7 @@ async fn wrap_using_kms(
         user,
         wrapping_key.object(),
         wrapping_key.attributes(),
+        wrapping_key.owner(),
     )
     .await
 }
@@ -472,6 +473,7 @@ async fn wrap_using_kms(
 /// Wrap with an already authorized, Active software key, including an unpublished replacement.
 ///
 /// Callers must check ownership/grants and lifecycle state before calling this helper.
+/// `wrapping_key_owner` owns the wrapping key: a certificate's linked public key must share it.
 pub(crate) async fn wrap_with_local_key(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
@@ -479,6 +481,7 @@ pub(crate) async fn wrap_with_local_key(
     user: &UserId,
     wrapping_key: &Object,
     wrapping_attributes: &Attributes,
+    wrapping_key_owner: &str,
 ) -> KResult<()> {
     let wrapping_key_uid = key_wrapping_specification
         .encryption_key_information
@@ -507,16 +510,34 @@ pub(crate) async fn wrap_with_local_key(
         *attributes = Some(Box::new(attrs));
     }
 
-    // Check usage mask for non Certificate objects (after potential unwrap)
+    // Check the WrapKey usage mask (after potential unwrap). A certificate without its own mask is
+    // checked against the mask of its linked public key; no usable source means no wrapping.
     trace!("Checking usage mask for wrapping key {wrapping_key_uid}");
-    if wrapping_key_object.object_type() != ObjectType::Certificate {
-        if !wrapping_attributes.is_usage_authorized_for(CryptographicUsageMask::WrapKey)? {
-            return Err(KmsError::NotSupported(format!(
-                "The key: {wrapping_key_uid} is not meant to wrap keys"
-            )));
-        }
-        trace!("The wrapping key {wrapping_key_uid} is authorized to wrap keys");
+    let authorized = if wrapping_key_object.object_type() == ObjectType::Certificate
+        && wrapping_attributes.cryptographic_usage_mask.is_none()
+    {
+        let public_key = match wrapping_attributes.get_link(LinkType::PublicKeyLink) {
+            Some(link) => kms.database.retrieve_object_arc(&link.to_string()).await?,
+            None => None,
+        };
+        // The owner check keeps a link to another user's object from revealing its usage mask.
+        public_key.is_some_and(|pk| {
+            pk.object().object_type() == ObjectType::PublicKey
+                && pk.owner() == wrapping_key_owner
+                && pk
+                    .attributes()
+                    .is_usage_authorized_for(CryptographicUsageMask::WrapKey)
+                    .unwrap_or(false)
+        })
+    } else {
+        wrapping_attributes.is_usage_authorized_for(CryptographicUsageMask::WrapKey)?
+    };
+    if !authorized {
+        return Err(KmsError::NotSupported(format!(
+            "The key: {wrapping_key_uid} is not meant to wrap keys"
+        )));
     }
+    trace!("The wrapping key {wrapping_key_uid} is authorized to wrap keys");
 
     debug!(
         "The user: {user}, is authorized to wrap with the key {wrapping_key_uid}. Encoding: {:?}, \
