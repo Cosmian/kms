@@ -8,6 +8,8 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 cd "$REPO_ROOT"
 # Source unified PIN_URL and helpers
 source "${REPO_ROOT}/.mise/scripts/common.sh"
+# shellcheck source=.mise/lib/openssl.sh
+source "${REPO_ROOT}/.mise/lib/openssl.sh"
 
 # Determine variant and link mode from CLI arguments
 VARIANT="fips"
@@ -192,8 +194,8 @@ RES_DIR="$APP_BUNDLE/Contents/Resources/usr/local/cosmian/lib"
 mkdir -p "$RES_DIR/ossl-modules" "$RES_DIR/ssl"
 
 if [ "$VARIANT" = "fips" ]; then
-  # FIPS variant: embed FIPS provider and configs from OpenSSL 3.1.2
-  OPENSSL_STORE=$(find /nix/store -maxdepth 1 -type d -name '*-openssl-3.1.2' 2>/dev/null | head -n1 || true)
+  # FIPS variant: embed FIPS provider and configs from the FIPS provider's OpenSSL
+  OPENSSL_STORE=$(find /nix/store -maxdepth 1 -type d -name "*-openssl-$(openssl_version fips)" 2>/dev/null | head -n1 || true)
   if [ -n "$OPENSSL_STORE" ]; then
     SRC_MOD="$OPENSSL_STORE/usr/local/cosmian/lib/ossl-modules/fips.dylib"
     SRC_CONF="$OPENSSL_STORE/usr/local/cosmian/lib/ssl/openssl.cnf"

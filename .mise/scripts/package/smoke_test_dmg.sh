@@ -12,6 +12,9 @@
 
 set -euo pipefail
 
+# shellcheck source=.mise/lib/openssl.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/openssl.sh"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -195,9 +198,8 @@ fi
 info "\xe2\x9c\x93 Binary executed successfully"
 
 # Determine expected OpenSSL runtime version
-# - All non-FIPS and FIPS static builds expect 3.6.5
-# - FIPS dynamic builds bundle 3.1.2 runtime libs to match the FIPS provider
-EXPECTED_VER="3.6.5"
+# - Expects the main OpenSSL version pinned in crate/crypto/openssl_versions.json
+EXPECTED_VER="$(openssl_version main)"
 info "Verifying OpenSSL runtime version (expected ${EXPECTED_VER})…"
 if [ -n "$ENV_OPENSSL_CONF" ] || [ -n "$ENV_OPENSSL_MODULES" ]; then
   INFO_CMD=(env)

@@ -74,6 +74,7 @@ pub(crate) async fn derive_key(
     request: DeriveKey,
     user: &UserId,
 ) -> KResult<DeriveKeyResponse> {
+    kms.enforce_create_permission(user).await?;
     debug!("DeriveKey operation starting");
     match request.derivation_method {
         DerivationMethod::PBKDF2 | DerivationMethod::HKDF => {

@@ -96,6 +96,7 @@
     - [Terraform / OpenTofu Provider](integrations/terraform.md)
   - [Other]()
     - [FortiGate / FortiOS](integrations/fortigate.md)
+    - [HashiCorp Vault auto-unseal](integrations/hashicorp_vault_auto_unseal.md)
     - [OpenSSH](integrations/openssh.md)
     - [OpenBao (auto-unseal and KV store)](integrations/openbao.md)
     - [SSH certificates and external secret rotation](integrations/ssh_certificates_and_secret_rotation.md)

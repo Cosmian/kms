@@ -9,10 +9,15 @@
 //!   `DELETE /keys/{name}`             — delete transit key
 //!   `POST   /sign/{name}/{alg}`       — sign (prehashed)
 //!
+//! Encryption routes (`encrypt`, `decrypt`, `keys/{name}/rotate`) live in
+//! [`super::transit_encryption`].
+//!
 //! Key names are stored in the KMS as user tags `vault_transit:{name}`.
-//! Each transit key is an asymmetric key pair (`PrivateKey` + `PublicKey`).
+//! A signing transit key is an asymmetric key pair (`PrivateKey` + `PublicKey`);
+//! an `aes256-gcm96` encryption key is one `SymmetricKey` per key version.
 //!
 //! Supported key types:
+//!   - `aes256-gcm96` — AES-256-GCM encryption key (FIPS + non-FIPS; Vault default)
 //!   - `ecdsa-p256`  — EC P-256 (FIPS + non-FIPS)
 //!   - `ecdsa-p384`  — EC P-384 (FIPS + non-FIPS)
 //!   - `rsa-2048`    — RSA 2048 (FIPS + non-FIPS)
@@ -34,7 +39,7 @@ use cosmian_kms_server_database::reexport::{
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
-            kmip_operations::{Destroy, Revoke, Sign},
+            kmip_operations::{Destroy, Operation, Revoke, Sign},
             kmip_types::{
                 CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
                 LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
@@ -50,10 +55,16 @@ use time::format_description::well_known::Rfc3339;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::KMS,
+    core::{KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request},
     error::KmsError,
     result::KResult,
-    routes::spire::error::{SpireApiError, SpireResult},
+    routes::spire::{
+        error::{SpireApiError, SpireResult},
+        transit_encryption::{
+            AES256_GCM96, create_symmetric_version, find_owned_symmetric_versions,
+            symmetric_key_info,
+        },
+    },
 };
 
 /// Tag prefix used to identify transit keys in the KMS object store.
@@ -69,7 +80,8 @@ pub(crate) fn transit_tag_name(name: &str) -> String {
 
 #[derive(Deserialize)]
 pub(crate) struct CreateTransitKeyRequest {
-    #[serde(rename = "type")]
+    /// Vault key type; defaults to `aes256-gcm96`, as in Vault.
+    #[serde(rename = "type", default = "default_key_type")]
     pub key_type: String,
     /// `exportable` is accepted in the JSON body but always forced to `false`.
     #[serde(default)]
@@ -80,6 +92,10 @@ pub(crate) struct CreateTransitKeyRequest {
     /// than silently ignored. SPIRE always sends `0`.
     #[serde(default)]
     pub auto_rotate_period: Option<serde_json::Value>,
+}
+
+fn default_key_type() -> String {
+    AES256_GCM96.to_owned()
 }
 
 /// Per-version metadata returned inside the `keys` map.
@@ -99,10 +115,20 @@ pub(crate) struct TransitKeyInfo {
     pub key_type: String,
     pub exportable: bool,
     pub allow_deletion: bool,
-    /// Always `1` — we don't support in-place Vault-style key versioning.
+    /// Latest key version: always `1` for asymmetric keys, which cannot be rotated.
     pub latest_version: u32,
     /// Map from version number string to key version metadata.
-    pub keys: HashMap<String, TransitKeyVersion>,
+    pub keys: HashMap<String, TransitKeyVersionEntry>,
+}
+
+/// Value of the `keys` map, whose shape depends on the key type (as in Vault).
+#[derive(Serialize)]
+#[serde(untagged)]
+pub(crate) enum TransitKeyVersionEntry {
+    /// Asymmetric keys: public key and creation time.
+    Asymmetric(TransitKeyVersion),
+    /// Symmetric keys: creation time as a Unix timestamp.
+    Symmetric(i64),
 }
 
 #[derive(Serialize)]
@@ -270,6 +296,16 @@ fn transit_curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
     }
 }
 
+#[cfg(feature = "non-fips")]
+const fn nonfips_supported_transit_types_suffix() -> &'static str {
+    ", ed25519, ml-dsa-65"
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn nonfips_supported_transit_types_suffix() -> &'static str {
+    ""
+}
+
 /// Map a Vault key type string to an RSA bit count.
 fn transit_rsa_bits_from_key_type(key_type: &str) -> Option<usize> {
     match key_type {
@@ -321,10 +357,10 @@ fn rsa_digital_signature_algorithm(
     }
 }
 
-/// Build an `Attributes` filter for finding private keys with a given transit tag.
-fn transit_key_filter(kms: &KMS, name: &str) -> KResult<Attributes> {
+/// Build an `Attributes` filter for finding objects of `object_type` with a given transit tag.
+fn transit_key_filter(kms: &KMS, name: &str, object_type: ObjectType) -> KResult<Attributes> {
     let mut filter = Attributes {
-        object_type: Some(ObjectType::PrivateKey),
+        object_type: Some(object_type),
         ..Default::default()
     };
     filter
@@ -342,12 +378,13 @@ fn transit_key_filter(kms: &KMS, name: &str) -> KResult<Attributes> {
 /// be selected, otherwise that user could make this tenant sign with a key they
 /// control. If legacy duplicates exist, the lowest UID is chosen so that `sign`
 /// and `GET /keys/{name}` always resolve to the same key.
-async fn find_owned_transit_key(
+pub(crate) async fn find_owned_transit_key(
     kms: &KMS,
     user: &UserId,
     name: &str,
 ) -> SpireResult<Option<(String, Attributes)>> {
-    let filter = transit_key_filter(kms, name).map_err(SpireApiError::from)?;
+    let filter =
+        transit_key_filter(kms, name, ObjectType::PrivateKey).map_err(SpireApiError::from)?;
     let mut results = kms
         .database
         .find(Some(&filter), None, user, true, kms.vendor_id())
@@ -406,6 +443,11 @@ async fn create_nonfips_transit_key(
     )
     .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
+    enforce_kmip_algorithm_policy_for_request(
+        &kms.params,
+        &Operation::CreateKeyPair(Box::new(create_req.clone())),
+    )
+    .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
     kms.create_key_pair(create_req, user)
         .await
         .map_err(SpireApiError::from)?;
@@ -519,6 +561,16 @@ async fn create_transit_key_impl(
             transit_key_type_from_attrs(&attrs).to_owned(),
         ));
     }
+    let versions = find_owned_symmetric_versions(&kms, &user, &name).await?;
+    if !versions.is_empty() {
+        debug!("vault transit: key '{name}' already exists, not re-creating");
+        return Ok(Json(symmetric_key_info(name, &versions)));
+    }
+
+    if body.key_type == AES256_GCM96 {
+        create_symmetric_version(&kms, &user, &name, 1).await?;
+        return Ok(key_created_response(name, body.key_type));
+    }
 
     let tag = transit_tag_name(&name);
     let tags = [tag.as_str()];
@@ -534,6 +586,11 @@ async fn create_transit_key_impl(
         let create_req = create_ec_key_pair_request(kms.vendor_id(), None, tags, curve, true, None)
             .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
+        enforce_kmip_algorithm_policy_for_request(
+            &kms.params,
+            &Operation::CreateKeyPair(Box::new(create_req.clone())),
+        )
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
         kms.create_key_pair(create_req, &user)
             .await
             .map_err(SpireApiError::from)?;
@@ -557,6 +614,11 @@ async fn create_transit_key_impl(
         let create_req = create_rsa_key_pair_request(kms.vendor_id(), None, tags, bits, true, None)
             .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
+        enforce_kmip_algorithm_policy_for_request(
+            &kms.params,
+            &Operation::CreateKeyPair(Box::new(create_req.clone())),
+        )
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
         kms.create_key_pair(create_req, &user)
             .await
             .map_err(SpireApiError::from)?;
@@ -566,13 +628,10 @@ async fn create_transit_key_impl(
     }
 
     Err(SpireApiError::BadRequest(format!(
-        "unsupported transit key type '{}'. Supported: ecdsa-p256, ecdsa-p384, rsa-2048, rsa-4096{}",
+        "unsupported transit key type '{}'. Supported: aes256-gcm96, ecdsa-p256, ecdsa-p384, \
+         rsa-2048, rsa-4096{}",
         body.key_type,
-        if cfg!(feature = "non-fips") {
-            ", ed25519, ml-dsa-65"
-        } else {
-            ""
-        }
+        nonfips_supported_transit_types_suffix()
     )))
 }
 
@@ -590,9 +649,15 @@ pub(crate) async fn get_transit_key(
     let user = kms.get_user(&req);
     let name = name.into_inner();
 
-    let (_priv_uid, attrs) = find_owned_transit_key(&kms, &user, &name)
-        .await?
-        .ok_or_else(|| SpireApiError::NotFound(format!("transit key '{name}' not found")))?;
+    let Some((_priv_uid, attrs)) = find_owned_transit_key(&kms, &user, &name).await? else {
+        let versions = find_owned_symmetric_versions(&kms, &user, &name).await?;
+        if versions.is_empty() {
+            return Err(SpireApiError::NotFound(format!(
+                "transit key '{name}' not found"
+            )));
+        }
+        return Ok(Json(symmetric_key_info(name, &versions)));
+    };
 
     // Creation timestamp (RFC3339) for the key version map
     let creation_time = attrs
@@ -636,10 +701,10 @@ pub(crate) async fn get_transit_key(
     let mut keys = HashMap::new();
     keys.insert(
         "1".to_owned(),
-        TransitKeyVersion {
+        TransitKeyVersionEntry::Asymmetric(TransitKeyVersion {
             public_key: public_key_pem,
             creation_time,
-        },
+        }),
     );
 
     Ok(Json(TransitKeyInfoWrapper {
@@ -693,24 +758,27 @@ pub(crate) async fn list_transit_keys(
 ) -> SpireResult<Json<TransitKeyListWrapper>> {
     let user = kms.get_user(&req);
 
-    let filter = Attributes {
-        object_type: Some(ObjectType::PrivateKey),
-        ..Default::default()
-    };
-
-    // Owned keys only, consistent with get/sign/delete.
-    let results = kms
-        .database
-        .find(Some(&filter), None, &user, true, kms.vendor_id())
-        .await
-        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
-
     let mut names = Vec::new();
-    for (_uid, _state, attrs) in results {
-        let tags = attrs.get_tags(kms.vendor_id());
-        for tag in &tags {
-            if let Some(key_name) = tag.strip_prefix(TRANSIT_TAG_PREFIX) {
-                names.push(key_name.to_owned());
+    // Signing keys are private keys; encryption keys are symmetric keys.
+    for object_type in [ObjectType::PrivateKey, ObjectType::SymmetricKey] {
+        let filter = Attributes {
+            object_type: Some(object_type),
+            ..Default::default()
+        };
+
+        // Owned keys only, consistent with get/sign/delete.
+        let results = kms
+            .database
+            .find(Some(&filter), None, &user, true, kms.vendor_id())
+            .await
+            .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
+
+        for (_uid, _state, attrs) in results {
+            let tags = attrs.get_tags(kms.vendor_id());
+            for tag in &tags {
+                if let Some(key_name) = tag.strip_prefix(TRANSIT_TAG_PREFIX) {
+                    names.push(key_name.to_owned());
+                }
             }
         }
     }
@@ -732,15 +800,18 @@ pub(crate) async fn delete_transit_key(
     let user = kms.get_user(&req);
     let name = name.into_inner();
 
-    let filter = transit_key_filter(&kms, &name).map_err(SpireApiError::from)?;
-
     // Owned keys only: never revoke/destroy another user's key that merely shares
-    // the tag. All owned duplicates are removed.
-    let results = kms
-        .database
-        .find(Some(&filter), None, &user, true, kms.vendor_id())
-        .await
-        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
+    // the tag. All owned duplicates (and every version of a symmetric key) are removed.
+    let mut results = Vec::new();
+    for object_type in [ObjectType::PrivateKey, ObjectType::SymmetricKey] {
+        let filter = transit_key_filter(&kms, &name, object_type).map_err(SpireApiError::from)?;
+        results.extend(
+            kms.database
+                .find(Some(&filter), None, &user, true, kms.vendor_id())
+                .await
+                .map_err(|e| SpireApiError::InternalError(e.to_string()))?,
+        );
+    }
 
     if results.is_empty() {
         return Err(SpireApiError::NotFound(format!(
@@ -860,6 +931,9 @@ async fn sign_with_transit_key_impl(
         data: data.map(Into::into),
         ..Default::default()
     };
+
+    enforce_kmip_algorithm_policy_for_request(&kms.params, &Operation::Sign(sign_req.clone()))
+        .map_err(|e| SpireApiError::BadRequest(e.to_string()))?;
 
     let resp = kms
         .sign(sign_req, &user)

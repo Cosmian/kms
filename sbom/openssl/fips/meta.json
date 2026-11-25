@@ -1,0 +1,22 @@
+{
+  "spec_version": "1.0.0",
+  "build": {
+    "variant": "fips",
+    "derivation": "opensslFips",
+    "output_path": "/nix/store/44vigvax6yvdgc8v7qwadf1dd8glfwvy-openssl-3.5.9",
+    "sbomnix_target": "/nix/store/44vigvax6yvdgc8v7qwadf1dd8glfwvy-openssl-3.5.9",
+    "timestamp": "2026-11-25T07:16:58Z",
+    "generator": {
+      "tool": "sbomnix",
+      "version": "v1.8.0"
+    }
+  },
+  "component_count": 4,
+  "vulnerability_count": 33,
+  "notes": [
+    "SBOM targets the OpenSSL derivation itself",
+    "All dependencies are from Nix store with pinned versions",
+    "SBOM reflects the exact Nix build output (derivation closure)",
+    "sbomnix used store-path target with --exclude-meta; heuristic CPE matching retained; full CPE coverage via enrich_cpe.py"
+  ]
+}

@@ -3,9 +3,9 @@
   "build": {
     "variant": "non-fips",
     "derivation": "kms-server-non-fips-static-openssl",
-    "output_path": "/nix/store/rcgws7mv813qpnzcii2lzxn6wwqgvlcg-cosmian-kms-server-5.29.0",
-    "sbomnix_target": "/nix/store/rcgws7mv813qpnzcii2lzxn6wwqgvlcg-cosmian-kms-server-5.29.0",
-    "timestamp": "2026-11-24T03:05:57Z",
+    "output_path": "/nix/store/qzvz2hibwimqnzcmzf4qrvphws46m01s-cosmian-kms-server-5.29.0",
+    "sbomnix_target": "/nix/store/qzvz2hibwimqnzcmzf4qrvphws46m01s-cosmian-kms-server-5.29.0",
+    "timestamp": "2026-11-25T10:41:27Z",
     "generator": {
       "tool": "sbomnix",
       "version": "v1.8.0"

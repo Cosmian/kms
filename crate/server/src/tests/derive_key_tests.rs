@@ -3,6 +3,7 @@ use std::collections::HashSet;
 #[cfg(feature = "non-fips")]
 use std::sync::Arc;
 
+use cosmian_kms_access::access::Access;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
@@ -11,6 +12,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, HashingAlgorithm},
     kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, SymmetricKey},
@@ -27,7 +29,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
         kmip_2_1::{
-            KmipOperation,
             kmip_data_structures::KeyBlock,
             kmip_objects::{PublicKey, SecretData},
             kmip_operations::{Activate, Decrypt, Destroy, Encrypt, Import, Revoke},
@@ -48,8 +49,8 @@ use crate::{
     middlewares::UserId,
     result::KResult,
     tests::test_utils::{
-        assert_stored_wrapped_by_kek, https_clap_config, test_kms, test_kms_with_kek,
-        unwrapped_key_bytes,
+        assert_stored_wrapped_by_kek, https_clap_config, test_kms, test_kms_with_config,
+        test_kms_with_kek, unwrapped_key_bytes,
     },
 };
 
@@ -805,6 +806,77 @@ async fn test_derive_key_without_permission_is_object_not_found() -> KResult<()>
         error,
         KmsError::Kmip21Error(ErrorReason::Object_Not_Found, _)
     ));
+    Ok(())
+}
+
+/// `DeriveKey` creates a Managed Object, so with Crypto Officers configured an Operator
+/// needs the `Create` right on top of the `DeriveKey` grant on the base key (#1492 F-037).
+#[tokio::test]
+async fn derive_key_requires_create_permission() -> KResult<()> {
+    let crypto_officer = UserId::from("derive_co@example.com");
+    let owner = UserId::from("derive_owner@example.com");
+    let operator = UserId::from("derive_operator@example.com");
+    let mut config = https_clap_config();
+    config.roles.crypto_officer_users = Some(vec![crypto_officer.to_string()]);
+    let kms = test_kms_with_config(config).await?;
+
+    let grant_create = |user: &UserId| Access {
+        unique_identifier: None,
+        user_id: user.to_string(),
+        operation_types: vec![KmipOperation::Create],
+    };
+    kms.grant_access(&grant_create(&owner), &crypto_officer)
+        .await?;
+    let base_key_id = kms
+        .create(create_base_symmetric_key_request(), &owner)
+        .await?
+        .unique_identifier;
+    kms.grant_access(
+        &Access {
+            unique_identifier: Some(base_key_id.clone()),
+            user_id: operator.to_string(),
+            operation_types: vec![KmipOperation::DeriveKey],
+        },
+        &owner,
+    )
+    .await?;
+
+    let derive_request = DeriveKey::new_single_base(
+        ObjectType::SymmetricKey,
+        base_key_id,
+        DerivationMethod::PBKDF2,
+        DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            }),
+            initialization_vector: None,
+            derivation_data: Some(b"test derivation data".to_vec().into()),
+            salt: Some(b"test salt 16 byte".to_vec().into()),
+            iteration_count: Some(100_000),
+        },
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(128),
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        },
+    );
+
+    let error = kms
+        .derive_key(derive_request.clone(), &operator)
+        .await
+        .expect_err("an Operator without the Create right must not derive a key");
+    assert!(
+        matches!(error, KmsError::Unauthorized(_)),
+        "expected Unauthorized, got: {error}"
+    );
+
+    kms.grant_access(&grant_create(&operator), &crypto_officer)
+        .await?;
+    kms.derive_key(derive_request.clone(), &operator).await?;
+
+    kms.derive_key(derive_request, &crypto_officer).await?;
     Ok(())
 }
 

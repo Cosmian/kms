@@ -12,6 +12,7 @@ use actix_web::{
     http::StatusCode,
 };
 use base64::{Engine, engine::general_purpose};
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::is_fips_build;
 use openssl::{
     hash::{MessageDigest, hash},
     md::{Md, MdRef},
@@ -313,7 +314,7 @@ struct DecryptCase {
     md: Option<&'static MdRef>,
 }
 
-fn decrypt_cases() -> [DecryptCase; 4] {
+fn decrypt_cases() -> Vec<DecryptCase> {
     [
         ("RSA/ECB/PKCS1Padding", Padding::PKCS1, None),
         (
@@ -332,11 +333,15 @@ fn decrypt_cases() -> [DecryptCase; 4] {
             Some(Md::sha512()),
         ),
     ]
+    .into_iter()
+    // The FIPS provider refuses PKCS#1 v1.5 encryption.
+    .filter(|(_, padding, _)| !(is_fips_build() && *padding == Padding::PKCS1))
     .map(|(algorithm, padding, md)| DecryptCase {
         algorithm,
         padding,
         md,
     })
+    .collect()
 }
 
 /// Encrypt `DEK` with the public part of `rsa`, the way a Google client does.

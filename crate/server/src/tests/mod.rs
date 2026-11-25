@@ -46,3 +46,4 @@ pub(crate) mod test_validate;
 // ttlv_tests use P12 certificates for TLS client authentication, which is not FIPS-compliant
 #[cfg(feature = "non-fips")]
 mod ttlv_tests;
+mod wrap_certificate_usage_mask;

@@ -27,8 +27,9 @@ use crate::middlewares::AuthenticatedUser;
 /// Transformer — registered once during app startup.
 #[derive(Clone)]
 pub(crate) struct AuthVerifier {
-    auth_verifier: Option<Arc<AuthVerifierValidator>>,
+    validator: Option<Arc<AuthVerifierValidator>>,
     session_cookie_realm: Option<Arc<str>>,
+    expected_realm: Option<Arc<str>>,
 }
 
 impl AuthVerifier {
@@ -36,14 +37,17 @@ impl AuthVerifier {
     /// When `auth_verifier` is `None`, the middleware is a no-op (used with `Condition::new(false, …)`).
     /// When `session_cookie_realm` is set, requests without a bearer token may authenticate
     /// with an Auth Verifier `_ea_` session cookie issued for that realm.
+    /// When `expected_realm` is set, bearer tokens must be issued for that realm.
     #[must_use]
     pub(crate) const fn new(
         auth_verifier: Option<Arc<AuthVerifierValidator>>,
         session_cookie_realm: Option<Arc<str>>,
+        expected_realm: Option<Arc<str>>,
     ) -> Self {
         Self {
-            auth_verifier,
+            validator: auth_verifier,
             session_cookie_realm,
+            expected_realm,
         }
     }
 }
@@ -62,8 +66,9 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(AuthVerifierMiddleware {
             service: Rc::new(service),
-            auth_verifier: self.auth_verifier.clone(),
+            auth_verifier: self.validator.clone(),
             session_cookie_realm: self.session_cookie_realm.clone(),
+            expected_realm: self.expected_realm.clone(),
         })
     }
 }
@@ -73,6 +78,7 @@ pub(crate) struct AuthVerifierMiddleware<S> {
     service: Rc<S>,
     auth_verifier: Option<Arc<AuthVerifierValidator>>,
     session_cookie_realm: Option<Arc<str>>,
+    expected_realm: Option<Arc<str>>,
 }
 
 impl<S, B> Service<ServiceRequest> for AuthVerifierMiddleware<S>
@@ -92,6 +98,7 @@ where
         let service = self.service.clone();
         let auth_verifier = self.auth_verifier.clone();
         let session_cookie_realm = self.session_cookie_realm.clone();
+        let expected_realm = self.expected_realm.clone();
 
         Box::pin(async move {
             // Skip if a previous middleware already authenticated this request.
@@ -100,8 +107,13 @@ where
                     "AuthVerifier Middleware: an authenticated user was already found; skipping."
                 );
             } else if let Some(auth_verifier) = &auth_verifier {
-                match handle_auth_verifier(auth_verifier, &req, session_cookie_realm.as_deref())
-                    .await
+                match handle_auth_verifier(
+                    auth_verifier,
+                    &req,
+                    session_cookie_realm.as_deref(),
+                    expected_realm.as_deref(),
+                )
+                .await
                 {
                     Ok(user) => {
                         debug!(
@@ -159,7 +171,11 @@ mod tests {
     ) -> (StatusCode, String) {
         let app = test::init_service(
             App::new()
-                .wrap(AuthVerifier::new(Some(auth_verifier), realm.map(Arc::from)))
+                .wrap(AuthVerifier::new(
+                    Some(auth_verifier),
+                    realm.map(Arc::from),
+                    None,
+                ))
                 .route("/", web::route().to(identity)),
         )
         .await;
