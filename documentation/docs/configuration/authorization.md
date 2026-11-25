@@ -148,11 +148,12 @@ subject to the same privileged-user check:
 | `Certify`       | May create a new key pair when issuing a certificate |
 | `ReKey`         | Creates a new replacement symmetric key              |
 | `ReKeyKeyPair`  | Creates a new replacement asymmetric key pair        |
+| `DeriveKey`     | Creates a new key derived from an existing key       |
 
 !!! note
-    `ReKey` and `ReKeyKeyPair` also require the caller to hold the `Rekey` permission on the existing key being
-    re-keyed. Both conditions must be satisfied: the user must be allowed to create new objects **and** be allowed
-    to rekey the specific existing key.
+    `ReKey`, `ReKeyKeyPair` and `DeriveKey` also require the caller to hold the matching permission (`Rekey` or
+    `DeriveKey`) on the existing key. Both conditions must be satisfied: the user must be allowed to create new
+    objects **and** be allowed to use the specific existing key.
 
 ## The wildcard user `*`
 

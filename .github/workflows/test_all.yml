@@ -10,7 +10,7 @@ on:
         type: string
 
 jobs:
-  # Builds the source-built Nix inputs of shell.nix (OpenSSL 3.1.2 / 3.6.5, FIPS bootstrap, SoftHSM2,
+  # Builds the source-built Nix inputs of shell.nix (FIPS provider + main OpenSSL, FIPS bootstrap, SoftHSM2,
   # Utimaco) once per input hash and caches their closure for every Nix job below. On a hit it is a
   # sub-minute lookup. `continue-on-error`: a cache failure only means today's from-source builds.
   nix-dev-shell-cache:
@@ -30,7 +30,7 @@ jobs:
         with:
           path: /tmp/nix-dev-shell
           key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
-            'nix/utimaco.nix', '.mise/lib/common.sh') }}
+            'nix/utimaco.nix', '.mise/lib/common.sh', 'crate/crypto/openssl_versions.json') }}
           lookup-only: true
 
       - name: Write Nix post-build hook
@@ -75,7 +75,7 @@ jobs:
         with:
           path: /tmp/nix-dev-shell
           key: nix-dev-shell-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('shell.nix', 'nix/openssl.nix', 'nix/openssl-fips-bootstrap.*', 'nix/softhsm2.nix',
-            'nix/utimaco.nix', '.mise/lib/common.sh') }}
+            'nix/utimaco.nix', '.mise/lib/common.sh', 'crate/crypto/openssl_versions.json') }}
 
   # Every CI unit of .github/ci-paths.toml is a leg of this one matrix job, run by test-group.yml: ci_changes.py builds
   # the matrix and filters it by event, secrets and Dependabot, so a leg that does not run has no row at all.

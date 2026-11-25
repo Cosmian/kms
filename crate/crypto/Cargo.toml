@@ -85,4 +85,5 @@ tokio = { workspace = true, features = ["full"] }
 ignored = ["rust-ini"]
 
 [build-dependencies]
+serde_json = { workspace = true }
 sha2 = { workspace = true }

@@ -29,7 +29,7 @@ full = '''
 | ^nix/(openssl\.nix|openssl-fips-bootstrap\.|softhsm2\.nix|utimaco\.nix)
 | ^\.cargo/config\.toml$
 | ^\.config/
-| ^crate/crypto/build\.rs$
+| ^crate/crypto/(build\.rs|openssl_versions\.json)$
 | ^(test_data|\.github/reusable_scripts)$
 '''
 

@@ -5,6 +5,8 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-071 — DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys](#cosmian-2026-071--derivekey-skipped-the-create-gate-jose-and-spire-routes-skipped-the-kmip-algorithm-policy-wrapping-errors-revealed-other-users-keys)
+      - [COSMIAN-2026-070 — Key wrapping with a Certificate skipped the `WrapKey` usage-mask check](#cosmian-2026-070--key-wrapping-with-a-certificate-skipped-the-wrapkey-usage-mask-check)
       - [COSMIAN-2026-069 — GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree](#cosmian-2026-069--ghsa-g3hv-75wg-m249-minimatch-denial-of-service-in-the-web-ui-dependency-tree)
       - [COSMIAN-2026-068 — RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates](#cosmian-2026-068--rustsec-2026-0543-and-rustsec-2026-0542-unmaintained-chrono-and-humantime-crates)
       - [COSMIAN-2026-067 — RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow in `gzwrite`](#cosmian-2026-067--rustsec-2026-0544--cve-2026-85091-libz-sys-zlib-heap-buffer-overflow-in-gzwrite)
@@ -129,6 +131,48 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-071 — DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys
+
+| Field      | Value                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Severity   | Low                                                                                                                                                                                                    |
+| Published  | Pending                                                                                                                                                                                                |
+| Affected   | before 6.0.0                                                                                                                                                                                           |
+| Fixed in   | 6.0.0                                                                                                                                                                                                  |
+| Found by   | Threat model review, 14 November 2026                                                                                                                                                                  |
+| References | [#1492](https://github.com/Cosmian/kms/issues/1492), [Regression tests](crate/server/src/tests/kmip_policy/routes.rs), [Vector](test_data/vectors/negative/security/wrap_with_unusable_kek/manifest.toml) |
+
+**Summary:** Three authorization gaps:
+
+- `DeriveKey` persisted a new caller-owned object without the Create permission check that `Create`, `Import` and the other object-creating operations apply (`privileged_users`, Operator role).
+- The JOSE (`/v1/crypto`) and SPIRE transit routes called `Create`, `CreateKeyPair`, `Import`, `Decrypt` and `Sign` directly, so the request-time `kmip.policy_id` algorithm policy was not applied to them.
+- Wrapping and unwrapping errors told an unauthorized caller whether a wrapping key existed and, for unwrap, whether another user's key was inactive or lacked `UnwrapKey`.
+
+**Impact:** A user with a `DeriveKey` grant could create objects although object creation was restricted to privileged users. A deployment restricting algorithms through `kmip.policy_id` could still have keys of disallowed algorithms or sizes created, imported or used through the JOSE and SPIRE routes. A caller allowed to import wrapped keys could probe the existence and lifecycle state of other users' keys. No key material was exposed.
+
+**Mitigation:** Upgrade to 6.0.0. `DeriveKey` now requires the Create permission (the Crypto Officer is still allowed). The JOSE and SPIRE routes run the same request policy check as the KMIP endpoint and return the same error. Wrap and unwrap return `The (un)wrapping key <uid> does not exist or is not accessible` for a missing key and for a key the caller may not use, and check the key's state and usage only after the permission. Regression tests: `derive_key_requires_create_permission`, `crate/server/src/tests/kmip_policy/routes.rs`, `unauthorized_caller_cannot_distinguish_unwrapping_keys` and `unauthorized_caller_cannot_distinguish_wrapping_keys`.
+
+---
+
+#### COSMIAN-2026-070 — Key wrapping with a Certificate skipped the `WrapKey` usage-mask check
+
+| Field      | Value                                                                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Moderate                                                                                                                                                    |
+| Published  | Pending                                                                                                                                                     |
+| Affected   | before 6.0.0                                                                                                                                                |
+| Fixed in   | 6.0.0                                                                                                                                                       |
+| Found by   | Hardening review                                                                                                                                            |
+| References | [#1457](https://github.com/Cosmian/kms/issues/1457), [Regression test](crate/server/src/tests/wrap_certificate_usage_mask.rs)                               |
+
+**Summary:** `Get`, `Export` and the other wrapping paths checked the `WrapKey` bit of the wrapping key's Cryptographic Usage Mask for every object type except Certificates. A certificate could wrap keys whatever its own usage mask, or the mask of its public key, allowed.
+
+**Impact:** A user allowed to use a certificate (owner or `Get`/`Encrypt` grant) could wrap exported keys under a public key whose owner had restricted it to other uses, such as signature verification. No key material is disclosed to that user beyond what wrapping already allows, but the key-usage policy of the public key was not enforced.
+
+**Mitigation:** Upgrade to 6.0.0. A certificate now wraps only when its own usage mask, or, when it has none, the mask of the public key it links to with `PublicKeyLink` (owned by the certificate's owner), includes `WrapKey`. A certificate with neither is refused (`is not meant to wrap keys`); in FIPS builds, give an imported certificate a usage mask with `WrapKey` or link it to such a public key. Regression tests: `crate/server/src/tests/wrap_certificate_usage_mask.rs` and step 12 of `test_data/vectors/negative/security/wrap_with_unusable_kek`.
+
+---
 
 #### COSMIAN-2026-069 — GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree
 
@@ -1722,6 +1766,8 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-071    | Low      | before 6.0.0                                                            | 6.0.0    | DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys |
+| COSMIAN-2026-070    | Moderate | before 6.0.0                                                            | 6.0.0    | Key wrapping with a Certificate skipped the `WrapKey` usage-mask check                              |
 | COSMIAN-2026-069    | Low      | from 5.3.0 before 6.0.0 (build tooling only)                            | 6.0.0    | GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree                    |
 | COSMIAN-2026-068    | Low      | before 6.0.0                                                            | 6.0.0    | RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates               |
 | COSMIAN-2026-067    | Low      | from 5.24.0 before 6.0.0 (MySQL/Percona/MariaDB backend only)           | 6.0.0    | RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow in `gzwrite`               |
@@ -1829,7 +1875,7 @@ When using Cosmian KMS, we recommend:
 
 ## FIPS Compliance
 
-Cosmian KMS supports FIPS 140-3 compliance when built with FIPS features enabled. KMS links against OpenSSL 3.6.2, but the FIPS build still uses the OpenSSL 3.1.2 FIPS provider for cryptographic operations because it is the official FIPS provider version available today (no more recent FIPS provider version).
+Cosmian KMS supports FIPS 140-3 compliance when built with FIPS features enabled. KMS links against OpenSSL 3.6.5, but the FIPS build uses the CMVP-validated OpenSSL 3.5.9 FIPS provider (certificate #5586) for cryptographic operations.
 
 ## Security Audits
 

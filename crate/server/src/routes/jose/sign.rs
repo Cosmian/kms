@@ -6,7 +6,7 @@ use actix_web::{
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     KmipOperation,
-    kmip_operations::Sign as KmipSign,
+    kmip_operations::{Operation, Sign as KmipSign},
     kmip_types::{LinkType, UniqueIdentifier},
 };
 use cosmian_logger::trace;
@@ -15,7 +15,10 @@ use super::{
     CryptoApiError, CryptoResult, SignRequest, SignResponse as CryptoSignResponse, b64_decode,
     b64_encode, ecdsa_coord_size, ecdsa_der_to_p1363, jose_to_kmip_params, jws_signing_input,
 };
-use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
+use crate::core::{
+    KMS, ObjectHandle, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_request,
+    retrieve_object_utils::retrieve_object_for_operation,
+};
 
 /// `POST /v1/crypto/sign` — Detached JWS signature over arbitrary payload.
 ///
@@ -73,6 +76,8 @@ pub(crate) async fn sign(
         ..Default::default()
     };
 
+    enforce_kmip_algorithm_policy_for_request(&kms.params, &Operation::Sign(sign_req.clone()))
+        .map_err(CryptoApiError::from)?;
     let resp = kms
         .sign(sign_req, &user)
         .await

@@ -37,6 +37,7 @@ struct JweUnwrapProtectedHeader<'a> {
 use super::{
     CryptoApiError, CryptoResult, JoseAlgorithm, JoseEncAlgorithm, KeyUnwrapRequest,
     KeyUnwrapResponse, b64_decode, cek_size_bytes, ensure_json_object, jose_oaep_hashes,
+    keys::policy_checked_import,
 };
 use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
 
@@ -223,10 +224,7 @@ pub(crate) async fn unwrap_key(
         object,
     };
 
-    let import_response = kms
-        .import(import_request, &user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let import_response = policy_checked_import(&kms, import_request, &user).await?;
 
     let new_kid = import_response.unique_identifier.to_string();
 

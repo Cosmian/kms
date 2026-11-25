@@ -13,22 +13,26 @@ use actix_web::dev::{Service, ServiceResponse};
 use base64::{Engine, engine::general_purpose};
 use cosmian_kms_access::access::{Access, SuccessResponse};
 use cosmian_kms_client_utils::reexport::cosmian_kmip::time_normalize;
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::KeyWrapType,
-    kmip_2_1::{
-        KmipOperation,
-        kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Get, GetResponse, Import, ImportResponse},
-        kmip_types::{KeyFormatType, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::KeyWrapType,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_data_structures::{KeyMaterial, KeyValue},
+            kmip_objects::{Object, ObjectType},
+            kmip_operations::{Get, GetResponse, Import, ImportResponse},
+            kmip_types::{KeyFormatType, UniqueIdentifier},
+        },
+        ttlv::{TTLV, from_ttlv},
     },
-    ttlv::{TTLV, from_ttlv},
+    cosmian_kms_crypto::crypto::is_fips_build,
 };
 use cosmian_logger::{debug, log_init};
 use hex::{FromHex, ToHex};
 use jsonwebtoken::jwk::JwkSet;
 use openssl::{
     hash::MessageDigest,
+    md::Md,
     pkey::{PKey, Private, Public},
     pkey_ctx::PkeyCtx,
     rsa::{Padding, Rsa},
@@ -315,15 +319,30 @@ async fn test_google_cse_private_key_sign() -> KResult<()> {
     Ok(())
 }
 
-// RSA PKCS1 encryption
+/// Algorithm of the test DEK encryption: the FIPS provider refuses PKCS#1 v1.5 encryption, so a
+/// FIPS build uses OAEP-SHA-256.
+fn dek_algorithm() -> &'static str {
+    if is_fips_build() {
+        "RSA/ECB/OAEPwithSHA-256andMGF1Padding"
+    } else {
+        "RSA/ECB/PKCS1Padding"
+    }
+}
+
+// RSA encryption of the DEK with the scheme of `dek_algorithm`
 fn rsa_encrypt(rsa_public_key: Rsa<Public>, dek: &[u8]) -> KResult<String> {
     // Convert the RSA public key into a PKey<Public>
     let public_key = PKey::from_rsa(rsa_public_key)?;
 
-    // Perform RSA PKCS1 encryption.
     let mut ctx = PkeyCtx::new(&public_key)?;
     ctx.encrypt_init()?;
-    ctx.set_rsa_padding(Padding::PKCS1)?;
+    if is_fips_build() {
+        ctx.set_rsa_padding(Padding::PKCS1_OAEP)?;
+        ctx.set_rsa_oaep_md(Md::sha256())?;
+        ctx.set_rsa_mgf1_md(Md::sha256())?;
+    } else {
+        ctx.set_rsa_padding(Padding::PKCS1)?;
+    }
 
     let encrypt_size = ctx.encrypt(dek, None)?;
 
@@ -347,7 +366,7 @@ async fn test_cse_private_key_decrypt(
     let request = PrivateKeyDecryptRequest {
         authentication: token.clone(),
         authorization: token.clone(),
-        algorithm: "RSA/ECB/PKCS1Padding".to_owned(),
+        algorithm: dek_algorithm().to_owned(),
         encrypted_data_encryption_key: encrypted_data_encryption_key.to_owned(),
         rsa_oaep_label: None,
         reason: "Gmail".to_owned(),
@@ -500,18 +519,11 @@ async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
     let user_spki_hash =
         openssl::hash::hash(MessageDigest::sha256(), &public_key.public_key_to_der()?)?;
 
-    // Perform RSA PKCS1 decryption.
-    let mut ctx = PkeyCtx::new(&public_key)?;
-    ctx.encrypt_init()?;
-    ctx.set_rsa_padding(Padding::PKCS1)?;
-
     let dek = vec![1_u8; 32];
-    let encrypt_size = ctx.encrypt(&dek, None)?;
-
-    let mut encrypted_data_encryption_key = vec![0_u8; encrypt_size];
-    ctx.encrypt(&dek, Some(&mut *encrypted_data_encryption_key))?;
-
-    debug!("rsa pkcs1: dek={dek:?}\nencrypted_dek={encrypted_data_encryption_key:?}");
+    let encrypted_data_encryption_key = rsa_encrypt(
+        Rsa::public_key_from_pem_pkcs1(&user_public_key_pem_pkcs1)?,
+        &dek,
+    )?;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -523,9 +535,8 @@ async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
 
     let private_key_decrypt_request = PrivilegedPrivateKeyDecryptRequest {
         authentication: token.clone(),
-        algorithm: "RSA/ECB/PKCS1Padding".to_owned(),
-        encrypted_data_encryption_key: general_purpose::STANDARD
-            .encode(encrypted_data_encryption_key),
+        algorithm: dek_algorithm().to_owned(),
+        encrypted_data_encryption_key,
         rsa_oaep_label: None,
         reason: "Gmail".to_owned(),
         wrapped_private_key: wrapped_private_key.to_owned(),

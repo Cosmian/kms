@@ -3,7 +3,7 @@
   pkgs228 ? pkgs, # nixpkgs ≈ 19.09 with glibc 2.28 (RHEL 8 / Debian 10 / Ubuntu 18.04 compatibility)
   lib ? pkgs.lib,
   openssl36 ? null,
-  openssl312 ? null,
+  opensslFips ? null,
   rustPlatform ? pkgs.rustPlatform,
   version,
   features ? [ ],
@@ -16,7 +16,7 @@ let
       pkgs
       lib
       openssl36
-      openssl312
+      opensslFips
       static
       features
       ;

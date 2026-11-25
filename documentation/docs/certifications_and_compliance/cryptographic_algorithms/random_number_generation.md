@@ -24,9 +24,9 @@ This page covers every random byte the server produces, then post-quantum (PQC) 
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
 | Is the entropy source ESV-validated? | Not claimed. Entropy comes from the operating system through OpenSSL, and no ESV certificate is referenced |
 | Is PQC key generation routed to a FIPS provider? | No. PQC algorithms are available in non-FIPS builds only |
-| Can a customer-supplied OpenSSL build satisfy ESV/FIPS 140-3 for PQC today? | No. No CMVP-validated FIPS 140-3 module — OpenSSL's own or any third-party rebuild — currently includes ML-KEM, ML-DSA, or SLH-DSA |
-| Can upgrading the vendored OpenSSL version alone close the gap? | No. FIPS/ESV certification is bound to one exact validated build via a CMVP certificate number; newer source code is never itself validated |
-| Does a future FIPS-140-3-validated OpenSSL version automatically mean its entropy source is ESV-certified? | No. FIPS 140-3 module validation and Entropy Source Validation (ESV) are independent CMVP programs; OpenSSL's FIPS provider places the entropy source outside its module boundary regardless of version |
+| Can a customer-supplied OpenSSL build satisfy ESV/FIPS 140-3 for PQC today? | Only in part. The CMVP-validated OpenSSL FIPS Provider 3.5.9 (Certificate #5586, FIPS 140-3) lists ML-KEM, ML-DSA and SLH-DSA, but it takes its entropy from outside the module (no ESV is referenced), and Eviden KMS does not route PQC to a FIPS provider |
+| Can upgrading the vendored OpenSSL version alone close the gap? | No. FIPS/ESV certification is bound to one exact validated build via a CMVP certificate number; newer source code (for example the 3.6.5 main library) is never itself validated |
+| Does a FIPS-140-3-validated OpenSSL version automatically mean its entropy source is ESV-certified? | No. FIPS 140-3 module validation and Entropy Source Validation (ESV) are independent CMVP programs; OpenSSL's FIPS provider places the entropy source outside its module boundary regardless of version |
 | What is the governing NIST standard for KEM (ML-KEM / hybrid-KEM) entropy specifically? | NIST SP 800-227 (Sept 2025): RS4 requires SP 800-90A/B/C-approved random bits; RS2 requires following FIPS 140-3 guidance. Neither is met — see [What SP 800-227 requires that is not implemented in source code](#what-sp-800-227-requires-that-is-not-implemented-in-source-code) |
 
 ## Background
@@ -253,15 +253,16 @@ cargo test -p cosmian_kms_crypto --lib --features non-fips pqc
    platform. This is always a separate, platform-specific submission — it is never satisfied by an OpenSSL
    version or build, because the OpenSSL FIPS provider's own Security Policy places the entropy source
    "outside the Module boundary" (see [Path to NIST ESV / FIPS 140-3 entropy compliance](#path-to-nist-esv--fips-140-3-entropy-compliance-for-pqc) below).
-2. **A CMVP-validated, PQC-inclusive FIPS provider**: as of this writing, no OpenSSL FIPS provider release has
-   a published CMVP certificate that includes ML-KEM, ML-DSA, or SLH-DSA. The newest validated OpenSSL FIPS
-   provider (NIST CMVP Certificate #4985) is version 3.1.2, which predates OpenSSL's PQC support (OpenSSL 3.5+).
-3. **Callers that actually request a FIPS provider for PQC, once one exists**: the PQC keygen functions accept
+2. **A CMVP-validated, PQC-inclusive FIPS provider**: exists. The FIPS build ships OpenSSL FIPS Provider 3.5.9
+   (NIST CMVP Certificate #5586, FIPS 140-3, validated November 2026), whose Approved Algorithms list ML-KEM
+   (KeyGen, EncapDecap), ML-DSA and SLH-DSA (KeyGen, SigGen, SigVer). Earlier certificates (#4985, version
+   3.1.2) predate OpenSSL's PQC support. The module remains subject to its Security Policy (approved mode,
+   operating environment) and to the caveat that it gives no assurance on the strength of generated keys.
+3. **Callers that actually request the FIPS provider for PQC**: the PQC keygen functions accept
    an optional property query such as `fips=yes` (and check the `fips-indicator`), but every production caller
    passes `None`, and `pqc` (`crate/crypto/src/crypto/mod.rs`) is gated entirely behind the `non-fips` Cargo
-   feature and compiles out of FIPS-mode builds. Both would need to change before any validated FIPS provider —
-   OpenSSL's own or a customer's — could be consulted for PQC key generation. Not scheduled; no validated
-   provider to target yet.
+   feature and compiles out of FIPS-mode builds. Both would need to change before the validated FIPS provider
+   could be consulted for PQC key generation. Not scheduled.
 4. **Upstream Hybrid KEM Seeding**: contributing or awaiting OpenSSL support for composite keygen seeding if
    hybrid KEMs are ever to use external entropy sources.
 
@@ -307,7 +308,7 @@ text is not reproduced here.
 
 Mapping each entropy/FIPS-relevant requirement to Eviden KMS's current code:
 
-- **RS2 — not met.** `pqc` (`crate/crypto/src/crypto/mod.rs` lines 25-26) is gated entirely behind
+- **RS2 — not met.** `pqc` (`crate/crypto/src/crypto/mod.rs`) is gated entirely behind
   `#[cfg(feature = "non-fips")]` and is absent from every FIPS-mode build. RS2 cannot be attempted in Eviden's
   default build configuration because the PQC code does not exist in that build at all.
 - **RS4 — not met, two independent gaps:**
@@ -316,10 +317,9 @@ Mapping each entropy/FIPS-relevant requirement to Eviden KMS's current code:
   2. **Library support exists; deliberately not wired to callers.** `pqc_keygen_seeded`, `pqc_keygen` and
      `pqc_keygen_raw` (`crate/crypto/src/crypto/pqc/mod.rs`) accept an optional OpenSSL property query (e.g.
      `"fips=yes"`) and seeded keygen checks the `fips-indicator`, failing closed. Every production caller passes
-     `None`, so the default provider is always selected. This is intentional, not an oversight: the only
-     CMVP-validated OpenSSL FIPS provider (3.1.2, Certificate #4985) contains no ML-KEM, ML-DSA or SLH-DSA, so
-     passing `"fips=yes"` today would make every PQC key generation fail. The caller change is blocked on a
-     validated PQC-capable FIPS provider existing, not on engineering work in this repository.
+     `None`, so the default provider is always selected, and `pqc` compiles out of FIPS builds. The validated
+     provider shipped by the FIPS build (3.5.9, #5586) lists the PQC algorithms, so the blocker is now this
+     repository: a caller passing `"fips=yes"` and a build change, not the existence of a validated provider.
 - **RS5 — already met for Eviden's own code; not applicable beyond it.** `generate_pqc_seed`
   (`crate/crypto/src/crypto/pqc/mod.rs`) returns a `Zeroizing<Vec<u8>>`, so the seed Eviden generates
   and hands to OpenSSL is destroyed on drop. The additional intermediate values RS5 covers (matrix `A`, NTT
@@ -367,10 +367,12 @@ OpenSSL — that feeds the FIPS module's random bit generator. Concretely, this 
    table, establishing the chain from noise source to DRBG seed to Approved algorithm output.
 
 Crucially, **the OpenSSL FIPS Provider's own Security Policy places the entropy source outside the module
-boundary**: "The Module relies on the use of a \[SP 800-90B\] compliant entropy source outside the Module
-boundary. The calling application is responsible for use of an \[SP 800-90B\] compliant entropy source..."
-(OpenSSL FIPS Provider 3.1.2, FIPS 140-3 Non-Proprietary Security Policy, NIST CMVP Certificate #4985, §2.8
-"RBG and Entropy"). No OpenSSL version — vendored by Eviden, upgraded, or customer-supplied — carries an ESV
+boundary**: "The Module relies on the use of an \[SP800-90B\]-compliant entropy source outside the Module boundary. The
+calling application is responsible for use of an \[SP800-90B\]-compliant entropy source with sufficient entropy
+based on the required security strength. Entropy is supplied to the Module via callback functions..."
+(OpenSSL FIPS Provider 3.5.9, FIPS 140-3 Non-Proprietary Security Policy of November 2026, NIST CMVP
+Certificate #5586, §2.8 "RBG and Entropy"; the text of that policy contains no ESV certificate number. The
+3.1.2 policy, Certificate #4985, is worded the same way). No OpenSSL version — vendored by Eviden, upgraded, or customer-supplied — carries an ESV
 certificate of its own; the entropy source is always a separate, platform-specific validation tied to the
 actual OS/hardware RNG that `RAND_bytes` draws from on the deployed machine.
 
@@ -381,16 +383,15 @@ Only under conditions none of which are met today, and only partially:
 - Mechanically, `crate/crypto/build.rs` already supports substituting a pre-built OpenSSL: if the `OPENSSL_DIR`
   environment variable points at a directory containing `ssl/openssl.cnf` and `lib/ossl-modules`, the build
   script skips compiling its own OpenSSL and links against that directory instead
-  (`crate/crypto/build.rs` lines 61-72). A customer could point this at their own OpenSSL installation.
+  (`crate/crypto/build.rs`, the `OPENSSL_DIR` check). A customer could point this at their own OpenSSL installation.
 - However, swapping the OpenSSL build alone does not confer FIPS/ESV compliance unless **all** of the following
-  additionally hold, none of which exist today:
+  additionally hold, not all of which hold today:
   1. The customer's OpenSSL build must itself be an exact, unmodified copy of a CMVP-validated FIPS 140-3
      module (matching the "Tested Module Identification" in a published Security Policy by name, version, and
-     integrity-test digest). As of this research, the newest CMVP-validated "OpenSSL FIPS Provider" module is
-     version **3.1.2** (NIST CMVP Certificate #4985, Security Policy dated July 2025), which **predates PQC
-     support** — OpenSSL's ML-KEM/ML-DSA/SLH-DSA implementations landed in OpenSSL 3.5, after this validated
-     module's source baseline. No published CMVP certificate for any OpenSSL FIPS provider version ≥3.5 exists
-     as of this research.
+     integrity-test digest). The CMVP-validated "OpenSSL FIPS Provider" modules found are version **3.5.9**
+     (NIST CMVP Certificate #5586, Security Policy of November 2026), which includes ML-KEM, ML-DSA and
+     SLH-DSA in its Approved Algorithms, and the older **3.1.2** (Certificate #4985), which predates PQC. A
+     customer build of any other version (3.6.x, for example) is not validated.
   2. That validated module's own Security Policy must itself reference an ESV certificate for the entropy
      source on the customer's specific deployment hardware/OS (per the previous section, OpenSSL's own policy
      explicitly does not — this would have to be the customer's own, separate CMVP submission binding their
@@ -413,11 +414,10 @@ Only under conditions none of which are met today, and only partially:
   that provider instead of OpenSSL's own PQC implementation is a materially different integration (a new
   provider dependency, not an OpenSSL version/build swap) and is out of scope for this analysis.
 
-**Conclusion**: a customer's own OpenSSL build cannot close the gap today. It could in principle, in
-combination with (a) a CMVP-validated, PQC-inclusive FIPS provider build, (b) an ESV certificate for that
-customer's specific entropy source, and (c) Eviden KMS callers that actually pass a `fips=yes` property query
-(the library-level support exists, but no server code path or configuration supplies it yet) — (a) and (b)
-do not exist today, and (c) is only partially in place.
+**Conclusion**: a customer's own OpenSSL build cannot close the gap by itself. A PQC-inclusive validated
+provider (a) exists (3.5.9, #5586), but (b) an ESV certificate for the customer's specific entropy source does
+not come with it, and (c) Eviden KMS callers do not yet pass a `fips=yes` property query (the library-level
+support exists, but no server code path or configuration supplies it, and `pqc` is not built in FIPS mode).
 
 ### Can upgrading the vendored OpenSSL version alone close the gap?
 
@@ -427,28 +427,27 @@ OpenSSL, ... If you need a FIPS validated module then you must ONLY generate a F
 versions that have valid FIPS certificates." The same document explicitly warns, using OpenSSL 3.6.0 as the
 example: "Note that the OpenSSL 3.6.0 FIPS provider has not been validated so it must not be used for FIPS
 purposes." FIPS/ESV certification is bound to one specific, tested binary via a CMVP certificate number
-published in a Security Policy — never to "the latest source code." Bumping `OPENSSL_MAIN_VERSION` /
-`OPENSSL_MAIN_TARBALL` / `OPENSSL_MAIN_SHA256` in `crate/crypto/build.rs` (lines 15-19) to a newer OpenSSL
+published in a Security Policy — never to "the latest source code." Bumping the `main` entry of
+`crate/crypto/openssl_versions.json` (version and SHA-256) to a newer OpenSSL
 release (even one whose source includes FIPS-indicator-tagged ML-KEM/ML-DSA/SLH-DSA, as OpenSSL 3.5+ does per
-`docs.openssl.org/3.5/man7/OSSL_PROVIDER-FIPS`) does not grant FIPS validation or an ESV certificate; it only
-makes the *option* of building a FIPS provider with that source available once that specific version is
-independently validated by CMVP, which has not happened for any OpenSSL release ≥3.5 as of this research.
+`docs.openssl.org/3.5/man7/OSSL_PROVIDER-FIPS`) does not grant FIPS validation or an ESV certificate. Only the
+specific provider version that CMVP validated (3.5.9, Certificate #5586) may be used as the FIPS provider;
+the 3.6.x main library is not validated and is never used as one.
 
 ### Does FIPS validation of an OpenSSL version imply ESV-certified entropy?
 
 No — this is a common but incorrect inference, and this page corrects it explicitly: **FIPS 140-3 module
 validation and Entropy Source Validation (ESV) are two independent CMVP programs with separate certificate
-numbers.** A future OpenSSL FIPS provider release (version >3.5, potentially including ML-KEM/ML-DSA/SLH-DSA)
-obtaining a FIPS 140-3 certificate would say nothing on its own about its entropy source's ESV status, because:
+numbers.** The FIPS 140-3 certificate of an OpenSSL FIPS provider release (3.5.9, which includes
+ML-KEM/ML-DSA/SLH-DSA) says nothing on its own about its entropy source's ESV status, because:
 
-- Every OpenSSL FIPS Provider Security Policy examined (the only one currently validated, NIST CMVP
+- Every OpenSSL FIPS Provider Security Policy examined (NIST CMVP Certificate #5586, version 3.5.9, and
   Certificate #4985, version 3.1.2) places the entropy source **outside the module's cryptographic boundary**:
-  "The Module relies on the use of a \[SP800-90B\] compliant entropy source outside the Module boundary. The
-  calling application is responsible for use of an \[SP800-90B\] compliant entropy source..." (§2.8). This is an
+  "The Module relies on the use of an \[SP800-90B\]-compliant entropy source outside the Module boundary. The
+  calling application is responsible for use of an \[SP800-90B\]-compliant entropy source..." (§2.8 of both). This is an
   architectural property of how the OpenSSL FIPS provider is designed (entropy supplied via callback from the
   calling application), not something that changes when new algorithms (PQC or otherwise) are added to the
-  Approved Algorithms table. A future validated 3.5+ release would be expected to follow the same pattern
-  unless OpenSSL explicitly changes the provider's entropy architecture.
+  Approved Algorithms table: the 3.5.9 policy, which adds PQC, keeps it.
 - The default entropy source OpenSSL's FIPS provider is built against is `os` (the operating system RNG) per
   `README-FIPS.md`, which is not itself ESV-certified by that validation. The only documented path to an
   ESV-referenced entropy claim is the `enable-fips-jitter` build option (OpenSSL ≥3.5), and even then only
@@ -457,30 +456,31 @@ obtaining a FIPS 140-3 certificate would say nothing on its own about its entrop
   validation. As of this research, no OpenSSL release — at any version — has a published Security Policy that
   references an ESV certificate.
 
-**Corrected assertion**: a future OpenSSL version (>3.5) becoming FIPS 140-3 validated would only establish
-that its Approved Algorithms (potentially including ML-KEM/ML-DSA/SLH-DSA) are CMVP-certified. It would **not**,
+**Corrected assertion**: an OpenSSL version becoming FIPS 140-3 validated (3.5.9 did) only establishes
+that its Approved Algorithms (including ML-KEM/ML-DSA/SLH-DSA) are CMVP-certified. It does **not**,
 by itself, establish an ESV-certified entropy source. Eviden KMS could only claim ESV-certified entropy for a
 given OpenSSL build if that build's own published FIPS 140-3 Security Policy explicitly names an ESV
 certificate number in its RBG/Entropy section — a fact that must be checked per-release, never assumed from
 the FIPS validation status or the version number alone.
 
-### Default build: FIPS provider pinned to the validated OpenSSL 3.1.2
+### Default build: FIPS provider pinned to OpenSSL 3.5.9
 
 Independent of PQC, Eviden's default "FIPS mode" build (the `non-fips` Cargo feature absent) must load a FIPS
-provider built from a version holding a CMVP certificate. The only two CMVP-validated OpenSSL FIPS Provider
-certificates found are Certificate #4985 (version 3.1.2, Active, FIPS 140-3) and Certificate #4282 (versions
-3.0.8/3.0.9, **Historical**, FIPS 140-2). Neither covers OpenSSL 3.6.5, and OpenSSL's own `README-FIPS.md`
+provider built from a version holding a CMVP certificate. The CMVP-validated OpenSSL FIPS Provider
+certificates found are Certificate #5586 (version 3.5.9, Active, FIPS 140-3, validated November 2026),
+Certificate #4985 (version 3.1.2, Active, FIPS 140-3) and Certificate #4282 (versions 3.0.8/3.0.9,
+**Historical**, FIPS 140-2). None of them covers OpenSSL 3.6.5, and OpenSSL's own `README-FIPS.md`
 states that a FIPS provider must ONLY be generated from a version holding a valid FIPS certificate.
 
 `crate/crypto/build.rs` therefore builds two separate OpenSSL trees in FIPS mode:
 
 - the main library, **OpenSSL 3.6.5**, configured **without** `enable-fips`, which is what Eviden links against;
-- the FIPS provider, built from the validated **OpenSSL 3.1.2** source (`OPENSSL_FIPS_*` constants, SHA-256
-  pinned), whose `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` are copied into the main prefix and loaded
+- the FIPS provider, built from the validated **OpenSSL 3.5.9** source (Certificate #5586; version and SHA-256
+  pinned in `crate/crypto/openssl_versions.json`), whose `fips.{so,dylib}`, `openssl.cnf` and `fipsmodule.cnf` are copied into the main prefix and loaded
   at runtime.
 
-This matches the Nix build (`nix/common.nix`: "Always link against OpenSSL 3.6.5; the FIPS provider (3.1.2) is
-loaded at runtime"). Building from the validated source is necessary but not sufficient for a validated
+This matches the Nix build (`nix/common.nix`: "Always link against the main OpenSSL; the CMVP-validated FIPS
+provider is loaded at runtime"). Building from the validated source is necessary but not sufficient for a validated
 claim: the module must also be built and operated as the Security Policy describes (operating environment,
 unmodified source, integrity check), which this page does not assert.
 
@@ -498,6 +498,7 @@ unmodified source, integrity check), which this page does not assert.
 - NIST SP 800-90A, SP 800-90B, SP 800-90C: Random bit generation
 - NIST SP 800-133r2: Recommendation for Cryptographic Key Generation
 - OpenSSL `README-FIPS.md`: <https://github.com/openssl/openssl/blob/master/README-FIPS.md>
+- NIST CMVP Certificate #5586 — OpenSSL FIPS Provider 3.5.9, FIPS 140-3 Non-Proprietary Security Policy (November 2026): <https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp5586.pdf>
 - NIST CMVP Certificate #4985 — OpenSSL FIPS Provider 3.1.2, FIPS 140-3 Non-Proprietary Security Policy (July 2025): <https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp4985.pdf>
 - `OSSL_PROVIDER-FIPS` (OpenSSL 3.5 manual page): <https://docs.openssl.org/3.5/man7/OSSL_PROVIDER-FIPS>
 - NIST SP 800-227, Recommendations for Key-Encapsulation Mechanisms (September 2025): <https://csrc.nist.gov/pubs/sp/800/227/final>

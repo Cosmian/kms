@@ -52,6 +52,7 @@ use crate::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, digest::digest,
             rekey::versioned_update_op,
         },
+        otel_metrics::outcome_label,
         uid_utils::{
             KeysetVersion, ObjectHandle, as_keyset_ref, parse_keyset_identifier,
             resolve_keyset_to_single_uid, resolve_uids, walk_keyset_chain,
@@ -636,15 +637,15 @@ impl KMS {
         keyset_member: Option<&ObjectWithMetadata>,
     ) -> KResult<Op::Response> {
         let result = match keyset_member {
-            None => Op::execute_oracle(self, request, uid, prefix).await?,
-            Some(owm) => Op::execute_oracle_for_keyset(self, request, owm, prefix).await?,
+            None => Op::execute_oracle(self, request, uid, prefix).await,
+            Some(owm) => Op::execute_oracle_for_keyset(self, request, owm, prefix).await,
         };
         if let Some(metrics) = &self.metrics {
             let model =
                 crate::core::uid_utils::hsm_model_from_prefix(&self.params.hsm_instances, prefix);
-            metrics.record_hsm_operation(Op::OP_NAME, model);
+            metrics.record_hsm_operation(Op::OP_NAME, model, outcome_label(&result));
         }
-        Ok(result)
+        result
     }
 
     /// Try each key in a keyset chain (newest→oldest) until one succeeds.

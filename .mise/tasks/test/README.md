@@ -89,7 +89,7 @@ sequenceDiagram
 **Tasks:** `test:db:sqlite`, `test:db:psql`, `test:db:mysql`, `test:db:mariadb`, `test:db:percona`, `test:db:redis`, `test:db:pgedge`, `test:db:galera`, `test:db:multi-region-guards`
 **Orchestrator:** `test:db`
 
-All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → run `cargo test` against the KMS server and database crates with the target backend configured via environment variables.
+All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL) → run `cargo test` against the KMS server and database crates with the target backend configured via environment variables.
 
 | Task | Backend | FIPS? | Notes |
 |------|---------|-------|-------|
@@ -108,7 +108,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL 3.1.2) → r
 ```mermaid
 graph TB
     subgraph Host["Host / CI"]
-        Nix["Nix shell<br/>FIPS OpenSSL 3.1.2"]
+        Nix["Nix shell<br/>FIPS OpenSSL"]
         Cargo["cargo test"]
         SoftHSM["SoftHSM2<br/>(PKCS#11)"]
     end

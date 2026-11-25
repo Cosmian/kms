@@ -162,7 +162,8 @@ for i in $(seq 1 "${_auth_timeout}"); do
     cat "${AUTH_LOG}" >&2
     exit 1
   fi
-  if curl -sS --max-time 2 --insecure -o /dev/null -w "%{http_code}" \
+  # curl links the Nix OpenSSL, which cannot load the FIPS provider selected by these variables.
+  if env -u OPENSSL_CONF -u OPENSSL_MODULES curl -sS --max-time 2 --insecure -o /dev/null -w "%{http_code}" \
     "https://127.0.0.1:${AUTH_PORT}/.well-known/jwks.json" 2>/dev/null | grep -q '^200$'; then
     echo "    Authentication Verifier ready after ${i}s"
     break

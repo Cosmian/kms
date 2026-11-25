@@ -25,7 +25,7 @@
 
 let
   # Import project-level outputs to access tools like cargo-packager
-  # Use custom OpenSSL 3.1.2 (FIPS-capable) for both FIPS and non-FIPS modes
+  # Use custom OpenSSL 3.5.9 (FIPS-capable) for both FIPS and non-FIPS modes
   # The same OpenSSL library is used; FIPS vs non-FIPS is controlled at runtime
   # via OPENSSL_CONF and OPENSSL_MODULES environment variables
   # Wrapper config to activate both default and FIPS providers while reusing
@@ -33,7 +33,7 @@ let
   # inside nix/openssl.nix and strictly reuses the derivation outputs.
   # SoftHSM override with OpenSSL-only backend (Botan disabled)
   # Note: softhsm 2.6.x uses autotools (configure), not CMake
-  # Prefer nixpkgs' OpenSSL for building SoftHSM (ensures compatibility); server uses openssl312
+  # Prefer nixpkgs' OpenSSL for building SoftHSM (ensures compatibility); server uses opensslFips
   # Allow selectively adding extra tools from the environment (kept via nix-shell --keep)
   withHsm = (builtins.getEnv "WITH_HSM") == "1";
   withPython = (builtins.getEnv "WITH_PYTHON") == "1";
@@ -64,44 +64,16 @@ let
   # The pinned Nixpkgs predates the Rust version required by the authentication
   # submodule. SOPS tests keep the host toolchain selected by rust-toolchain.toml.
   rustToolchainInputs = if withSops then [ ] else [ rustToolchain ];
-  # Import FIPS OpenSSL 3.1.2 - will be used for FIPS builds
-  openssl312Fips = import ./nix/openssl.nix {
-    inherit (pkgs)
-      stdenv
-      lib
-      fetchurl
-      perl
-      coreutils
-      ;
-    static = true;
-  };
-  # Import non-FIPS OpenSSL 3.6.5 - will be used for non-FIPS builds
-  openssl360NonFips = import ./nix/openssl.nix {
-    inherit (pkgs)
-      stdenv
-      lib
-      fetchurl
-      perl
-      coreutils
-      ;
+  # FIPS provider build (CMVP-validated version) - used for FIPS builds
+  opensslFipsStatic = pkgs.callPackage ./nix/openssl.nix { static = true; };
+  # Main OpenSSL with legacy provider - used for non-FIPS builds
+  openssl360NonFips = pkgs.callPackage ./nix/openssl.nix {
+    opensslEntry = "main";
     static = false;
-    version = "3.6.5";
     enableLegacy = true;
-    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.5.tar.gz";
-    sha256SRI = "sha256-ohV8KDDv3sN4iTmwDJsGODBtPwu7dtxIMu5QO7OX35g=";
-    expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
   };
   # Shared (dynamic) build for components that require .so (e.g., SoftHSM2)
-  openssl312FipsShared = import ./nix/openssl.nix {
-    inherit (pkgs)
-      stdenv
-      lib
-      fetchurl
-      perl
-      coreutils
-      ;
-    static = false;
-  };
+  opensslFipsShared = pkgs.callPackage ./nix/openssl.nix { static = false; };
   utimacoDrv = import ./nix/utimaco.nix {
     inherit pkgs;
     inherit (pkgs) lib;
@@ -113,14 +85,14 @@ let
     inherit pkgs;
     # Use FIPS shared OpenSSL when running in FIPS variant so SoftHSM2 links to it
     # For non-FIPS, use OpenSSL 3.6.5 instead of pkgs.openssl (3.3.2)
-    openssl = if variant == "fips" then openssl312FipsShared else openssl360NonFips;
+    openssl = if variant == "fips" then opensslFipsShared else openssl360NonFips;
   };
 in
 pkgs.mkShell {
   buildInputs = [
     # Provide OpenSSL packages - the shellHook will configure which one to use
-    openssl312Fips
-    openssl312FipsShared
+    opensslFipsStatic
+    opensslFipsShared
     openssl360NonFips
     pkgs.openssl.dev
     pkgs.pkg-config
@@ -249,8 +221,8 @@ pkgs.mkShell {
     VARIANT_MODE="${variant}"
 
     if [ "$VARIANT_MODE" = "fips" ]; then
-      # Use Nix-provided FIPS OpenSSL 3.1.2 (shared) for dynamic linking in Rust
-      OPENSSL_PKG_PATH="${openssl312FipsShared}"
+      # Use Nix-provided FIPS OpenSSL 3.5.9 (shared) for dynamic linking in Rust
+      OPENSSL_PKG_PATH="${opensslFipsShared}"
 
       # Prefer our OpenSSL via pkg-config
       export PKG_CONFIG_PATH="$OPENSSL_PKG_PATH/lib/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
@@ -267,13 +239,13 @@ pkgs.mkShell {
       export OPENSSL_CONF="$OPENSSL_PKG_PATH/ssl/openssl.cnf"
       export OPENSSL_MODULES="$OPENSSL_PKG_PATH/lib/ossl-modules"
 
-      echo "Using FIPS OpenSSL 3.1.2 from Nix: $OPENSSL_PKG_PATH"
+      echo "Using FIPS OpenSSL 3.5.9 from Nix: $OPENSSL_PKG_PATH"
       echo "  OPENSSL_CONF=$OPENSSL_CONF"
       echo "  OPENSSL_MODULES=$OPENSSL_MODULES"
 
       # Verify FIPS OpenSSL shared library presence
       if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ] || [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.3.dylib" ]; then
-        echo "FIPS OpenSSL 3.1.2 libcrypto library found (shared)"
+        echo "FIPS OpenSSL 3.5.9 libcrypto library found (shared)"
       else
         echo "WARNING: FIPS OpenSSL libcrypto library NOT found at $OPENSSL_PKG_PATH/lib"
       fi
