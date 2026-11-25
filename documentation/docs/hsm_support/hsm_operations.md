@@ -366,6 +366,8 @@ The EC key pair has been created.
 HSM keys are sensitive by default (`CKA_SENSITIVE=true`, `CKA_EXTRACTABLE=false`): private and symmetric
 key material cannot be exported, and the KMS holds only a metadata stub. This applies even when no `--sensitive`
 flag is given. Pass `--sensitive false` explicitly only if you intentionally need an extractable key.
+`--sensitive` takes an optional value, so do not put it directly before the key identifier argument
+(`ckms ... keys create --sensitive hsm::4::my_key` is rejected): place it before another option.
 
 Note: HSM keys do not support object tagging in this release.
 

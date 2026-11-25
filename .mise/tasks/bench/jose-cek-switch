@@ -100,7 +100,7 @@ done
 # The RSA pair lives in the HSM: every server resolves hsm::<slot>::<id> there directly.
 RSA_SK="hsm::${HSM_SLOT_ID}::bench_cek_switch_$(date +%s)"
 RSA_PK="${RSA_SK}_pk"
-"${CKMS_BIN}" --url "${URLS[0]}" rsa keys create --size_in_bits 2048 --sensitive "${RSA_SK}"
+"${CKMS_BIN}" --url "${URLS[0]}" rsa keys create --sensitive --size_in_bits 2048 "${RSA_SK}"
 if [ "${BENCH_HSM_MODEL}" != "kryoptic" ]; then
   # Real HSMs keep the keys: remove them on exit (Kryoptic tokens are deleted with TMP_DIR).
   cek_switch_destroy_keys() {

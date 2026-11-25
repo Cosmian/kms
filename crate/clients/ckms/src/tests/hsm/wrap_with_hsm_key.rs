@@ -30,11 +30,12 @@ pub(crate) fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
         &[
+            // `--sensitive` takes an optional value: it must not directly precede the key id
+            "--sensitive",
             "--algorithm",
             "aes",
             "--number-of-bits",
             "256",
-            "--sensitive",
             &hsm_key_id,
         ],
     )?;
@@ -186,11 +187,12 @@ pub(crate) fn test_unwrap_with_hsm_key(ctx: &TestsContext) -> CosmianResult<()> 
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
         &[
+            // `--sensitive` takes an optional value: it must not directly precede the key id
+            "--sensitive",
             "--algorithm",
             "aes",
             "--number-of-bits",
             "256",
-            "--sensitive",
             &hsm_key_id,
         ],
     )?;
