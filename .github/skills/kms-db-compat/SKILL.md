@@ -1,11 +1,11 @@
 ---
 name: kms-db-compat
-description: 'Check a diff that changes SQL or Redis-with-Findex storage, or persisted KMIP serde types, for upgrade, downgrade (N-1), round-trip and mixed-version safety; emit a per-change verdict table and run the SQLite upgrade/downgrade proof. Use when a change touches crate/server_database, *.sql files or persisted KMIP types, or when asked about upgrade/downgrade compatibility.'
+description: 'Check a diff that changes SQL or Redis-with-Findex storage, persisted KMIP serde types, or adds state other KMS instances must see, for upgrade, downgrade (N-1), round-trip, mixed-version, cluster and multi-region (PostgreSQL Spock, MySQL Galera) safety; emit a per-change verdict table and run the SQLite upgrade/downgrade proof. Use when a change touches crate/server_database, *.sql files or persisted KMIP types, or when asked about upgrade/downgrade, cluster or multi-region compatibility.'
 ---
 
 # KMS DB Compat
 
-Normative rules: `.github/instructions/database-compatibility.instructions.md` (sync rule 4.18). This skill is the workflow; report-only unless invoked in self-review.
+Normative rules: `.github/instructions/database-compatibility.instructions.md` and `.github/instructions/database-replication.instructions.md` (sync rule 4.18). This skill is the workflow; report-only unless invoked in self-review.
 
 ## Step 1 — Collect storage changes
 
@@ -39,7 +39,7 @@ grep -n "<Type>" crate/kmip/src/kmip_2_1/kmip_attributes.rs crate/kmip/src/kmip_
 
 Not reachable → mark `not persisted` and drop it.
 
-## Step 3 — Answer the four directions per item
+## Step 3 — Answer the five directions per item
 
 One sentence with `file:line` evidence per direction:
 
@@ -47,15 +47,16 @@ One sentence with `file:line` evidence per direction:
 - **Downgrade**: do N-1's startup and queries still work? Read N-1 source with `git show <prev-tag>:<path>`, where `prev-tag=$(git tag --sort=-v:refname -l '[0-9]*.[0-9]*.[0-9]*' | head -1)`.
 - **Round-trip**: is there a startup reconcile, or only a marker?
 - **Mixed version**: is anything unsafe while both versions run?
+- **Cluster / multi-region**: apply the seven decisions of `database-replication.instructions.md` and answer in one sentence each: is the data in the shared database (not process memory), is the table replicated or node-local, has it a `PRIMARY KEY`, which conflict class applies, what must the operator run on an upgraded Spock deployment, what is the lag window. Also scan `crate/server/src` additions for process-local state (`Mutex<HashMap>`, `OnceLock`, static caches) that other instances must see, using the detection commands of that file. Check that `mr_guard_primary_keys` / `mr_guard_cluster_tables` and the `S<n>` / `G<n>` scenarios of `test_db_pgedge_active_active` / `test_db_galera_active_active` cover the change.
 
 ## Step 4 — Verdict and missing actions
 
 Output this table inline; write no file:
 
-`| Change (file:line) | Row | Upgrade | Downgrade N-1 | Round-trip | Mixed | Verdict | Missing action |`
+`| Change (file:line) | Row | Upgrade | Downgrade N-1 | Round-trip | Mixed | Cluster / multi-region | Verdict | Missing action |`
 
 - Any `BREAKING` row ends with `needs user approval (N-1 policy)`.
-- A missing `**Downgrade.**` doc paragraph, missing reconcile or missing re-instantiate test goes in `Missing action`, citing the instruction file's "Required in the same change" section.
+- A missing `**Downgrade.**` or `**Replication.**` doc paragraph, missing reconcile, missing re-instantiate test, missing multi-region guard or two-node scenario goes in `Missing action`, citing the "Required in the same change" section of the matching instruction file. An unanswered cluster or multi-region decision is `INCOMPLETE`, never `SAFE`.
 
 ## Step 5 — Proof (SQLite)
 

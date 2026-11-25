@@ -49,5 +49,6 @@ N-1 and N run at the same time on one database, so every N-1 effect above also h
 - (a) Add a `**Downgrade.**` paragraph to the affected `` ## `table` `` section of `documentation/docs/configuration/database/tables.md`, modeled on § `gcm_invocations`. For Redis layout changes, update `documentation/docs/configuration/database/redis.md` § Migration. List every DEGRADED/BREAKING item in the branch CHANGELOG.
 - (b) For row 7, add a test that writes the derived data, re-instantiates the store with `clear_database=false`, and asserts the reconciled state. Model it on `gcm_invocations_orphan_purge_test` in `crate/server_database/src/tests/database_tests.rs`, and call it from `test_db_sqlite`, `test_db_postgresql`, `test_db_mysql` and `test_db_redis_with_findex` in `crate/server_database/src/tests/mod.rs`.
 - (c) Run `/kms-db-compat` and paste its table into the PR description.
+- (d) Answer the cluster and multi-region questions of `database-replication.instructions.md` for every new table, column or stored value: that file is mandatory for the same scope, and `/kms-db-compat` reports it in its `Cluster / multi-region` column.
 
 Workflow and commands: `/kms-db-compat`. Schema docs: `database-tables.instructions.md`.
