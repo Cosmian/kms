@@ -1198,15 +1198,7 @@ async fn reimport_cert_with_issuer(client: &KmsClient, leaf_id: &str, ca_id: &st
 #[tokio::test]
 async fn test_import_revoked_leaf_with_issuer_link_is_compromised() {
     init_test_logging();
-    // The CRL distribution point injected in the leaf is `kms_public_url`: the shared test
-    // servers advertise a fixed, unreachable port, so use a server that points at itself.
-    let ctx = start_test_server_with_patch(
-        &test_config_path("auth/plain.toml"),
-        |config| config.kms_public_url = Some(format!("http://127.0.0.1:{}", config.http.port)),
-        TestClientOptions::default(),
-    )
-    .await
-    .expect("test server should start");
+    let ctx = start_self_cdp_test_server().await;
     let client = ctx.get_owner_client();
     let mut resources = TestResources::new();
 
@@ -1233,6 +1225,127 @@ async fn test_import_revoked_leaf_with_issuer_link_is_compromised() {
 
         if expected_state == State::Compromised {
             // (EC encryption itself is non-FIPS only: the state check must come first)
+            let err = client
+                .encrypt(Encrypt {
+                    unique_identifier: Some(UniqueIdentifier::TextString(imported_id)),
+                    data: Some(b"1461".to_vec().into()),
+                    ..Encrypt::default()
+                })
+                .await
+                .expect_err("a compromised certificate must not encrypt")
+                .to_string();
+            assert!(err.contains("Wrong_Key_Lifecycle_State"), "{err}");
+        }
+    }
+
+    resources.cleanup(&client).await;
+    ctx.stop_server().await.expect("server should stop");
+}
+
+/// Start a server whose `kms_public_url` points at itself: the CRL distribution point injected
+/// in issued certificates is `kms_public_url`, and the shared test servers advertise a fixed,
+/// unreachable port.
+async fn start_self_cdp_test_server() -> crate::TestsContext {
+    start_test_server_with_patch(
+        &test_config_path("auth/plain.toml"),
+        |config| config.kms_public_url = Some(format!("http://127.0.0.1:{}", config.http.port)),
+        TestClientOptions::default(),
+    )
+    .await
+    .expect("test server should start")
+}
+
+/// Create an intermediate CA issued by `root_id` (its CDP is injected by the server).
+async fn create_intermediate_ca(
+    client: &KmsClient,
+    root_id: &str,
+    cn: &str,
+    res: &mut TestResources,
+) -> String {
+    let certify = build_certify_request(
+        VENDOR_ID_COSMIAN,
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: format!("CN={cn},O=Cosmian"),
+                algorithm: Algorithm::NistP256,
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: Some(root_id.to_owned()),
+            number_of_days: 365,
+            certificate_extensions: Some(
+                b"[ v3_ca ]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,crlSign\n"
+                    .to_vec(),
+            ),
+            tags: vec![],
+        },
+    )
+    .unwrap();
+    let cert_id = client
+        .certify(certify)
+        .await
+        .unwrap()
+        .unique_identifier
+        .to_string();
+    res.track(cert_id.clone());
+    cert_id
+}
+
+/// Regression test for #1461: a leaf issued by an intermediate CA is imported with a link to
+/// the intermediate only; the intermediate's CRL is signed by the root, so the CRL check must
+/// walk the stored `CertificateLink` chain up to the root.
+#[tokio::test]
+async fn test_import_revoked_leaf_issued_by_intermediate_is_compromised() {
+    init_test_logging();
+    let ctx = start_self_cdp_test_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let root_id = create_named_ca(&client, "Root-Import-Revoked-1461", &mut resources).await;
+    let inter_id = create_intermediate_ca(
+        &client,
+        &root_id,
+        "Inter-Import-Revoked-1461",
+        &mut resources,
+    )
+    .await;
+    let linked_root = client
+        .get_attributes(GetAttributes::from(inter_id.as_str()))
+        .await
+        .expect("GetAttributes should succeed")
+        .attributes
+        .get_link(LinkType::CertificateLink)
+        .map(|l| l.to_string());
+    assert_eq!(linked_root.as_deref(), Some(root_id.as_str()));
+
+    let revoked_leaf = issue_cert(
+        &client,
+        &inter_id,
+        "revoked-leaf-chain-1461",
+        &mut resources,
+    )
+    .await;
+    let good_leaf = issue_cert(&client, &inter_id, "good-leaf-chain-1461", &mut resources).await;
+    revoke_cert(&client, &revoked_leaf, RevocationReasonCode::KeyCompromise).await;
+    // The intermediate's own CRL (signed by the root) is fetched during the chain check; the
+    // root has revoked nothing, so no CRL exists yet and a missing one counts as a failure.
+    fetch_crl_der(&client, &root_id, 30).await;
+
+    for (leaf_id, expected_state) in [
+        (&revoked_leaf, State::Compromised),
+        (&good_leaf, State::Active),
+    ] {
+        let imported_id = reimport_cert_with_issuer(&client, leaf_id, &inter_id).await;
+        resources.track(imported_id.clone());
+        let state = client
+            .get_attributes(GetAttributes::from(imported_id.as_str()))
+            .await
+            .expect("GetAttributes should succeed")
+            .attributes
+            .state;
+        assert_eq!(state, Some(expected_state), "state of the imported leaf");
+
+        if expected_state == State::Compromised {
             let err = client
                 .encrypt(Encrypt {
                     unique_identifier: Some(UniqueIdentifier::TextString(imported_id)),

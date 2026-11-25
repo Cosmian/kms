@@ -54,28 +54,47 @@ use crate::{
     result::KResult,
 };
 
-/// Load the certificate referenced by the `CertificateLink` of the import attributes.
-/// Any lookup or parse failure yields `None`: the CRL check then runs on the leaf alone.
-async fn linked_issuer_certificate(
-    kms: &KMS,
-    attributes: &Attributes,
-    user: &UserId,
-) -> Option<X509> {
-    let issuer_uid = attributes.get_link(LinkType::CertificateLink)?.to_string();
-    let owm = Box::pin(retrieve_object_for_operation(
-        ObjectHandle::from(&issuer_uid),
-        KmipOperation::Get,
-        kms,
-        user,
-    ))
-    .await
-    .ok()?;
-    match owm.object() {
-        Object::Certificate(Certificate {
+/// Maximum number of linked certificates followed when collecting the issuer chain.
+const MAX_ISSUER_CHAIN_DEPTH: usize = 8;
+
+/// Collect the issuers of an imported certificate by following the `CertificateLink` of the
+/// import attributes, then that of each stored certificate, up to the root. The result is
+/// ordered root first. Any lookup or parse failure ends the walk: the CRL check then runs on
+/// what was gathered so far (possibly the leaf alone).
+async fn linked_issuer_chain(kms: &KMS, attributes: &Attributes, user: &UserId) -> Vec<X509> {
+    let mut chain = Vec::new();
+    let mut seen = HashSet::new();
+    let mut next = attributes.get_link(LinkType::CertificateLink);
+    while let Some(link) = next.take() {
+        let uid = link.to_string();
+        if chain.len() >= MAX_ISSUER_CHAIN_DEPTH || !seen.insert(uid.clone()) {
+            break;
+        }
+        let Ok(owm) = Box::pin(retrieve_object_for_operation(
+            ObjectHandle::from(&uid),
+            KmipOperation::Get,
+            kms,
+            user,
+        ))
+        .await
+        else {
+            break;
+        };
+        let Object::Certificate(Certificate {
             certificate_value, ..
-        }) => X509::from_der(certificate_value).ok(),
-        _ => None,
+        }) = owm.object()
+        else {
+            break;
+        };
+        let Ok(x509) = X509::from_der(certificate_value) else {
+            break;
+        };
+        chain.push(x509);
+        next = owm.attributes().get_link(LinkType::CertificateLink);
     }
+    // an HTTP(S) CRL signature can only be verified against certificates of the checked chain
+    chain.reverse();
+    chain
 }
 
 /// Initial lifecycle state of an imported or registered object (KMIP 2.1 §3.1.7):
@@ -157,11 +176,8 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
             && let Ok(cert) = X509::from_der(certificate_value)
         {
             // An HTTP(S) CRL signature can only be verified against certificates of the
-            // checked chain: put the linked issuer (if any) before the leaf (#1461).
-            let mut chain = Vec::with_capacity(2);
-            if let Some(issuer) = linked_issuer_certificate(kms, &request.attributes, user).await {
-                chain.push(issuer);
-            }
+            // checked chain: put the linked issuers (root first) before the leaf (#1461).
+            let mut chain = linked_issuer_chain(kms, &request.attributes, user).await;
             chain.push(cert);
             match verify_crls(
                 chain,
