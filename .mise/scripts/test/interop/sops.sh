@@ -81,6 +81,7 @@ LOGIN="$(curl -sf --insecure -X POST \
   https://localhost:9998/v1/auth/approle/login)"
 VAULT_TOKEN="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["auth"]["client_token"])' "${LOGIN}")"
 export VAULT_ADDR="https://localhost:9998" VAULT_TOKEN
+export VAULT_CACERT="${TEST_DATA}/certs/ca.crt"
 
 kms_transit() {
   local method="$1" path="$2" body="${3:-}"

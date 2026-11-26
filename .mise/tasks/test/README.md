@@ -914,8 +914,9 @@ To run it by hand: `mise run test:interop:openbao-auth-verifier --variant non-fi
 **Description:** SOPS native key-source interoperability against a KMS configured with the
 Vault-compatible Transit API. The non-FIPS-only task starts the Auth Verifier and KMS from the
 complete SPIRE fixtures, creates an AppRole token, and verifies SOPS encryption, decryption, and
-`updatekeys` rotation for both `hc_vault_transit` and `pgp`. SOPS, GnuPG, and `gnupg-pkcs11-scd` come from the pinned Nix shell (`WITH_SOPS=1`); the OpenPGP
-scenario uses the KMS PKCS#11 smartcard provider.
+`updatekeys` rotation for both `hc_vault_transit` and `pgp`. The Transit client trusts the fixture
+CA via `VAULT_CACERT`. SOPS, GnuPG, and `gnupg-pkcs11-scd` come from the pinned Nix shell
+(`WITH_SOPS=1`); the OpenPGP scenario uses the KMS PKCS#11 smartcard provider.
 
 ```mermaid
 sequenceDiagram
