@@ -248,8 +248,12 @@ SELECT sealed_record FROM crypto_officer_activations
 SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
 
 -- name: revoke-crypto-officer-activation
-UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1
+UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1, sealed_record = ''
         WHERE activated_by = $2 AND revoked_at IS NULL;
+
+-- name: tombstone-revoked-crypto-officer-activations
+UPDATE crypto_officer_activations SET sealed_record = ''
+        WHERE revoked_at IS NOT NULL AND sealed_record <> '';
 
 -- name: count-all-non-destroyed
 SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';

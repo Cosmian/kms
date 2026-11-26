@@ -95,7 +95,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL) → run `ca
 |------|---------|-------|-------|
 | `sqlite` | SQLite (file) | yes | Default. Also tests workspace binaries on CI. |
 | `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. Runs `test_db_postgresql_state_event_merge` (lifecycle event-log merge and startup reconcile). |
-| `mysql` | MySQL | yes | CI: non-FIPS on pull requests, both variants otherwise. |
+| `mysql` | MySQL | yes | CI: non-FIPS on pull requests, both variants otherwise. Starts `mysql-mtls` for the `ssl-mode` TLS tests (`test_mysql_tls_*`; non-FIPS also runs `test_db_mysql_mtls_connection`). |
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |
 | `redis` | Redis + Findex | **no** | Non-FIPS only. |

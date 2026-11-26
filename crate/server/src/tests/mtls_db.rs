@@ -268,8 +268,10 @@ async fn test_db_mysql_mtls_connection() -> KResult<()> {
     let client_p12 = get_cert_path("certificates/client_server/db/mysql-client.p12");
 
     // Build URL with proper query parameters
-    let mut url =
-        Url::parse("mysql://kms:kms@127.0.0.1:3309/kms").expect("Failed to parse base URL");
+    let mut url = Url::parse(
+        option_env!("KMS_MYSQL_MTLS_URL").unwrap_or("mysql://kms:kms@127.0.0.1:3309/kms"),
+    )
+    .expect("Failed to parse base URL");
     url.query_pairs_mut()
         .append_pair("ssl-mode", "REQUIRED")
         .append_pair("ssl-ca", &ca_cert.to_string_lossy())
