@@ -430,11 +430,10 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
         return item;
     });
 
-    // Hide PQC, OpenPGP, FPE, and Tokenize/Anonymize in FIPS mode (not available in the FIPS build).
-    // MAC (HMAC) is available in FIPS mode and stays visible.
-    // Rotation Policy for PQC is removed automatically since it lives inside the PQC item.
+    // Hide OpenPGP, FPE, and Tokenize/Anonymize in FIPS mode (not available in the FIPS build).
+    // MAC (HMAC) and PQC (ML-KEM, ML-DSA, SLH-DSA, X25519MLKEM768) are available in FIPS mode and stay visible.
     if (isFips) {
-        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "pgp" && item.key !== "fpe" && item.key !== "tokenize");
+        menu = menu.filter((item) => item.key !== "pgp" && item.key !== "fpe" && item.key !== "tokenize");
     }
 
     // Insert Covercrypt immediately after PQC so Hyperscalers stays last

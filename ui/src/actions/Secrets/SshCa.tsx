@@ -26,7 +26,7 @@ type CreateKeyPairResponse = {
 
 const ROLE_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
 
-// The curves the server accepts for an SSH CA (Ed25519 only exists in non-FIPS builds).
+// The curves the server accepts for an SSH CA.
 const SSH_CA_CURVES = ["nist-p256", "nist-p384", "nist-p521", "ed25519"];
 
 const splitList = (value?: string): string[] =>

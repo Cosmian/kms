@@ -8,7 +8,7 @@ test("menuItems exports a non-empty menu", () => {
     expect(menuItems.length).toBeGreaterThan(0);
 });
 
-const NON_FIPS_SECTIONS = ["pgp", "pqc", "fpe", "tokenize", "cc"];
+const NON_FIPS_SECTIONS = ["pgp", "fpe", "tokenize", "cc"];
 
 test("non-FIPS sections are hidden in FIPS mode", () => {
     const keys = getMenuItems({ isFips: true }).map((item) => item.key);
