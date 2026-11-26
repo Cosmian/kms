@@ -106,10 +106,10 @@ CURRENT_TEST_STEP="Transit SOPS encryption"
 SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
 CURRENT_TEST_STEP="Transit encrypted metadata check"
 grep -q 'sops:' secrets.yaml
-CURRENT_TEST_STEP="Transit SOPS decryption"
-TRANSIT_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
-CURRENT_TEST_STEP="Transit plaintext verification"
-test "${TRANSIT_PLAINTEXT}" = '  password: transit-secret'
+CURRENT_TEST_STEP="Transit decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: transit-secret'; then
+  print_error "Transit decryption did not preserve the password"
+fi
 cat >.sops.yaml <<EOF2
 creation_rules:
   - path_regex: \\.yaml$
@@ -117,10 +117,10 @@ creation_rules:
 EOF2
 CURRENT_TEST_STEP="Transit key rotation"
 SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
-CURRENT_TEST_STEP="Transit post-rotation decryption"
-TRANSIT_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
-CURRENT_TEST_STEP="Transit post-rotation plaintext verification"
-test "${TRANSIT_PLAINTEXT}" = '  password: transit-secret'
+CURRENT_TEST_STEP="Transit post-rotation decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: transit-secret'; then
+  print_error "Transit post-rotation decryption did not preserve the password"
+fi
 popd >/dev/null
 
 print_header "SOPS OpenPGP source"
@@ -164,16 +164,16 @@ CURRENT_TEST_STEP="OpenPGP SOPS encryption"
 SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
 CURRENT_TEST_STEP="OpenPGP encrypted metadata check"
 grep -q 'sops:' secrets.yaml
-CURRENT_TEST_STEP="OpenPGP SOPS decryption"
-PGP_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
-CURRENT_TEST_STEP="OpenPGP plaintext verification"
-test "${PGP_PLAINTEXT}" = '  password: pgp-secret'
+CURRENT_TEST_STEP="OpenPGP decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: pgp-secret'; then
+  print_error "OpenPGP decryption did not preserve the password"
+fi
 CURRENT_TEST_STEP="OpenPGP key rotation"
 SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
-CURRENT_TEST_STEP="OpenPGP post-rotation decryption"
-PGP_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
-CURRENT_TEST_STEP="OpenPGP post-rotation plaintext verification"
-test "${PGP_PLAINTEXT}" = '  password: pgp-secret'
+CURRENT_TEST_STEP="OpenPGP post-rotation decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: pgp-secret'; then
+  print_error "OpenPGP post-rotation decryption did not preserve the password"
+fi
 popd >/dev/null
 
 print_success "SOPS Vault Transit and OpenPGP round-trips passed"
