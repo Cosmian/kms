@@ -639,7 +639,6 @@ Crate path: `crate/server`
 | `trace` | `SetAttribute: writing CKA_LABEL '{label}' on HSM key '{id}'` | `src/core/operations/attributes/set.rs` | `label`, `id` | - |
 | `trace` | `SetAttribute: writing CKA_START_DATE={today} CKA_END_DATE={end_date} on HSM key '{id}'` | `src/core/operations/attributes/set.rs` | `today`, `end_date`, `id` | - |
 | `warn` | `SECURITY: no authentication method is configured: every request is served as the default user '{}'. Configure mTLS, JWT/OIDC, an API token or the Auth Verifier for production deployments.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `SECURITY: rate_limit_per_second is not set: request rate limiting is disabled.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `Socket server: {MAX_SOCKET_CONNECTIONS} connections already active, dropping new connection` | `src/socket_server.rs` | `MAX_SOCKET_CONNECTIONS` | - |
 | `debug` | `Generated JWT for original KACLS` | `src/routes/google_cse/operations.rs` | - | - |
@@ -812,6 +811,10 @@ Crate path: `crate/server`
 | `debug` | `Serving UI feature flags` | `src/routes/ui_auth.rs` | - | - |
 | `trace` | `GET /ui/config` | `src/routes/ui_auth.rs` | - | - |
 | `warn` | `[{idx}] CRL not obtainable for '{:?}', skipping revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
+| `error` | `cannot bind stored object {uid} to its row: {e}` | `src/core/wrapping/wrap.rs` | `uid`, `e` | - |
+| `warn` | `failed to bind dependant {dep_uid} to its row: {e}, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid`, `e` | - |
+| `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping and are not bound to their database row. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
+| `info` | `bound {bound} stored objects to their row` | `src/core/wrapping/wrap.rs` | `bound` | - |
 
 ### `cosmian_kms_server_database`
 

@@ -588,6 +588,14 @@ pub(crate) async fn test_objects_db() -> DbResult<()> {
     assert_eq!(redis_db_object.owner, "owner");
     assert_eq!(redis_db_object.state, State::Active);
 
+    // the UID is authenticated data: a ciphertext moved to another UID does not open
+    let raw = o_db
+        .object_get_raw(uid)
+        .await?
+        .context("raw object not found")?;
+    o_db.decrypt_object(uid, &raw)?;
+    assert!(o_db.decrypt_object("another_uid", &raw).is_err());
+
     o_db.object_delete(uid).await?;
     assert!(o_db.object_get(uid).await?.is_none());
 
