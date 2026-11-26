@@ -285,6 +285,7 @@ services:
           - kms
     environment:
       RUST_LOG: cosmian_kms_server=trace
+      KMS_INSECURE_ALLOW_UNAUTHENTICATED: 'true'
     volumes:
       - ./oracle/cosmian-kms:/cosmian-kms
 

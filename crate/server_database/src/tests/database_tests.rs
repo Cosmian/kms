@@ -1788,3 +1788,18 @@ pub(super) async fn lifecycle_state_contract_test<DB: ObjectsStore>(db: &DB) -> 
 
     Ok(())
 }
+
+/// A revoked Web UI session is reported as revoked, other sessions are not, and revoking twice
+/// is harmless.
+pub(super) async fn ui_session_revocation_test<DB: PermissionsStore>(db: &DB) -> DbResult<()> {
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let revoked = Uuid::new_v4().simple().to_string();
+    let other = Uuid::new_v4().simple().to_string();
+
+    assert!(!db.is_ui_session_revoked(&revoked).await?);
+    db.revoke_ui_session(&revoked, now + 3600, now).await?;
+    db.revoke_ui_session(&revoked, now + 3600, now).await?;
+    assert!(db.is_ui_session_revoked(&revoked).await?);
+    assert!(!db.is_ui_session_revoked(&other).await?);
+    Ok(())
+}

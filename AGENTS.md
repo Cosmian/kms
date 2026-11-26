@@ -55,6 +55,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
 | `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `.mise/tasks/test/README.md` is the only test-task doc: update the affected task entries and their Mermaid diagrams on every task or script change; sync rule 4.21 |
 | `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` | Sync rule 4.18 — upgrade, downgrade (N-1), round-trip and mixed-version rules for SQL / Redis-with-Findex / persisted KMIP serde changes |
+| `database-replication.instructions.md` | `crate/server_database/**`, `crate/interfaces/src/stores/**`, `**/*.sql` | Cluster (several KMS instances on one database) and multi-region (PostgreSQL Spock, MySQL Galera) decisions to take whenever a database change adds, alters or relies on stored data |
 
 Eviden KMS is a high-performance, source available **FIPS 140-3** compliant Key
 Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS

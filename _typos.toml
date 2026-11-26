@@ -11,6 +11,7 @@ GOST = "GOST"
 vas = "vas"
 passin = "passin"
 typ = "typ"
+TOI = "TOI"
 Hashi = "Hashi"
 # SAP ASE installer feature id (CHOSEN_FEATURE_LIST=fase_srv,...), not a typo of "phase".
 fase = "fase"

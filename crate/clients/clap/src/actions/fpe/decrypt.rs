@@ -1,5 +1,3 @@
-use std::fs;
-
 use clap::Parser;
 use cosmian_kms_client::{
     KmsClient,
@@ -7,6 +5,7 @@ use cosmian_kms_client::{
         kmip_types::{CryptographicAlgorithm, CryptographicParameters},
         requests::decrypt_request,
     },
+    write_private_bytes_to_file,
 };
 
 use super::{FpeArgs, write_output_bytes};
@@ -49,8 +48,7 @@ impl DecryptAction {
                 .output_file
                 .clone()
                 .unwrap_or_else(|| input_file.with_extension("plain"));
-            fs::write(&output_path, plaintext.as_slice())
-                .with_context(|| "failed to write the decrypted file")?;
+            write_private_bytes_to_file(plaintext.as_slice(), &output_path)?;
             console::Stdout::new(&format!(
                 "The decrypted file is available at {}",
                 output_path.display()

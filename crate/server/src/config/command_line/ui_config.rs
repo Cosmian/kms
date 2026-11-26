@@ -57,6 +57,8 @@ pub struct UiConfig {
     pub index_html_folder: Option<String>,
 
     /// A secret salt used to derive the session cookie encryption key.
+    /// It must be random: at least 32 bytes encoded as hex or base64
+    /// (generate one with `openssl rand -hex 32`); passphrases are rejected at startup.
     /// This MUST be identical across all KMS instances behind the same load balancer.
     /// This should only be provided when `ui_index_html_folder` is explicitly defined.
     #[clap(

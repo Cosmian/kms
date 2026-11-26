@@ -112,6 +112,8 @@ else
       mr_run_guard "live: lifecycle event triggers (pgedge2)" mr_guard_state_event_triggers pgedge2
       mr_run_guard "live: cluster tables (pgedge1)" mr_guard_cluster_tables pgedge1
       mr_run_guard "live: cluster tables (pgedge2)" mr_guard_cluster_tables pgedge2
+      mr_run_guard "live: replication set complete (pgedge1)" mr_guard_replication_set_complete pgedge1
+      mr_run_guard "live: replication set complete (pgedge2)" mr_guard_replication_set_complete pgedge2
       mr_run_guard "live: Spock wiring (pgedge1)" mr_guard_spock_wiring pgedge1
       mr_run_guard "live: Spock wiring (pgedge2)" mr_guard_spock_wiring pgedge2
     fi

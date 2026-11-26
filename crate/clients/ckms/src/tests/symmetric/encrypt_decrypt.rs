@@ -178,6 +178,43 @@ pub(crate) fn run_encrypt_decrypt_test(
     Ok(())
 }
 
+/// A decrypted file is readable by its owner only.
+#[cfg(unix)]
+#[tokio::test]
+async fn test_decrypted_file_is_owner_only() -> CosmianResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let ctx = start_default_test_kms_server().await;
+    let owner_client_conf_path = owner_config(ctx);
+    let dek = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--algorithm", "aes", "--number-of-bits", "256"],
+    )?;
+    let tmp_dir = TempDir::new()?;
+    let enc = tmp_dir.path().join("plain.enc");
+    let plain = tmp_dir.path().join("plain.txt");
+    encrypt(
+        &owner_client_conf_path,
+        "../../../test_data/plain.txt",
+        &dek,
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc.to_str().unwrap()),
+        None,
+    )?;
+    decrypt(
+        &owner_client_conf_path,
+        enc.to_str().unwrap(),
+        &dek,
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(plain.to_str().unwrap()),
+        None,
+    )?;
+    assert_eq!(fs::metadata(&plain)?.permissions().mode() & 0o777, 0o600);
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_aes_gcm_server_side() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;

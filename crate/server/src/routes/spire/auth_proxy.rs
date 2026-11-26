@@ -19,6 +19,11 @@ use cosmian_logger::{debug, warn};
 use reqwest::Client;
 use url::Url;
 
+use crate::middlewares::read_body_capped;
+
+/// Largest auth-verifier response relayed to the (unauthenticated) caller: 1 MiB.
+const MAX_AUTH_RESPONSE_BYTES: usize = 1024 * 1024;
+
 /// Forward a `/v1/auth/{tail}` request to the configured auth-verifier.
 ///
 /// Injected via `app_data` on the `/v1/auth` scope in `start_kms_server.rs`.
@@ -87,10 +92,10 @@ pub(crate) async fn proxy_auth_request(
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("application/json")
                 .to_owned();
-            // A mid-transfer body read failure (e.g. connection reset) must not be
-            // silently turned into an empty, success-shaped response: surface it as
-            // a 502 so the caller can distinguish it from a legitimately empty body.
-            let resp_body = match resp.bytes().await {
+            // A mid-transfer body read failure (e.g. connection reset) or an oversized body
+            // must not be silently turned into an empty, success-shaped response: surface it
+            // as a 502 so the caller can distinguish it from a legitimately empty body.
+            let resp_body = match read_body_capped(resp, MAX_AUTH_RESPONSE_BYTES).await {
                 Ok(body) => body,
                 Err(e) => {
                     warn!("vault auth proxy: failed to read auth-verifier response body: {e}");

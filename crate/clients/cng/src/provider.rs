@@ -351,10 +351,7 @@ unsafe extern "system" fn open_key(
             algorithm,
             key_name: name,
             usage,
-            export_policy: ExportPolicy {
-                allow_export: true,
-                allow_plaintext_export: true,
-            },
+            export_policy: exported_policy(&attrs),
         },
     );
     let raw = Box::into_raw(Box::new(ctx));
@@ -1055,10 +1052,7 @@ unsafe extern "system" fn import_key(
                     algorithm,
                     key_name,
                     usage,
-                    export_policy: ExportPolicy {
-                        allow_export: true,
-                        allow_plaintext_export: true,
-                    },
+                    export_policy: exported_policy(&attrs),
                 },
             );
             let raw = Box::into_raw(Box::new(ctx));
@@ -1418,6 +1412,17 @@ pub(crate) static KSP_FUNCTION_TABLE:
     };
 
 // ─── Attribute helpers ────────────────────────────────────────────────────────
+
+/// Export policy of a persisted key, derived from the KMS `Extractable`/`Sensitive` attributes.
+fn exported_policy(
+    attrs: &ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
+) -> ExportPolicy {
+    let (allow_export, allow_plaintext_export) = backend::export_policy_from_attributes(attrs);
+    ExportPolicy {
+        allow_export,
+        allow_plaintext_export,
+    }
+}
 
 /// Convert KMS `Attributes` to a `KeyAlgorithm`.
 fn attrs_to_algorithm(

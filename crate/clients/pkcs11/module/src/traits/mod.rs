@@ -27,6 +27,7 @@ pub use certificate::Certificate;
 pub use data_object::DataObject;
 pub use encryption_algorithms::EncryptionAlgorithm;
 pub use key_algorithm::KeyAlgorithm;
+pub use key_protection::KeyProtection;
 pub use mac_algorithm::{
     AES_CMAC_TAG_SIZE, AES_GMAC_IV_SIZE, AES_GMAC_TAG_SIZE, MacAlgorithm, MacUsage,
 };
@@ -45,6 +46,7 @@ mod certificate;
 mod data_object;
 mod encryption_algorithms;
 mod key_algorithm;
+mod key_protection;
 mod mac_algorithm;
 mod private_key;
 mod public_key;

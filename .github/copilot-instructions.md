@@ -51,6 +51,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
 | `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` |
 | `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` |
+| `database-replication.instructions.md` | `crate/server_database/**`, `crate/interfaces/src/stores/**`, `**/*.sql` |
 
 ---
 
@@ -168,6 +169,7 @@ When a prompt matches a trigger below, read `.github/skills/<skill>/SKILL.md` an
 | `/kms-adversarial-test` | `\badversarial test` |
 | `/kms-db-compat` | `\b(downgrad\w*\|rollback\|roll back\|backward[- ]compat\w*\|mixed[- ]version\|rolling upgrade)\b.*\b(database\|db\|schema\|sql\w*\|postgres\w*\|mysql\|mariadb\|redis)\b` |
 | `/kms-db-compat` | `\b(database\|db\|schema)\s+(upgrade\|migration)\b` |
+| `/kms-db-compat` | `\b(multi[- ]region\|spock\|galera\|pgedge\|cluster mode\|replication set)\b` |
 | `/adr` | `\barchitectural decision record\b` |
 
 ## Credit-Saving Strategies

@@ -218,6 +218,22 @@ Only the API token or the non-authenticated mode can act as `default_username`. 
 
 Auth Verifier bearer tokens are only accepted when issued for the realm set in `auth_verifier_realm` (when it is set). Tokens of the admin realm (`_`) are always rejected: create a dedicated realm and users for the KMS.
 
+### Auth Verifier and Vault Token Verifier
+
+The KMS calls the Auth Verifier (`[auth_verifier]` section: `auth_verifier_url`, `auth_verifier_jwks_uri`) to fetch
+its signing keys and to check that a session is still live, and the Vault-compatible token verifier
+(`vault_auth_verifier_url`) to validate `X-Vault-Token` values. These calls carry credentials, so:
+
+- Each of these URLs must use `https://`. `http://` is accepted only for a loopback host (`127.0.0.1`, `::1`,
+  `localhost`). The server refuses to start otherwise.
+- Redirects are never followed: a `3xx` answer is an authentication failure, not a request to another host.
+- A request that does not connect within 5 seconds, or does not complete within 10 seconds (30 seconds for the
+  JWKS fetch), fails (and the authentication with it) instead of waiting indefinitely.
+- The signing keys (JWKS) of the Auth Verifier are refreshed periodically. A token that no cached key validates
+  triggers one more fetch (at most once every 5 seconds) before being rejected, so a key rotation is picked up
+  without a restart. A failed fetch keeps the previously fetched keys.
+- The response of the verifier relayed on `/v1/auth/*` is limited to 1 MiB; a larger answer yields `502 Bad Gateway`.
+
 ## Force Default Username
 
 If you want to enforce a consistent username regardless of the authentication method, use:

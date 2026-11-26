@@ -194,24 +194,31 @@ fn sym_key_attribute(
     type_: AttributeType,
 ) -> ModuleResult<Option<Attribute>> {
     Ok(match type_ {
-        AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(true)),
+        AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(
+            sym_key.protection().is_always_sensitive(),
+        )),
         AttributeType::Class => Some(Attribute::Class(CKO_SECRET_KEY)),
         AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
         AttributeType::Encrypt => Some(Attribute::Encrypt(true)),
-        // Oracle TDE requires CKA_EXTRACTABLE=FALSE for master keys
-        AttributeType::Extractable => Some(Attribute::Extractable(false)),
+        AttributeType::Extractable => Some(Attribute::Extractable(
+            sym_key.protection().is_extractable(),
+        )),
         AttributeType::Id => Some(Attribute::Id(sym_key.remote_id().as_bytes().to_vec())),
         AttributeType::KeyType => Some(Attribute::KeyType(sym_key.algorithm().to_ck_key_type())),
         AttributeType::Label => Some(Attribute::Label("Symmetric Key".to_owned())),
-        AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
+        AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(
+            sym_key.protection().is_never_extractable(),
+        )),
         AttributeType::Private => Some(Attribute::Private(false)),
-        // Oracle TDE requires CKA_SENSITIVE=TRUE for master keys
-        AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
+        AttributeType::Sensitive => Some(Attribute::Sensitive(sym_key.protection().is_sensitive())),
         AttributeType::Sign => Some(Attribute::Sign(sym_key.can_generate_mac())),
         AttributeType::Token => Some(Attribute::Token(true)),
         // Oracle TDE requires CKA_UNWRAP=TRUE to verify master key usability
         AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
         AttributeType::Verify => Some(Attribute::Verify(sym_key.can_verify_mac())),
+        AttributeType::Value if !sym_key.protection().value_readable() => {
+            return Err(ModuleError::AttributeSensitive);
+        }
         AttributeType::Value => Some(Attribute::Value(sym_key.raw_bytes()?.to_vec())),
         // Oracle TDE requires CKA_WRAP=TRUE to verify master key usability
         AttributeType::Wrap => Some(Attribute::Wrap(true)),
@@ -227,7 +234,9 @@ fn private_key_attribute(
     type_: AttributeType,
 ) -> ModuleResult<Option<Attribute>> {
     Ok(match type_ {
-        AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(true)),
+        AttributeType::AlwaysSensitive => Some(Attribute::AlwaysSensitive(
+            private_key.protection().is_always_sensitive(),
+        )),
         AttributeType::AlwaysAuthenticate => Some(Attribute::AlwaysAuthenticate(false)),
         AttributeType::Class => Some(Attribute::Class(CKO_PRIVATE_KEY)),
         AttributeType::Decrypt => Some(Attribute::Decrypt(true)),
@@ -248,7 +257,9 @@ fn private_key_attribute(
             )),
             _ => None,
         },
-        AttributeType::Extractable => Some(Attribute::Extractable(false)),
+        AttributeType::Extractable => Some(Attribute::Extractable(
+            private_key.protection().is_extractable(),
+        )),
         AttributeType::Id => Some(Attribute::Id(private_key.remote_id().as_bytes().to_vec())),
         AttributeType::KeyType => {
             Some(Attribute::KeyType(private_key.algorithm().to_ck_key_type()))
@@ -275,16 +286,23 @@ fn private_key_attribute(
                 .try_into()?;
             Some(Attribute::ModulusBits(CK_ULONG::from(bits)))
         }
-        AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(true)),
+        AttributeType::NeverExtractable => Some(Attribute::NeverExtractable(
+            private_key.protection().is_never_extractable(),
+        )),
         AttributeType::Private => Some(Attribute::Private(true)),
         AttributeType::PublicExponent => Some(Attribute::PublicExponent(
             rsa_from_private_key(private_key)?.e().to_vec(),
         )),
-        AttributeType::Sensitive => Some(Attribute::Sensitive(true)),
+        AttributeType::Sensitive => Some(Attribute::Sensitive(
+            private_key.protection().is_sensitive(),
+        )),
         AttributeType::Sign => Some(Attribute::Sign(true)),
         AttributeType::SignRecover => Some(Attribute::SignRecover(false)),
         AttributeType::Token => Some(Attribute::Token(true)),
         AttributeType::Unwrap => Some(Attribute::Unwrap(true)),
+        AttributeType::Value if !private_key.protection().value_readable() => {
+            return Err(ModuleError::AttributeSensitive);
+        }
         AttributeType::Value => match private_key.algorithm() {
             KeyAlgorithm::Rsa => rsa_from_private_key(private_key)?
                 .private_key_to_der()
