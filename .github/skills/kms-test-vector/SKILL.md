@@ -20,7 +20,7 @@ Walk through the complete test vector creation workflow for the Eviden KMS.
 
 Find the closest existing vector and create a sibling directory. `ls test_data/vectors/` shows the layout:
 `fips/<group>/<name>`, `non-fips/<name>`, `negative/<operation>/<case>`, `hsm/<name>`,
-`access_control/<name>`, `kat/..`, `opa/..`, `tls/..`.
+`access_control/<name>`, `jose/..`, `kat/..`, `opa/..`, `tls/..`.
 
 ```bash
 ls test_data/vectors/ test_data/vectors/fips/

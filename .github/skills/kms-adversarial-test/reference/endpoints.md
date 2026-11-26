@@ -38,7 +38,7 @@
 | `/access/create`      | GET    | Yes  | Check create permission        |
 | `/access/privileged`  | GET    | Yes  | Check privileged access        |
 
-Other: `/download-cli` (GET/HEAD, Yes), `/ui/**` (GET, Varies), `/ui-auth/login`, `/ui-auth/logout`, `/ui-auth/oidc-callback`.
+Other: `/download-cli` (GET/HEAD, Yes), `/ui/**` (GET, Varies), UI auth under `/ui`: `GET /ui/login_flow`, `GET /ui/callback`, `GET /ui/logout`, `GET /ui/whoami`, `GET /ui/auth_method`, `GET /ui/login_saml`, `POST /ui/login_as`, `POST /ui/login_svid`.
 
 ---
 
@@ -46,46 +46,56 @@ Other: `/download-cli` (GET/HEAD, Yes), `/ui/**` (GET, Varies), `/ui-auth/login`
 
 ### AWS XKS
 
-| Path                   | Method | Auth   | Purpose       |
-| ---------------------- | ------ | ------ | ------------- |
-| `/aws/encrypt`         | POST   | SigV4  | XKS encrypt   |
-| `/aws/decrypt`         | POST   | SigV4  | XKS decrypt   |
-| `/aws/health`          | GET    | SigV4  | XKS health    |
-| `/aws/metadata/{keyId}`| GET    | SigV4  | Key metadata  |
+| Path                                    | Method | Auth  | Purpose          |
+| --------------------------------------- | ------ | ----- | ---------------- |
+| `/aws/kms/xks/v1/health`                | POST   | SigV4 | XKS health       |
+| `/aws/kms/xks/v1/keys/{key_id}/metadata`| POST   | SigV4 | Key metadata     |
+| `/aws/kms/xks/v1/keys/{key_id}/encrypt` | POST   | SigV4 | XKS encrypt      |
+| `/aws/kms/xks/v1/keys/{key_id}/decrypt` | POST   | SigV4 | XKS decrypt      |
 
 ### Azure EKM
 
-| Path                           | Method | Auth | Purpose       |
-| ------------------------------ | ------ | ---- | ------------- |
-| `/azureekm/metadata/{keyName}` | GET    | mTLS | Key metadata  |
-| `/azureekm/wrap`               | POST   | mTLS | Wrap key      |
-| `/azureekm/unwrap`             | POST   | mTLS | Unwrap key    |
+Mounted at `/azureekm` (or `/azureekm/{path_prefix}` when `azure_ekm.path_prefix` is configured). All requests require `?api-version=0.1-preview`.
+
+| Path                            | Method | Auth | Purpose      |
+| ------------------------------- | ------ | ---- | ------------ |
+| `/azureekm/info`                | POST   | mTLS | Proxy info   |
+| `/azureekm/{key_name}/metadata` | POST   | mTLS | Key metadata |
+| `/azureekm/{key_name}/wrapkey`  | POST   | mTLS | Wrap key     |
+| `/azureekm/{key_name}/unwrapkey`| POST   | mTLS | Unwrap key   |
 
 ### Google CSE
 
-| Path                  | Method | Auth | Purpose        |
-| --------------------- | ------ | ---- | -------------- |
-| `/google_cse/status`  | GET    | JWT  | CSE status     |
-| `/google_cse/wrap`    | POST   | JWT  | Wrap key       |
-| `/google_cse/unwrap`  | POST   | JWT  | Unwrap key     |
-| `/google_cse/rewrap`  | POST   | JWT  | Re-wrap key    |
-| `/google_cse/digest`  | POST   | JWT  | Hash/digest    |
-| `/google_cse/certs`   | GET    | JWT  | Get certs      |
+| Path                                        | Method | Auth | Purpose                        |
+| ------------------------------------------- | ------ | ---- | ------------------------------ |
+| `/google_cse/status`                        | GET    | JWT  | CSE status                     |
+| `/google_cse/certs`                         | GET    | JWT  | Get certs                      |
+| `/google_cse/wrap`                          | POST   | JWT  | Wrap key                       |
+| `/google_cse/unwrap`                        | POST   | JWT  | Unwrap key                     |
+| `/google_cse/rewrap`                        | POST   | JWT  | Re-wrap key                    |
+| `/google_cse/digest`                        | POST   | JWT  | Hash/digest                    |
+| `/google_cse/privatekeysign`                | POST   | JWT  | Private key sign               |
+| `/google_cse/privatekeydecrypt`             | POST   | JWT  | Private key decrypt            |
+| `/google_cse/privilegedwrap`                | POST   | JWT  | Privileged wrap                |
+| `/google_cse/privilegedunwrap`              | POST   | JWT  | Privileged unwrap              |
+| `/google_cse/privilegedprivatekeydecrypt`   | POST   | JWT  | Privileged private key decrypt |
+| `/google_cse/wrapprivatekey`                | POST   | JWT  | Wrap private key (stub)        |
+| `/google_cse/delegate`                      | POST   | JWT  | Delegate (stub)                |
 
 ### MS DKE
 
-| Path                                     | Method | Auth | Purpose        |
-| ---------------------------------------- | ------ | ---- | -------------- |
-| `/ms_dke/version`                        | GET    | No   | DKE version    |
-| `/ms_dke/{keyName}/{keyVersion}`         | GET    | No   | Get public key |
-| `/ms_dke/{keyName}/{keyVersion}/decrypt` | POST   | No   | Decrypt        |
+| Path                                | Method | Auth | Purpose        |
+| ----------------------------------- | ------ | ---- | -------------- |
+| `/ms_dke/version`                   | GET    | Yes  | DKE version    |
+| `/ms_dke/{key_name}`                | GET    | Yes  | Get public key |
+| `/ms_dke/{key_name}/{key_id}/decrypt` | POST | Yes  | Decrypt        |
 
 ---
 
 ## Tokenize (non-fips)
 
 All `POST`, auth varies:
-`/tokenize/hash`, `/tokenize/noise`, `/tokenize/word_mask`, `/tokenize/word_tokenize`, `/tokenize/word_pattern_mask`, `/tokenize/aggregate_number`, `/tokenize/aggregate_date`, `/tokenize/scale_number`
+`/tokenize/hash`, `/tokenize/noise`, `/tokenize/word-mask`, `/tokenize/word-tokenize`, `/tokenize/word-pattern-mask`, `/tokenize/aggregate-number`, `/tokenize/aggregate-date`, `/tokenize/scale-number`
 
 ---
 
@@ -134,18 +144,18 @@ All `POST`, auth varies:
 ## JOSE error format
 
 ```json
-{ "error": "BadRequest", "description": "..." }
+{ "error": "bad_request", "description": "..." }
 ```
 
-| Error variant        | HTTP | Trigger                                      |
-| -------------------- | ---- | -------------------------------------------- |
-| `BadRequest`         | 400  | Malformed base64url, missing fields          |
-| `UnsupportedAlgorithm` | 422 | Unknown JOSE algorithm identifier           |
-| `Forbidden`          | 403  | Caller not authorised to use the key         |
-| `NotFound`           | 404  | KMS object UID not found                     |
-| `CryptoFailure`      | 422  | Wrong key type, size mismatch                |
-| `DecryptionFailed`   | 422  | Uniform decryption error (oracle prevention) |
-| `InternalError`      | 500  | Unexpected server error                      |
+| Error variant          | JSON `error` code       | HTTP | Trigger                                      |
+| ---------------------- | ----------------------- | ---- | -------------------------------------------- |
+| `BadRequest`           | `bad_request`           | 400  | Malformed base64url, missing fields, bad JSON |
+| `UnsupportedAlgorithm` | `unsupported_algorithm` | 422  | Unknown JOSE algorithm identifier            |
+| `Forbidden`            | `forbidden`             | 403  | Caller not authorised to use the key         |
+| `NotFound`             | `not_found`             | 404  | KMS object UID not found                     |
+| `CryptoFailure`        | `crypto_failure`        | 422  | Wrong key type, size mismatch                |
+| `DecryptionFailed`     | `decryption_failed`     | 422  | Uniform decryption error (oracle prevention) |
+| `InternalError`        | `internal_error`        | 500  | Unexpected server error                      |
 
 ---
 
@@ -190,7 +200,7 @@ curl -s -X POST http://127.0.0.1:9998/tokenize/hash \
 ### MS DKE public key
 
 ```bash
-curl -s http://127.0.0.1:9998/ms_dke/my-key-name/my-key-version | jq .
+curl -s http://127.0.0.1:9998/ms_dke/my-key-name | jq .
 ```
 
 ### JOSE full roundtrip (sign + verify + JWKS)

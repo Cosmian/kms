@@ -115,8 +115,8 @@ canonical, stable publication link (final/versioned). Organized by issuing body.
 
 | ID | Title | URL |
 |----|-------|-----|
-| Top 10:2021 | OWASP Top 10 Web Application Security Risks | <https://owasp.org/Top10/> |
-| ASVS v4.0 | Application Security Verification Standard | <https://owasp.org/www-project-application-security-verification-standard/> |
+| Top 10:2025 | OWASP Top 10 Web Application Security Risks (2025) | <https://top10.owasp.org/2025/> |
+| ASVS v5.0 | Application Security Verification Standard (v5.0.0, May 2025) | <https://owasp.org/www-project-application-security-verification-standard/> |
 | Crypto Cheat Sheet | Cryptographic Storage Cheat Sheet | <https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html> |
 | Key Mgmt Cheat Sheet | Key Management Cheat Sheet | <https://cheatsheetseries.owasp.org/cheatsheets/Key_Management_Cheat_Sheet.html> |
 
@@ -124,7 +124,7 @@ canonical, stable publication link (final/versioned). Organized by issuing body.
 
 | ID | Title | URL |
 |----|-------|-----|
-| CWE Top 25 (2024) | Most Dangerous Software Weaknesses | <https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html> |
+| CWE Top 25 (2025) | Most Dangerous Software Weaknesses (2025) | <https://cwe.mitre.org/top25/archive/2025/2025_cwe_top25> |
 | CWE-310 family | Cryptographic Issues | <https://cwe.mitre.org/data/definitions/310.html> |
 | CWE-320 family | Key Management Errors | <https://cwe.mitre.org/data/definitions/320.html> |
 

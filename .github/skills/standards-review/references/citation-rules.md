@@ -58,9 +58,9 @@ not found in grep), cite at **document level only**:
 When citing a standard's requirement:
 
 - **Exact quote**: wrap in quotation marks and cite source:
-  `"The signature algorithm MUST be one of..." — [RFC 5280], Section 4.1.1.2`
+  `"The signatureAlgorithm field contains the identifier for the cryptographic algorithm used by the CA to sign this certificate." — [RFC 5280], Section 4.1.1.2, "signatureAlgorithm"`
 - **Paraphrase**: explicitly label as paraphrase:
-  `[Paraphrase] RFC 5280 requires the signature algorithm to be from an approved list.`
+  `[Paraphrase] RFC 5280 Section 4.1.1.2 states that signatureAlgorithm identifies the cryptographic algorithm used by the CA to sign the certificate and must match tbsCertificate.signature.`
 
 Never present a paraphrase as if it were a direct quote.
 

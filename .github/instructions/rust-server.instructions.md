@@ -22,7 +22,7 @@ applyTo: 'crate/server/**/*.rs'
 
 ## KMS struct (`src/core/kms/mod.rs`)
 
-- Central state: `params`, `database`, `crypto_oracles`, `hsm`.
+- Look up fields on `KMS` in [src/core/kms/mod.rs](../../crate/server/src/core/kms/mod.rs).
 - Do not clone the KMS struct — pass `&self` references.
 
 ## Enterprise integrations

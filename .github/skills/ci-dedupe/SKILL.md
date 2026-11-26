@@ -9,13 +9,7 @@ Find repeated step blocks across `.github/workflows/*.yml`, check whether an exi
 
 ## This Codebase's Existing Composite Actions
 
-`.github/actions/<name>/action.yml`, `runs: using: composite`, invoked as `uses: ./.github/actions/<name>`:
-
-- `cleanup-runner` — frees GH-hosted runner disk space (no inputs)
-- `setup-nix` — installs Nix + warms the nix store (`extra-nix-config` input)
-- `install-mise` — installs `mise` for Linux/macOS (no inputs)
-- `docker-login-ghcr` — logs in to `ghcr.io` (`github-token` input)
-- `install-rust` — installs the Rust toolchain via dtolnay/rust-toolchain (no inputs); the version comes from rust-toolchain.toml
+Search the [local action manifests](../../actions/), including nested directories. Check `runs.using`, `inputs`, and the existing workflow call sites before proposing reuse.
 
 ## Step 1 — Measure First
 
@@ -29,7 +23,7 @@ rg -n "uses: \./\.github/actions/" .github/workflows
 # Spot workflows that hand-roll a step an existing composite action already covers,
 # or repeat a third-party action block (e.g. docker/login-action, actions/checkout)
 # with identical `with:` values across files
-rg -n "uses: docker/login-action|uses: actions/checkout@v7" .github/workflows -A4
+rg -n "uses: docker/login-action|uses: actions/checkout@" .github/workflows -A4
 ```
 
 Classify every exact-duplicate block (3+ lines, byte-identical `with:` values except matrix/job-scoped variables) found in 2+ places:

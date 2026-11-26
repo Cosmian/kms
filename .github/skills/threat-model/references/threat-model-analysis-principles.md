@@ -22,10 +22,10 @@ Before classifying any potential threat, check whether a control already exists:
 
 **Authentication controls** (check `crate/server/src/middlewares/`):
 
-- `JwtAuth` — Bearer token validation
-- `SslAuth` — mTLS client certificate validation
-- `ApiTokenAuth` — API token validation
-- `EnsureAuth` — enforces at least one auth method is configured per scope
+- `jwt_auth_middleware` (`middlewares/jwt/`) — OIDC, SPIFFE JWT-SVID, and Auth Verifier JWT validation
+- `tls_auth_fn` (`middlewares/tls_auth.rs`) — mTLS client certificate validation
+- `api_token_middleware` (`middlewares/api_token/api_token_middleware.rs`) — static API token validation
+- `ensure_auth_middleware` (`middlewares/ensure_auth.rs`) — enforces authentication on protected scopes (or injects `default_username` only when no auth method is configured)
 
 **Authorization controls** (check `crate/access/`):
 
@@ -115,16 +115,16 @@ Could a legitimate user misuse the system in unintended ways?
 
 | OWASP | Applicable to KMS |
 |-------|------------------|
-| A01: Broken Access Control | Missing `is_allowed()` check in KMIP operations |
-| A02: Cryptographic Failures | Non-FIPS algorithms outside non-fips gate; weak RNG for keys |
-| A03: Injection | Log injection via KMIP text fields; path traversal in SQLite path |
-| A04: Insecure Design | Missing rate limiting; no key quota; predictable UIDs |
-| A05: Security Misconfiguration | `insecure` feature in production; default TLS not enforced |
-| A06: Vulnerable Components | Outdated crypto crates with CVEs |
-| A07: Auth Failures | JWT `alg:none`; missing expiry check; API token in URL |
-| A08: Software Integrity Failures | Nix hash not verified for dependencies; supply chain |
-| A09: Logging/Monitoring Failures | No audit log for key operations; insufficient log detail |
-| A10: SSRF | Cloud provider callback URL validation (AWS XKS, Azure EKM) |
+| A01:2025 Broken Access Control | Missing permission checks (`retrieve_object_for_operation` / `user_has_permission`) in KMIP ops; SSRF in cloud provider callback URLs (AWS XKS, Azure EKM) |
+| A02:2025 Security Misconfiguration | `insecure` feature enabled in production; TLS, CORS, or security headers misconfigured |
+| A03:2025 Software Supply Chain Failures | Vulnerable or unvetted Cargo/pnpm dependencies; unpinned CI actions; missing Nix vendor hash verification |
+| A04:2025 Cryptographic Failures | Non-FIPS algorithms outside `non-fips` gate; weak RNG or nonce reuse; improper OpenSSL provider initialization |
+| A05:2025 Injection | SQL injection in `crate/server_database/`; log injection via KMIP text fields; path traversal in SQLite/cert paths |
+| A06:2025 Insecure Design | Missing rate limiting; no key quota; predictable UIDs; key lifecycle state-machine bypass |
+| A07:2025 Authentication Failures | JWT `alg:none` or missing `exp` validation; mTLS chain validation flaws; API token exposure |
+| A08:2025 Software or Data Integrity Failures | Unverified build/release artifacts; unsafe TTLV/JSON deserialization; tampered encrypted key blobs |
+| A09:2025 Security Logging and Alerting Failures | Missing tamper-evident audit events for key operations (`Destroy`, `Export`, auth failures); insufficient log detail |
+| A10:2025 Mishandling of Exceptional Conditions | Failing open on auth, audit, or HSM errors; panics/unwraps on request paths; verbose errors leaking sensitive state |
 
 ## 5. Exploitability Tiers
 

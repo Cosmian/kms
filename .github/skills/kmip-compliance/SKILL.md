@@ -18,15 +18,13 @@ Verify that a new or modified KMIP operation is fully compliant with the KMIP 2.
 
 Determine the operation name (e.g. `Get`, `Create`, `Locate`, `Encrypt`, `ReKey`). Locate these files:
 
-- **Spec**: `crate/kmip/src/kmip_2_1/` or `crate/kmip/src/kmip_1_4/` — HTML spec files
+- **Spec**: `kmip/v2.1/kmip-spec-v2.1-os.html` (or `kmip/v1.4/kmip-spec-v1.4-os.html` for KMIP 1.4) in the root `kmip/` git submodule — run `git submodule update --init kmip` if uninitialized
 - **Types**: `crate/kmip/src/kmip_2_1/kmip_operations.rs`
 - **Dispatch**: `crate/server/src/core/operations/dispatch.rs`
 - **Implementation**: `crate/server/src/core/operations/<operation>.rs`
-- **KMIP 2.1 spec HTML**: look for the operation's section in `crate/kmip/src/`
 
 ```bash
-ls crate/kmip/src/
-ls crate/server/src/core/operations/
+ls kmip/v2.1/ crate/kmip/src/kmip_2_1/ crate/server/src/core/operations/
 ```
 
 ## Step 2 — Spec Cross-Reference
@@ -36,7 +34,7 @@ Read the HTML spec file for the operation. Verify:
 - [ ] **Request Payload fields** — every mandatory field from the spec is present in the Rust request struct
 - [ ] **Response Payload fields** — every mandatory field from the spec is present in the response struct
 - [ ] **Optional fields** — optional spec fields are modeled as `Option<T>` in Rust
-- [ ] **TTLV tags** — tag values in the Rust type match the spec (check `#[kmip(tag = "0x...")]` attributes)
+- [ ] **TTLV tags** — tag names and hex values match the spec (check `#[serde(rename = "...")]` / `#[serde(rename_all = "PascalCase")]` on struct fields, `pub enum Tag` in `crate/kmip/src/kmip_2_1/kmip_types.rs`, and `BYTE_LIKE_TAGS` in `crate/kmip/src/ttlv/tags.rs` for byte-string fields)
 - [ ] **Enum variants** — all spec-defined enum values for this operation are covered
 - [ ] **Batch support** — the operation correctly handles batch requests if spec mandates it
 
@@ -56,12 +54,12 @@ In `crate/kmip/src/kmip_2_1/kmip_operations.rs`:
   | Integer | `i32` |
   | LongInteger | `i64` |
   | BigInteger | `Vec<u8>` |
-  | Enumeration | Custom `enum` with `#[derive(KmipEnum)]` |
+  | Enumeration | Custom `enum` with `#[kmip_enum]` (`#[repr(u32)]` + `KmipEnumSerialize`, `KmipEnumDeserialize`) |
   | Boolean | `bool` |
   | DateTime | `i64` (epoch seconds) |
   | Structure | Nested struct |
 
-- [ ] Structs derive `Debug`, `Clone`, `Serialize`, `Deserialize` (and `KmipSerialize`/`KmipDeserialize` via proc-macros)
+- [ ] Structs derive `Serialize`, `Deserialize`, `PartialEq`, `Eq`, `Clone`, `Debug` (KMIP TTLV serialization uses `serde::Serialize` / `Deserialize`; enums use `#[kmip_enum]` or `KmipEnumSerialize` / `KmipEnumDeserialize` from `kmip_derive`)
 - [ ] Optional fields consistently use `Option<T>`, not default-zero integers
 
 ## Step 4 — Dispatch Table Completeness
@@ -78,7 +76,7 @@ In `crate/server/src/core/operations/dispatch.rs`:
 In `crate/server/src/core/operations/<operation>.rs`:
 
 - [ ] **Access control**: Does the handler call the access check before returning key material or performing destructive operations?
-    - Must verify: `db.is_allowed(uid, caller, operation_type)` (or equivalent)
+    - Must verify: dispatch-level RBAC in `check_role_permission` (`crate/server/src/core/operations/dispatch.rs`) and per-object ownership/grant check via `user_has_permission` / `retrieve_object_for_operation` (`crate/server/src/core/retrieve_object_utils.rs`)
     - Get, Export, Decrypt, Sign, MAC, Derive, Wrap, Unwrap → must check access
     - Destroy, Revoke → must check ownership or admin privilege
     - Create, Register, Import → must set the caller as owner

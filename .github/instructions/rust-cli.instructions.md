@@ -61,6 +61,7 @@ crate/clients/ckms/src/tests/
     <operation>.rs
   mod.rs                  ← register new <feature> module here
   utils/
+    config.rs             ← owner_config / load_client_config
     run.rs                ← run_ckms / run_ckms_expect_error / ckms_bin
     cmd_logs.rs           ← recover_cmd_logs
     extract_uids.rs       ← extract_uid from stdout
@@ -116,7 +117,7 @@ async fn test_create_my_object_error_cases() -> CosmianResult<()> {
 
 Pick the server helper from [`rust.instructions.md` § Test KMS servers](rust.instructions.md#test-kms-servers); never start a server another way.
 
-Import helpers from `crate/tests/utils::{owner_config, load_client_config, run_ckms, run_ckms_expect_error}`.
+Import helpers from `crate::tests::utils::{owner_config, load_client_config, run_ckms, run_ckms_expect_error}` (`crate/clients/ckms/src/tests/utils/`).
 
 ### Feature-gating tests
 

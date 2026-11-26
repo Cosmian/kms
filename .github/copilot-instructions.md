@@ -38,7 +38,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |
 | `bash.instructions.md` | `**/*.sh` |
-| `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` |
+| `mise.instructions.md` | `.mise/**, .github/reusable_scripts/**` |
 | `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` |
 | `toml.instructions.md` | `**/*.toml` |
 | `python.instructions.md` | `**/*.py` |
@@ -47,8 +47,6 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `nix.instructions.md` | `nix/**/*.nix` |
 | `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `docker-compose.yml`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/pkg/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` |
 | `mermaid.instructions.md` | `**/*.md` |
-| `rust-security.instructions.md` | `crate/**/*.rs` |
-| `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` |
 | `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` |
 | `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` |
 | `database-replication.instructions.md` | `crate/server_database/**`, `crate/interfaces/src/stores/**`, `**/*.sql` |
@@ -57,17 +55,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 
 ## Key directories
 
-| Path | Contents |
-|------|----------|
-| `crate/server/` | Server binary and library (main codebase) |
-| `crate/kmip/` | KMIP 2.1 protocol types |
-| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.5 |
-| `crate/clients/clap/` | CLI actions (clap commands) |
-| `crate/clients/ckms/` | CLI binary entry point |
-| `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
-| `ui/src/` | React 19 + Vite 7 + Ant Design 5 + Tailwind 4 web UI |
-| `ui/tests/e2e/` | Playwright E2E tests |
-| `.github/skills/` | Team-wide Copilot skills (slash commands) |
+See [Cargo.toml](../Cargo.toml) for workspace members and the [repository map](../AGENTS.md#3-repository-map) for implementation entry points.
 
 ---
 
@@ -79,11 +67,11 @@ cargo build --features non-fips      # non-FIPS: PQC, Covercrypt, AES-XTS
 cargo clippy-all                     # zero warnings required
 cargo fmt --all                      # apply formatting
 cargo test -p <crate>                # targeted test (preferred)
-cargo test-fips                      # full FIPS workspace test suite
-cargo test-non-fips                  # full non-FIPS workspace test suite
+cargo test-fips                      # workspace --lib unit tests (FIPS)
+cargo test-non-fips                  # workspace --lib unit tests (non-FIPS)
 ```
 
-No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.5.
+No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.5 plus the OpenSSL 3.1.2 FIPS module.
 
 ---
 
@@ -99,7 +87,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 - Randomness: every random byte comes from `KmsRng`; the root `clippy.toml` bans all other entropy sources and the ban is never suppressed — see `.github/instructions/rust.instructions.md` § Randomness.
 - Regression test: every bug fix ships a test that fails before the fix (or the commit message says why not).
 - CLI tests: no clap action (subcommand, flag, accepted value or default) is added or changed without Rust integration tests that run the `ckms` binary in `crate/clients/ckms/src/tests/`, committed with the action — see `.github/instructions/rust-cli.instructions.md` § Mandatory and `/ckms-subcommand-test`.
-- SQL: every SQL statement lives as a named entry in the backend's `.sql` file (`crate/server_database/src/stores/sql/query*.sql`, `stores/audit/audit.sql`), never as a string literal in non-test Rust — see `.github/instructions/rust-database.instructions.md` § SQL statements live in SQL files.
+- SQL: follow the [SQL placement rules and exceptions](instructions/rust-database.instructions.md#sql-statements-live-in-sql-files).
 - Secrets: compare in constant time, keep in `Zeroizing`, never log — see `.github/instructions/rust-security.instructions.md`.
 - Commit subjects: conventional-commit type + descriptive subject; never `fix: PR review`, `fix: commit`.
 

@@ -1,6 +1,6 @@
 ---
 name: meta-security
-description: 'Full security-audit orchestrator running /security-review, /cryptography-review, /threat-model, and /standards-review in canonical order per .github/skills/shared/orchestrator-contract.md. Each phase is a sub-agent (contract §6). Use before release or major changes; incremental skips only when explicitly requested for follow-ups.'
+description: 'Run a full KMS security audit before a release or major change. Use incremental mode only for an explicitly requested follow-up.'
 ---
 
 # Meta-Security — Comprehensive Security Audit
@@ -19,19 +19,9 @@ single unified go/no-go report. This is the most thorough security review availa
 Read `.github/skills/shared/anti-hallucination.md` **before any analysis**. All rules in
 that file are mandatory for every sub-skill invoked below. Do not proceed until you have read it.
 
-### Sub-Agent Routing
+### Orchestration & Delegation
 
-Phases run as sub-agents (contract §6); the orchestrator contract in
-`.github/skills/shared/orchestrator-contract.md` sections 1 and 6 control:
-
-- **Phase ordering** (Section 1: security audit phases 1–4)
-- **Sub-agent routing** (Section 6: `slow` model for judgment/reasoning phases)
-- **Overlap deduplication** (Section 3: report overlaps once under earliest phase)
-- **Unified report schema** (Section 4: SUMMARY.md structure)
-- **Blocking criteria** (Section 5: go/no-go gates)
-
-This skill's manual steps below align with that contract. For orchestration rules and
-report format details, see the shared contract.
+Follow the [shared orchestrator contract](../shared/orchestrator-contract.md) for phase order, skip gates, delegation, finding ownership and verdicts.
 
 ## Step 1 — Determine Scope
 
@@ -147,68 +137,16 @@ Collect all findings. Record applicability and conformance gaps.
 
 ## Step 6 — Unified Report
 
-Produce a report using the unified schema from `.github/skills/shared/orchestrator-contract.md` Section 4 (Unified Report Schema).
-
-**Report structure** (adapted for security audit):
-
-```markdown
-# Meta-Security — <Scope> Report
-
-**Generated**: <ISO 8601 timestamp>
-**Scope**: <full workspace | path | specific changed files>
-**Mode**: <full | incremental>
-
-## Summary
-
-- **Total Findings**: N
-- **Critical**: N
-- **High**: N
-- **Medium**: N
-- **Low**: N
-- **Skipped Phases**: <list with evidence>
-
-## Verdict
-
-**GO** / **NO-GO** (with reason)
-
-## Findings (ordered by phase)
-
-### Phase 1: Security Review [PASS | FAIL | SKIPPED]
-...
-
-### Phase 2: Cryptography Review [PASS | FAIL | SKIPPED]
-...
-
-### Phase 3: Threat Model [PASS | FAIL | SKIPPED]
-...
-
-### Phase 4: Standards Review [PASS | FAIL | SKIPPED]
-...
-```
+Output the [unified report](../shared/orchestrator-contract.md#4-unified-report-schema) inline. Do not write a report file.
 
 ## Step 7 — Blocking Criteria (per Orchestrator Contract Section 5)
 
-Determine go/no-go using this order:
-
-### BLOCKER (GO → NO-GO)
-
-- Any 🔴 **CRITICAL** finding from any phase
-- Any 🟠 **HIGH** finding from security-review or cryptography-review
-- Any 🔴 **Violation** from standards-review
-- Unmitigated **CRITICAL/HIGH** threats from threat-model
-- ⏭ **SKIPPED** phases are acceptable only in an explicitly requested incremental review with confirmed inapplicability; never skip in full/comprehensive or release mode
-
-### WARNING (recorded but non-blocking)
-
-- **MEDIUM** findings; must be addressed before merge if count > 5
-- **LOW** findings
+Apply the [shared blocking criteria](../shared/orchestrator-contract.md#5-gono-go-blocking-criteria). Also block on any high finding from security or cryptography review, any standards violation, or any unmitigated high or critical threat.
 
 ## Step 8 — Output Rules
 
 - **Never** auto-apply fixes within this audit — present the unified report for human review (auto-fixing self-review is `/kms-pr-review`'s job)
-- **Always** attribute each finding to its source phase (per deduplication rules in shared contract Section 3)
-- **Always** deduplicate findings that appear in multiple phases (keep the most detailed version, note the overlap)
-- **Group** blocking findings at the top for immediate visibility
+- **Group** blockers in the verdict summary; keep findings in phase order.
 - If all phases pass cleanly, say so clearly with a summary of what was scanned
 
 > **Note**: An incremental PASS is not a release go/no-go; use the full `/pre-release` gate before release.

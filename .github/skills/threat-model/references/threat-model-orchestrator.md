@@ -48,7 +48,7 @@ List all assets that require protection:
 
 ### Step 3 — Component Inventory
 
-For each component in the trust boundary map (from `threat-model.prompt.md`), identify:
+For each component in the trust boundary map (from [`SKILL.md`](../SKILL.md#kms-trust-boundaries-pre-seeded)), identify:
 
 - Inbound data flows (what data enters this component)
 - Outbound data flows (what data exits this component)
@@ -59,7 +59,7 @@ For each component in the trust boundary map (from `threat-model.prompt.md`), id
 
 Generate a DFD using Mermaid. Load `.github/skills/threat-model/references/threat-model-diagrams.md` for shape and color conventions.
 
-Save as `threat-model-YYYYMMDD/1-dfd.md`.
+Save as `threat-model-YYYYMMDD-HHMMSS/1-dfd.md`.
 
 ### Step 5 — STRIDE-A Analysis
 
@@ -153,7 +153,7 @@ When a `threat-inventory.json` baseline exists:
    - Evidence found: mark "still-present"
    - Evidence gone: mark "resolved (verify manually)"
 4. Scan for new threats introduced since the baseline
-5. Produce a new `threat-model-YYYYMMDD/` folder with:
+5. Produce a new `threat-model-YYYYMMDD-HHMMSS/` folder with:
    - Full report (same structure as single analysis)
    - `DELTA.md` — what's new, resolved, and still-present
    - Updated `threat-inventory.json`
