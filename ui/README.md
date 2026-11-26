@@ -87,6 +87,8 @@ pnpm run dev
 
 `dev` runs Vite in development mode with `VITE_DEV_MODE=true`, which skips the authentication gate so the full UI is accessible regardless of the KMS server's auth configuration. WASM must be built first — run `pnpm run build:wasm` once before starting the dev server if `ui/src/wasm/pkg/` does not exist yet.
 
+The Vite dev UI uses the connected KMS's feature settings when `/ui/config` is available with the current credentials. To test filtering, point the KMS's `ui_index_html_folder` at a built UI and allow the Vite origin in `cors_allowed_origins` if the browser calls KMS directly. With a headless or older KMS, the existing dev command keeps the default menu and explains the fallback in the dev banner tooltip. Existing FIPS restrictions still apply.
+
 ---
 
 ## Build the Production App

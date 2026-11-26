@@ -87,6 +87,7 @@ import TokenizeWordPatternMask from "./actions/Tokenize/TokenizeWordPatternMask"
 import TokenizeWordTokenize from "./actions/Tokenize/TokenizeWordTokenize";
 import LocateForm from "./components/common/Locate";
 import MainLayout from "./components/layout/MainLayout";
+import FeatureRoute from "./components/layout/FeatureRoute";
 import NonFipsRoute from "./components/layout/NonFipsRoute";
 import { AuthProvider } from "./contexts/AuthContext";
 import { useAuth } from "./contexts/useAuth";
@@ -460,10 +461,16 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="list" element={<AccessListForm />} />
                             <Route path="owned" element={<ObjectsOwnedList />} />
                             <Route path="obtained" element={<AccessObtainedList />} />
-                            <Route path="crypto-officer" element={<CryptoOfficerRole />} />
+                            <Route element={<FeatureRoute feature="crypto_officer" />}>
+                                <Route path="crypto-officer" element={<CryptoOfficerRole />} />
+                            </Route>
                         </Route>
-                        <Route path="hsm-status" element={<HsmStatus />} />
-                        <Route path="kv-secrets" element={<KvSecrets />} />
+                        <Route element={<FeatureRoute feature="hsm" />}>
+                            <Route path="hsm-status" element={<HsmStatus />} />
+                        </Route>
+                        <Route element={<FeatureRoute feature="kv" />}>
+                            <Route path="kv-secrets" element={<KvSecrets />} />
+                        </Route>
                         <Route path="ssh-certificate" element={<SshCertificate />} />
                         <Route path="ssh-ca" element={<SshCa />} />
                         <Route path="generate-password" element={<GeneratePassword />} />
@@ -495,7 +502,9 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="import-kek" element={<ImportAwsKekForm />} />
                             <Route path="export-key-material" element={<AwsExportKeyMaterialForm />} />
                         </Route>
-                        <Route path="google-cse" element={<CseInfo />} />
+                        <Route element={<FeatureRoute feature="google_cse" />}>
+                            <Route path="google-cse" element={<CseInfo />} />
+                        </Route>
                         <Route path="tokenize" element={<NonFipsRoute />}>
                             <Route path="hash" element={<TokenizeHash />} />
                             <Route path="noise" element={<TokenizeNoise />} />

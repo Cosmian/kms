@@ -126,6 +126,7 @@ test.describe("GET /openapi.yaml — spec structure", () => {
             "/ui/whoami",
             "/ui/logout",
             "/ui/auth_method",
+            "/ui/config",
         ];
         for (const path of requiredPaths) {
             expect(text, `Missing path: "${path}"`).toContain(path);

@@ -4,11 +4,11 @@
         "apiDocumentation": "API 文档"
     },
     "header": {
-        "noHsmConfigured": "未配置 HSM",
         "hsmSlot": "插槽"
     },
     "main": {
         "devUnrestricted": "正在运行 DEV 无限制模式",
+        "devUiConfigUnavailable": "无法获取服务器功能设置，已显示默认菜单。",
         "downloadCli": "下载 CLI",
         "logout": "退出登录",
         "authDisabledTitle": "此 KMS 服务器已禁用身份认证",

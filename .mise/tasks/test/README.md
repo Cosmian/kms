@@ -1804,6 +1804,8 @@ sequenceDiagram
 
 **Auth Verifier login:** `test:ui:auth` loads the paired `test_data/configs/auth_verifier/ui_auth.toml` and `test_data/configs/server/auth/ui_auth.toml` fixtures. It uses the Auth Verifier admin API to provision realm `kms` and user `kms-user` (`change_me`, test only), then exercises UI and Rust login flows as that non-admin user. Admin-realm tokens are never used to authenticate to KMS.
 
+**Windows standard E2E:** `test_ui.ps1` disables the embedded UI for the test KMS. Vite serves the UI and exercises the fallback menu when `/ui/config` is absent, regardless of local KMS installations.
+
 **SAML single sign-on:** `test:ui:saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/ui/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
 
 ### Architecture Overview

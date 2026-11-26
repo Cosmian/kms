@@ -16,6 +16,12 @@ If the KMS is running behind a reverse proxy, set [`kms_public_url`](server_conf
 
 The UI bundle is served from the path configured by [`ui_index_html_folder`](server_configuration_file.md#manual-configuration) (defaults to the built-in bundle shipped with the server).
 
+### Optional sections
+
+The Web UI shows **Secrets (KV)** when the KV store is enabled, **HSM Status** and HSM key creation on the CSR form when an HSM is configured, and **Google CSE** when the KMS serves that integration. The **Crypto Officer** page is visible to configured Crypto Officers, including candidates who have not yet activated their role. **Rotation Policy** remains available without the auto-rotation scheduler because it also manages keysets for manual rotation.
+
+The UI reads these settings after login. If the endpoint is unavailable, such as with an older KMS, the UI keeps the previous menu behavior. Visibility does not change permissions. KMS instances serving the same UI through a load balancer should use matching feature settings.
+
 ## Authentication Configuration
 
 The UI automatically detects the authentication method configured on the KMS server and adapts its login flow accordingly:

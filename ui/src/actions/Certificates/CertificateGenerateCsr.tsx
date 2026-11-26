@@ -1,6 +1,8 @@
 import { Alert, Button, Card, Checkbox, Form, Input, Radio, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useOutletContext } from "react-router-dom";
+import type { LayoutOutletContext } from "../../components/layout/NonFipsRoute";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { useAuth } from "../../contexts/useAuth";
 import { useActionState } from "../../hooks/useActionState";
@@ -34,6 +36,7 @@ const CertificateGenerateCsrForm: React.FC = () => {
     const { res, isLoading, responseRef, execute } = useActionState();
     const { serverUrl } = useAuth();
     const { t } = useTranslation("actions");
+    const showHsm = useOutletContext<LayoutOutletContext | null>()?.features?.hsm !== false;
     const [keySource, setKeySource] = useState<KeySource>("existing");
     const [inHsm, setInHsm] = useState(false);
     const [algorithmOptions, setAlgorithmOptions] = useState<AlgoOption[]>([]);
@@ -127,21 +130,23 @@ const CertificateGenerateCsrForm: React.FC = () => {
                             />
                         </Form.Item>
 
-                        <Form.Item name="inHsm" valuePropName="checked">
-                            <Checkbox
-                                onChange={(e) => {
-                                    setInHsm(e.target.checked);
-                                    form.setFieldValue("sensitive", e.target.checked || undefined);
-                                    // The HSM only generates RSA and elliptic-curve key pairs.
-                                    if (e.target.checked && form.getFieldValue("algorithm")?.includes("dsa")) {
-                                        form.setFieldValue("algorithm", undefined);
-                                    }
-                                }}
-                                data-testid="csr-in-hsm"
-                            >
-                                {t("certificateGenerateCsr.inHsm")}
-                            </Checkbox>
-                        </Form.Item>
+                        {showHsm && (
+                            <Form.Item name="inHsm" valuePropName="checked">
+                                <Checkbox
+                                    onChange={(e) => {
+                                        setInHsm(e.target.checked);
+                                        form.setFieldValue("sensitive", e.target.checked || undefined);
+                                        // The HSM only generates RSA and elliptic-curve key pairs.
+                                        if (e.target.checked && form.getFieldValue("algorithm")?.includes("dsa")) {
+                                            form.setFieldValue("algorithm", undefined);
+                                        }
+                                    }}
+                                    data-testid="csr-in-hsm"
+                                >
+                                    {t("certificateGenerateCsr.inHsm")}
+                                </Checkbox>
+                            </Form.Item>
+                        )}
 
                         <Form.Item name="sensitive" valuePropName="checked" help={t("certificateGenerateCsr.sensitiveHelp")}>
                             <Checkbox disabled={inHsm} data-testid="csr-sensitive">

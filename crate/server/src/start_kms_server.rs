@@ -96,7 +96,7 @@ use crate::{
             },
         },
         ssh, swagger,
-        ui_auth::configure_auth_routes,
+        ui_auth::{configure_auth_routes, get_ui_config},
     },
     socket_server::{SocketServer, SocketServerParams},
     start_kms_server::google_cse::operations::GOOGLE_CSE_ID,
@@ -1571,9 +1571,7 @@ pub async fn prepare_kms_server(
                 ));
         }
 
-        if kms_server_for_http.params.kms_public_url.is_some()
-            && kms_server_for_http.params.google_cse.enable
-        {
+        if kms_server_for_http.params.google_cse_routes_enabled() {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))
@@ -1885,6 +1883,7 @@ pub async fn prepare_kms_server(
                 "/ec{_:.*}",
                 "/pqc{_:.*}",
                 "/pgp{_:.*}",
+                "/fpe{_:.*}",
                 "/mac{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
@@ -1898,6 +1897,7 @@ pub async fn prepare_kms_server(
                 "/google-cse{_:.*}",
                 "/tokenize{_:.*}",
                 "/rotation-policy{_:.*}",
+                "/hsm-status",
                 "/kv-secrets{_:.*}",
                 "/ssh-certificate{_:.*}",
                 "/ssh-ca{_:.*}",
@@ -1911,7 +1911,20 @@ pub async fn prepare_kms_server(
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_methods))
                 .wrap(allowed_origins_cors(&kms_server_for_http.params.cors_allowed_origins))
-                .configure(configure_auth_routes);
+                .configure(configure_auth_routes)
+                .service(
+                    wrap_native_auth(
+                        // An empty resource path matches `/ui/config`, not `/ui/config/`.
+                        web::scope("/config").service(get_ui_config),
+                        ensure_auth_middleware(Arc::clone(&kms_server_for_http), use_any_auth),
+                        &native_auth,
+                    )
+                    .wrap(AuditMiddleware::new(
+                        kms_server_for_http.audit_store.clone(),
+                        kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+                        kms_server_for_http.params.audit_failure_mode.clone(),
+                    )),
+                );
             // Add all SPA routes
             for route in spa_routes {
                 auth_routes = auth_routes.route(
@@ -2347,6 +2360,37 @@ mod tests {
     use super::*;
     use crate::tests::test_utils::https_clap_config;
 
+    #[actix_web::test]
+    async fn embedded_ui_deep_links_serve_index() {
+        let ui_dir = tempfile::tempdir().unwrap();
+        let index = "<!doctype html><title>KMS test UI</title>";
+        std::fs::write(ui_dir.path().join("index.html"), index).unwrap();
+
+        let mut config = https_clap_config();
+        config.tls = crate::config::TlsConfig::default();
+        config.http.hostname = "127.0.0.1".to_owned();
+        config.ui_config.enable = true;
+        config.ui_config.index_html_folder = Some(ui_dir.path().display().to_string());
+        let kms = crate::tests::test_utils::test_kms_with_config(config)
+            .await
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+            .await
+            .unwrap();
+        let handle = server.handle();
+        actix_web::rt::spawn(server);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        for path in ["/ui/fpe/encrypt", "/ui/hsm-status"] {
+            let response = client.get(format!("{base}{path}")).send().await.unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            assert_eq!(response.text().await.unwrap(), index, "{path}");
+        }
+        handle.stop(false).await;
+    }
+
     #[test]
     fn test_derive_session_key_deterministic() {
         // Load the appropriate provider if available
@@ -2587,7 +2631,92 @@ mod tests {
                 spire_default_username: Arc::from("default"),
             }
         }
+    }
 
+    #[actix_web::test]
+    async fn ui_config_requires_browser_auth_when_auth_is_configured() {
+        use actix_web::{
+            http::{
+                StatusCode,
+                header::{COOKIE, SET_COOKIE},
+            },
+            test,
+        };
+
+        use crate::middlewares::{
+            UiSession,
+            auth_verifier_test_helpers::{auth_verifier_token, live_auth_verifier},
+            test_ui_session_cookie,
+        };
+
+        async fn login(cookie: Data<UiSessionCookie>) -> HttpResponse {
+            let session = UiSession {
+                user_id: Some(UserId::from("alice@example.com")),
+                ..UiSession::default()
+            };
+            HttpResponse::Ok()
+                .insert_header((
+                    SET_COOKIE,
+                    cookie.set_cookie(&session).expect("session cookie"),
+                ))
+                .finish()
+        }
+
+        let auth = TestAuthStack::new(Some(live_auth_verifier().await)).await;
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(Arc::clone(&auth.kms)))
+                .app_data(Data::new(test_ui_session_cookie()))
+                .route("/test-login", web::post().to(login))
+                .service(web::scope("/ui").service(wrap_native_auth(
+                    web::scope("/config").service(get_ui_config),
+                    ensure_auth_middleware(Arc::clone(&auth.kms), true),
+                    &auth.stack(),
+                ))),
+        )
+        .await;
+        let request = || test::TestRequest::get().uri("/ui/config");
+        let anonymous = test::call_service(&app, request().to_request()).await;
+        assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+        let bearer = request()
+            .insert_header((
+                actix_web::http::header::AUTHORIZATION,
+                format!("Bearer {}", auth_verifier_token("alice@example.com", None)),
+            ))
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, bearer).await.status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let login_response = test::call_service(
+            &app,
+            test::TestRequest::post().uri("/test-login").to_request(),
+        )
+        .await;
+        let cookie = login_response
+            .headers()
+            .get(SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(';').next())
+            .expect("session cookie")
+            .to_owned();
+        let response =
+            test::call_service(&app, request().insert_header((COOKIE, cookie)).to_request()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("cache-control").unwrap(),
+            "private, no-store"
+        );
+        let flags: serde_json::Value = test::read_body_json(response).await;
+        assert_eq!(
+            flags,
+            serde_json::json!({"kv": false, "hsm": false, "google_cse": false, "crypto_officer": false})
+        );
+    }
+
+    impl TestAuthStack {
         const fn stack(&self) -> NativeAuthStack<'_> {
             NativeAuthStack {
                 kms_server: &self.kms,
