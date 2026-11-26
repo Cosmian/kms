@@ -228,7 +228,9 @@ cosmian_kms_cli_actions = { path = "crate/clients/clap", version = "6.0.0" }
 cosmian_kms_client = { path = "crate/clients/client", version = "6.0.0" }
 cosmian_kms_client_utils = { path = "crate/clients/client_utils", version = "6.0.0" }
 cosmian_kms_crypto = { path = "crate/crypto", version = "6.0.0" }
+cosmian_kms_csi_provider_proto = { path = "crate/clients/k8s/csi_provider_proto", version = "6.0.0" }
 cosmian_kms_interfaces = { path = "crate/interfaces", version = "6.0.0" }
+cosmian_kms_k8s_plugin_proto = { path = "crate/clients/k8s/plugin_proto", version = "6.0.0" }
 cosmian_kms_server = { path = "crate/server", version = "6.0.0" }
 cosmian_kms_server_database = { path = "crate/server_database", version = "6.0.0" }
 cosmian_pkcs11_module = { path = "crate/clients/pkcs11/module", version = "6.0.0" }

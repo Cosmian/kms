@@ -52,8 +52,6 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/server_
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/test_kms_server/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/wasm/Cargo.toml
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/cng/Cargo.toml
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/k8s/csi_provider/Cargo.toml
-${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" crate/clients/k8s/plugin/Cargo.toml
 
 # Other files
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .mise/scripts/windows/windows_ui.ps1
