@@ -272,10 +272,17 @@ start_kms_container() {
   local addr
   addr="$(docker port "${KMS_CONTAINER}" 9998/tcp | head -n 1)"
   KMS_HOST_PORT="${addr##*:}"
+  # shortcut: one retry; fips 5.9.0 on SQLite sometimes never starts serving (logs stop after the UI threads), cause unknown, replace by a root-cause fix when found.
   if ! wait_for_command 60 probe_container_kmip; then
     docker logs "${KMS_CONTAINER}" >"${log_file}" 2>&1 || true
     tail -n 30 "${log_file}" >&2 || true
-    return 1
+    if [ -z "${old_version}" ] || [ -n "${START_RETRIED:-}" ]; then return 1; fi
+    print_warning "KMS container ${image} did not start; retrying once"
+    START_RETRIED=1
+    local rc=0
+    start_kms_container "$@" || rc=$?
+    START_RETRIED=""
+    return "${rc}"
   fi
 }
 
