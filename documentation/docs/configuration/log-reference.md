@@ -1341,6 +1341,7 @@ Crate path: `crate/clients/pkcs11/provider`
 | `debug` | `mac: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
 | `debug` | `mac_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
 | `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}, {mac_usage:?}` | `src/backend.rs` | `algorithm`, `key_length`, `label`, `mac_usage` | - |
+| `error` | `failed to initialize PKCS#11 runtime: {error}` | `src/lib.rs` | `error` | - |
 
 ### `cosmian_pkcs11_module`
 

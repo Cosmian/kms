@@ -38,6 +38,7 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` | Sync rule 4.17 — OpenSSL build script ⇔ provider init ⇔ CBOM/SBOM |
 | `dependencies.instructions.md` | `**/Cargo.toml`, `Cargo.lock`, `supply-chain/**`, `deny.toml`, `.cargo/audit.toml`, `ui/package.json`, `ui/pnpm-lock.yaml`, `crate/clients/wasm/package.json`, `**/requirements*.in`, `**/requirements*.txt`, `**/go.mod`, `**/go.sum`, `**/Dockerfile*`, `.github/dependabot.yml`, `.github/workflows/**`, `.github/actions/**` | Sync rule 4.19 — third-party dependency vetting (cargo-vet, pnpm, pip, Go, Docker digests, Action SHAs, installers) per issue #1265 |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
+| `ffi-exports.instructions.md` | `crate/clients/pkcs11/**/*.rs`, `crate/clients/cng/**/*.rs` | Panic containment, unwind profile, pointer preconditions, and `Once`-guarded tables for cdylibs loaded into foreign hosts |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` | Locale bundles, en/zh-CN parity, useTranslation/Trans |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` | Playwright E2E test conventions; sync rule 4.16 — E2E test documentation |

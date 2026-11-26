@@ -34,6 +34,7 @@ agents when editing matching file types (`applyTo` in each file's YAML frontmatt
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` |
 | `dependencies.instructions.md` | `**/Cargo.toml`, `Cargo.lock`, `supply-chain/**`, `deny.toml`, `.cargo/audit.toml`, `ui/package.json`, `ui/pnpm-lock.yaml`, `crate/clients/wasm/package.json`, `**/requirements*.in`, `**/requirements*.txt`, `**/go.mod`, `**/go.sum`, `**/Dockerfile*`, `.github/dependabot.yml`, `.github/workflows/**`, `.github/actions/**` |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` |
+| `ffi-exports.instructions.md` | `crate/clients/pkcs11/**/*.rs`, `crate/clients/cng/**/*.rs` |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` |
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` |
