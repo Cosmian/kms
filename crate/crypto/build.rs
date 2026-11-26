@@ -517,10 +517,20 @@ fn integrate_assets_into_main(main_prefix: &Path, fipsprov_prefix: Option<&Path>
     drop(fs::create_dir_all(main_prefix.join("ssl")));
     let mod_ext = mod_ext();
     if let Some(fips_prefix) = fipsprov_prefix {
-        drop(fs::copy(
+        // The module may be mapped by a running test binary (`ckms` tests rebuild the
+        // workspace while they run): overwriting it in place corrupts the unrelocated GOT
+        // pages of that process (SIGSEGV in `ossl_ctx_thread_stop`). Rename a copy over it
+        // instead: the running process keeps the old inode.
+        let module = main_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}"));
+        let staged = module.with_extension(format!("{mod_ext}.tmp"));
+        if fs::copy(
             fips_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")),
-            main_prefix.join(format!("lib/ossl-modules/fips.{mod_ext}")),
-        ));
+            &staged,
+        )
+        .is_ok()
+        {
+            drop(fs::rename(&staged, &module));
+        }
         drop(fs::copy(
             fips_prefix.join("ssl/openssl.cnf"),
             main_prefix.join("ssl/openssl.cnf"),
