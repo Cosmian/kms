@@ -254,7 +254,7 @@ pub(crate) fn configure_client_cert_verification(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::{
         fs,
         io::{Read as _, Write as _},
@@ -275,8 +275,8 @@ mod tests {
 
     const CERTS: &str = "../../test_data/certificates/client_server";
     /// Client certificate (path without extension, `.crt` and `.key` exist) of two users.
-    const USER: &str = "user/user.client.acme.com";
-    const OWNER: &str = "owner/owner.client.acme.com";
+    pub(crate) const USER: &str = "user/user.client.acme.com";
+    pub(crate) const OWNER: &str = "owner/owner.client.acme.com";
 
     /// Whether an acceptor configured for client certificates has session resumption off:
     /// no session cache and no tickets.
@@ -298,8 +298,14 @@ mod tests {
         assert!(matches!(resumption_is_off(), Ok(true)));
     }
 
-    /// Write a CRL of the test CA revoking `revoked` as `<hash>.r<suffix>` in `dir`.
-    fn write_crl(dir: &Path, suffix: u32, revoked: &[&str]) -> TestResult {
+    /// Write a CRL of the test CA revoking `revoked` as `<hash>.r<suffix>` in `dir`; its
+    /// `nextUpdate` is `validity_days` from now.
+    pub(crate) fn write_crl(
+        dir: &Path,
+        suffix: u32,
+        revoked: &[&str],
+        validity_days: u32,
+    ) -> TestResult {
         let ca = X509::from_pem(&fs::read(format!("{CERTS}/ca/ca.crt"))?)?;
         let ca_key: PKey<Private> =
             PKey::private_key_from_pem(&fs::read(format!("{CERTS}/ca/ca.key"))?)?;
@@ -315,7 +321,7 @@ mod tests {
                 })
             })
             .collect::<TestResult<Vec<_>>>()?;
-        let crl = build_crl(&ca, &ca_key, &entries, u64::from(suffix) + 1, 1)?;
+        let crl = build_crl(&ca, &ca_key, &entries, u64::from(suffix) + 1, validity_days)?;
         fs::write(
             dir.join(format!("{:08x}.r{suffix}", ca.subject_name_hash())),
             crl.to_pem()?,
@@ -382,13 +388,25 @@ mod tests {
         // No CRL for the issuer yet: fail-closed
         assert!(!is_accepted(addr, OWNER).unwrap());
 
-        write_crl(dir.path(), 0, &[USER]).unwrap();
+        write_crl(dir.path(), 0, &[USER], 1).unwrap();
         assert!(!is_accepted(addr, USER).unwrap());
         assert!(is_accepted(addr, OWNER).unwrap());
 
         // OpenSSL keeps the CRL with the latest `thisUpdate` (one-second resolution)
         thread::sleep(Duration::from_millis(1100));
-        write_crl(dir.path(), 1, &[USER, OWNER]).unwrap();
+        write_crl(dir.path(), 1, &[USER, OWNER], 1).unwrap();
+        assert!(!is_accepted(addr, OWNER).unwrap());
+    }
+
+    /// The check is fail-closed on an expired CRL: a client the CRL does not revoke is still
+    /// rejected once the CRL's `nextUpdate` has passed.
+    #[test]
+    fn clients_are_rejected_when_the_issuer_crl_has_expired() {
+        let dir = tempfile::tempdir().unwrap();
+        // `nextUpdate` = now, so the CRL is already expired after the sleep below
+        write_crl(dir.path(), 0, &[USER], 0).unwrap();
+        thread::sleep(Duration::from_millis(1100));
+        let addr = spawn_server(dir.path(), 1).unwrap();
         assert!(!is_accepted(addr, OWNER).unwrap());
     }
 }
