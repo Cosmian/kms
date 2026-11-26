@@ -10,9 +10,9 @@
 
 ### Kubernetes
 
-- Operator: refuse to overwrite a target `Secret` that is not owned by the reconciled `KMSSecret`. Every managed `Secret` carries the label `kms.cosmian.com/kmssecret=<name>`; legacy operator-managed `Secret` objects are adopted.
+- Operator: require an exact `KMSSecret` controller owner reference, including its UID, before updating a target `Secret`; label-only and legacy Secrets are not adopted. Kubernetes garbage-collects the managed Secret when its `KMSSecret` is deleted.
 - CSI provider: take the pod namespace from the CSI driver (`csi.storage.k8s.io/pod.namespace`), refuse KMS UIDs not allowlisted for it (KMS tag lists included), and reject `objectName` values that are absolute or contain `..`.
-- KMS plugin: check the kernel peer credentials of every connection on the Unix socket and drop peers whose UID is not in `allowed_peer_uids`.
+- KMS plugin: check the kernel peer credentials of every connection on the Unix socket and drop peers whose UID is not in `allowed_peer_uids`; configure `socket_gid` for non-root apiserver UIDs and use socket mode `0660`.
 
 ## Documentation
 

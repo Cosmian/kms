@@ -10,7 +10,7 @@ use k8s_openapi::{
         apps::v1::{Deployment, StatefulSet},
         core::v1::Secret,
     },
-    apimachinery::pkg::apis::meta::v1::ObjectMeta,
+    apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference},
 };
 use kube::{
     Api, Client, Resource, ResourceExt,
@@ -36,9 +36,9 @@ pub struct Context {
     pub allowed_uids_by_namespace: BTreeMap<String, BTreeSet<String>>,
 }
 
-/// Label recording which `KMSSecret` owns a target `Secret`.
+/// Informational label recording which `KMSSecret` owns a target `Secret`.
 const OWNER_LABEL: &str = "kms.cosmian.com/kmssecret";
-/// Label written by operator versions that predate [`OWNER_LABEL`].
+/// Label identifying Secrets created by this operator.
 const MANAGED_BY_LABEL: &str = "app.kubernetes.io/managed-by";
 const MANAGED_BY_VALUE: &str = "cosmian-kms-operator";
 
@@ -58,28 +58,34 @@ fn check_secret_access(
     }
 }
 
-/// Refuse to overwrite a target `Secret` that is not owned by this `KMSSecret`. A legacy
-/// operator-managed `Secret` (no owner label) is adopted.
+/// Refuse to overwrite a target `Secret` unless its controller owner reference matches.
 fn check_secret_ownership(
     existing: Option<&Secret>,
-    kmssecret_name: &str,
+    expected_owner: &OwnerReference,
 ) -> Result<(), OperatorError> {
     let Some(existing) = existing else {
         return Ok(());
     };
-    let labels = existing.metadata.labels.as_ref();
-    let owner = labels.and_then(|l| l.get(OWNER_LABEL));
-    let legacy = owner.is_none()
-        && labels
-            .and_then(|l| l.get(MANAGED_BY_LABEL))
-            .map(String::as_str)
-            == Some(MANAGED_BY_VALUE);
-    if owner.map(String::as_str) == Some(kmssecret_name) || legacy {
+    let is_owned = existing
+        .metadata
+        .owner_references
+        .as_ref()
+        .is_some_and(|references| {
+            references.iter().any(|reference| {
+                reference.api_version == expected_owner.api_version
+                    && reference.kind == expected_owner.kind
+                    && reference.name == expected_owner.name
+                    && reference.uid == expected_owner.uid
+                    && reference.controller == Some(true)
+            })
+        });
+    if is_owned {
         Ok(())
     } else {
         Err(OperatorError::Config(format!(
-            "target Secret '{}' is not owned by KMSSecret '{kmssecret_name}'",
-            existing.metadata.name.as_deref().unwrap_or_default()
+            "target Secret '{}' is not owned by KMSSecret '{}'",
+            existing.metadata.name.as_deref().unwrap_or_default(),
+            expected_owner.name
         )))
     }
 }
@@ -187,46 +193,63 @@ async fn upsert_secret(
     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
     let existing = secrets.get_opt(&owner.spec.target_secret).await?;
     let changed = secret_value_changed(existing.as_ref(), &owner.spec.key, bytes);
+    let owner_name = owner.name_any();
+    let owner_reference = owner.controller_owner_ref(&()).ok_or_else(|| {
+        OperatorError::Config(format!(
+            "KMSSecret '{owner_name}' has no UID and cannot own a target Secret"
+        ))
+    })?;
 
     let mut labels = owner.spec.labels.clone();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_owned(),
-        MANAGED_BY_VALUE.to_owned(),
-    );
-    labels.insert(OWNER_LABEL.to_owned(), owner.name_any());
+    labels.insert(MANAGED_BY_LABEL.to_owned(), MANAGED_BY_VALUE.to_owned());
+    labels.insert(OWNER_LABEL.to_owned(), owner_name);
 
-    let mut data: BTreeMap<String, k8s_openapi::ByteString> = BTreeMap::new();
-    data.insert(
-        owner.spec.key.clone(),
-        k8s_openapi::ByteString(bytes.to_vec()),
-    );
-
-    let secret = Secret {
-        metadata: ObjectMeta {
-            name: Some(owner.spec.target_secret.clone()),
-            namespace: Some(namespace.to_owned()),
-            labels: Some(labels),
-            ..ObjectMeta::default()
-        },
-        data: Some(data),
-        ..Secret::default()
-    };
-
-    check_secret_ownership(existing.as_ref(), &owner.name_any())?;
-    if existing.is_none() {
-        secrets.create(&PostParams::default(), &secret).await?;
-        info!(name = %owner.spec.target_secret, "created K8s Secret");
-    } else {
-        secrets
-            .patch(
-                &owner.spec.target_secret,
-                &PatchParams::apply("cosmian-kms-operator").force(),
-                &Patch::Apply(secret),
-            )
-            .await?;
-        info!(name = %owner.spec.target_secret, "updated K8s Secret");
+    check_secret_ownership(existing.as_ref(), &owner_reference)?;
+    match existing {
+        None => {
+            let secret = Secret {
+                metadata: ObjectMeta {
+                    name: Some(owner.spec.target_secret.clone()),
+                    namespace: Some(namespace.to_owned()),
+                    labels: Some(labels),
+                    owner_references: Some(vec![owner_reference]),
+                    ..ObjectMeta::default()
+                },
+                data: Some(BTreeMap::from([(
+                    owner.spec.key.clone(),
+                    k8s_openapi::ByteString(bytes.to_vec()),
+                )])),
+                ..Secret::default()
+            };
+            secrets.create(&PostParams::default(), &secret).await?;
+            info!(name = %owner.spec.target_secret, "created K8s Secret");
+        }
+        Some(existing) => {
+            let secret = merge_secret_update(existing, labels, owner.spec.key.clone(), bytes.to_vec());
+            // Replacing the fetched object carries its resourceVersion as an update precondition.
+            secrets
+                .replace(&owner.spec.target_secret, &PostParams::default(), &secret)
+                .await?;
+            info!(name = %owner.spec.target_secret, "updated K8s Secret");
+        }
     }
     Ok(changed)
+}
+
+fn merge_secret_update(
+    mut existing: Secret,
+    labels: BTreeMap<String, String>,
+    key: String,
+    bytes: Vec<u8>,
+) -> Secret {
+    let mut merged_labels = existing.metadata.labels.take().unwrap_or_default();
+    merged_labels.extend(labels);
+    existing.metadata.labels = Some(merged_labels);
+    existing
+        .data
+        .get_or_insert_with(BTreeMap::new)
+        .insert(key, k8s_openapi::ByteString(bytes));
+    existing
 }
 
 /// Trigger a rolling restart for declared Deployments and `StatefulSets` by
@@ -574,9 +597,13 @@ mod status_tests {
 mod confused_deputy_tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use k8s_openapi::{api::core::v1::Secret, apimachinery::pkg::apis::meta::v1::ObjectMeta};
+    use k8s_openapi::{
+        ByteString,
+        api::core::v1::Secret,
+        apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference},
+    };
 
-    use super::{check_secret_access, check_secret_ownership};
+    use super::{check_secret_access, check_secret_ownership, merge_secret_update};
 
     fn policy() -> BTreeMap<String, BTreeSet<String>> {
         BTreeMap::from([("team-a".to_owned(), BTreeSet::from(["uid-1".to_owned()]))])
@@ -592,6 +619,28 @@ mod confused_deputy_tests {
                         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
                         .collect(),
                 ),
+                ..ObjectMeta::default()
+            },
+            ..Secret::default()
+        }
+    }
+
+    fn owner_reference(uid: &str) -> OwnerReference {
+        OwnerReference {
+            api_version: "kms.cosmian.com/v1".to_owned(),
+            kind: "KMSSecret".to_owned(),
+            name: "ks".to_owned(),
+            uid: uid.to_owned(),
+            controller: Some(true),
+            block_owner_deletion: Some(false),
+        }
+    }
+
+    fn secret_with_owner(owner_reference: OwnerReference) -> Secret {
+        Secret {
+            metadata: ObjectMeta {
+                name: Some("target".to_owned()),
+                owner_references: Some(vec![owner_reference]),
                 ..ObjectMeta::default()
             },
             ..Secret::default()
@@ -619,32 +668,83 @@ mod confused_deputy_tests {
     }
 
     #[test]
-    fn ownership_accepts_none_owned_and_legacy() {
-        check_secret_ownership(None, "ks").unwrap();
-        check_secret_ownership(Some(&secret(&[("kms.cosmian.com/kmssecret", "ks")])), "ks")
-            .unwrap();
+    fn ownership_accepts_missing_or_matching_controller_owner_reference() {
+        check_secret_ownership(None, &owner_reference("uid-ks")).unwrap();
         check_secret_ownership(
-            Some(&secret(&[(
-                "app.kubernetes.io/managed-by",
-                "cosmian-kms-operator",
-            )])),
-            "ks",
+            Some(&secret_with_owner(owner_reference("uid-ks"))),
+            &owner_reference("uid-ks"),
         )
         .unwrap();
     }
 
     #[test]
-    fn ownership_refuses_foreign_unmanaged_and_other_owner() {
-        let owned_by_other = secret(&[
-            ("kms.cosmian.com/kmssecret", "other"),
-            ("app.kubernetes.io/managed-by", "cosmian-kms-operator"),
-        ]);
-        for existing in [secret(&[]), secret(&[("app", "x")]), owned_by_other] {
-            let err = check_secret_ownership(Some(&existing), "ks").unwrap_err();
+    fn ownership_refuses_labels_only_other_uid_and_non_controller_references() {
+        let mut non_controller = owner_reference("uid-ks");
+        non_controller.controller = None;
+        let mut wrong_api_version = owner_reference("uid-ks");
+        wrong_api_version.api_version = "kms.cosmian.com/v2".to_owned();
+        let mut wrong_kind = owner_reference("uid-ks");
+        wrong_kind.kind = "Secret".to_owned();
+        let mut wrong_name = owner_reference("uid-ks");
+        wrong_name.name = "other".to_owned();
+        for existing in [
+            secret(&[("kms.cosmian.com/kmssecret", "ks")]),
+            secret(&[("app.kubernetes.io/managed-by", "cosmian-kms-operator")]),
+            secret_with_owner(owner_reference("uid-other")),
+            secret_with_owner(non_controller),
+            secret_with_owner(wrong_api_version),
+            secret_with_owner(wrong_kind),
+            secret_with_owner(wrong_name),
+        ] {
+            let err =
+                check_secret_ownership(Some(&existing), &owner_reference("uid-ks")).unwrap_err();
             assert_eq!(
                 err.to_string(),
                 "Configuration error: target Secret 'target' is not owned by KMSSecret 'ks'"
             );
         }
+    }
+
+    #[test]
+    fn secret_update_preserves_resource_version_and_unmanaged_data() {
+        let mut existing = secret(&[("unmanaged", "keep")]);
+        existing.metadata.resource_version = Some("17".to_owned());
+        existing.data = Some(BTreeMap::from([(
+            "other-key".to_owned(),
+            ByteString(b"preserve".to_vec()),
+        )]));
+
+        let updated = merge_secret_update(
+            existing,
+            BTreeMap::from([("kms.cosmian.com/kmssecret".to_owned(), "ks".to_owned())]),
+            "managed-key".to_owned(),
+            b"new-value".to_vec(),
+        );
+
+        assert_eq!(updated.metadata.resource_version.as_deref(), Some("17"));
+        assert_eq!(
+            updated
+                .metadata
+                .labels
+                .as_ref()
+                .and_then(|labels| labels.get("unmanaged").map(String::as_str)),
+            Some("keep")
+        );
+        assert_eq!(
+            updated
+                .data
+                .as_ref()
+                .and_then(|data| data.get("other-key"))
+                .map(|value| value.0.as_slice()),
+            Some(b"preserve".as_slice())
+        );
+        assert_eq!(
+            updated
+                .data
+                .as_ref()
+                .and_then(|data| data.get("managed-key"))
+                .map(|value| value.0.as_slice()),
+            Some(b"new-value".as_slice())
+        );
     }
 }

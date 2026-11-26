@@ -1644,7 +1644,7 @@ sequenceDiagram
 
 **Description:** Kubernetes KMS Provider Plugin — etcd Secret encryption. Deploys KMS in-cluster, creates a KEK, installs the plugin binary on the Minikube node as a systemd service, and verifies etcd Secret encryption. gRPC is used only between kube-apiserver and the plugin (KMS v2 API over a unix socket); the plugin talks to the KMS over plain HTTP, or over HTTPS with client certificates when the task runs with `--mtls`.
 
-The plugin configuration written on the node sets the required `allowed_peer_uids` (kube-apiserver UID: `0` for the kubeadm static pod, `65532` for a distroless non-root image); the plugin refuses to start without it.
+The plugin configuration written on the node sets `allowed_peer_uids` (kube-apiserver UID: `0` for the kubeadm static pod, `65532` for a distroless non-root image) and `socket_gid: 65532`; the plugin refuses a non-root peer UID without a socket group. The test asserts the created socket has GID `65532` and mode `0660`.
 
 The test deployment explicitly sets `kms.insecureAllowUnauthenticated=true` for its initial HTTP-only stage; the chart default remains `false`.
 
@@ -1685,6 +1685,7 @@ sequenceDiagram
     KMS-->>Test: KEK UID
     Test->>Node: install plugin binary + config
     Test->>Node: systemctl start plugin
+    Test->>Node: assert socket group 65532, mode 0660
     Test->>Node: enable etcd encryption on kube-apiserver
     Test->>API: kubectl create secret
     API->>Plugin: gRPC Encrypt (unix socket)
