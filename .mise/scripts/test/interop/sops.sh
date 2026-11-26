@@ -64,10 +64,7 @@ wait_for_port 127.0.0.1 8443 60
 KMS_PID=$!
 wait_for_port 127.0.0.1 9998 120
 
-CKMS_CONF="${WORK_DIR}/ckms.toml"
-cp "${REPO_ROOT}/test_data/configs/client/default.toml" "${CKMS_CONF}"
-sed -i.bak 's|http://localhost:9998|https://localhost:9998|' "${CKMS_CONF}"
-rm -f "${CKMS_CONF}.bak"
+CKMS_CONF="${REPO_ROOT}/test_data/configs/client/pqc_tls_owner.toml"
 ckms_approle() {
   "$(get_ckms_bin)" --conf-path "${CKMS_CONF}" vault approle "$@" \
     --auth-verifier-url "https://localhost:8443" \
