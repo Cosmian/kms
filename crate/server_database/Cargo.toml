@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server_database"
-version = "6.0.0"
+version.workspace = true
 authors.workspace = true
 categories.workspace = true
 edition.workspace = true
