@@ -84,6 +84,8 @@ A leaf that fails only when grouped (port, Docker or environment leak) or only i
 |`xks-remote`|runs (upstream PRs, manual approval environment)|dispatch and tags only, not `schedule`|
 |Linux "No Nix" legs|run|run|
 
+Separately, `packaging-kubernetes.yml` runs the full Kubernetes Minikube E2E matrix on pull requests that touch Kubernetes code, charts, or their build/test infrastructure. Package and chart publishing remain restricted to tags and manual runs.
+
 The DB scoping also applies locally: `mise run test:db:psql`, `test:db:mysql`, `test:db:percona`, `test:db:mariadb` and `test:db:redis` no longer run DB-independent server, crypto and KMIP unit tests. Use `test:db:sqlite` for the full workspace suite.
 
 A nightly failure notifies only the GitHub user who last edited the `main.yml` cron line.

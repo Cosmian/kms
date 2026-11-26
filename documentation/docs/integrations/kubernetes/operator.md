@@ -133,15 +133,16 @@ At startup the operator logs a warning when the map is empty.
 
 ### Target `Secret` ownership
 
-Every `Secret` written by the operator carries the label `kms.cosmian.com/kmssecret=<KMSSecret name>`.
-Before updating an existing target `Secret`, the operator requires that it:
+Every `Secret` written by the operator carries a Kubernetes controller owner reference to the exact
+`KMSSecret` object, including its UID. Before updating an existing target `Secret`, the operator
+requires a matching API version, kind, name, UID, and `controller: true` owner reference. Labels,
+including `kms.cosmian.com/kmssecret`, are informational and are not proof of ownership.
 
-- carries that label with the name of the reconciled `KMSSecret`; or
-- is a legacy operator-managed `Secret` (label `app.kubernetes.io/managed-by=cosmian-kms-operator`
-  and no `kms.cosmian.com/kmssecret` label), which is adopted and relabelled.
-
-Any other existing `Secret` (unmanaged, or owned by another `KMSSecret`) is never overwritten; the
-reconcile fails with `target Secret '<name>' is not owned by KMSSecret '<name>'`.
+An existing Secret without that exact owner reference is never adopted or overwritten, including
+Secrets created by older operator versions that relied on labels. To migrate one, an administrator
+must verify it belongs to the intended `KMSSecret` and either add the matching owner reference or
+delete it after backing up any unrelated data so the operator can recreate it. Kubernetes also
+garbage-collects the managed Secret when its owning `KMSSecret` is deleted.
 
 ---
 

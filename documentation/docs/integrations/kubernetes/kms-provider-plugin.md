@@ -178,17 +178,21 @@ cosmian_kms:
   # Unix socket path exposed to the kube-apiserver
   socket_path: "/var/run/kubernetes-kms-plugin/kms.sock"
 
-  # REQUIRED: UIDs allowed to connect to the socket, i.e. the kube-apiserver process UID
-  # on the node (check with: ps -o uid= -C kube-apiserver). 0 on kubeadm static pods,
-  # 65532 for a distroless non-root apiserver image.
-  allowed_peer_uids: [0]
+  # UIDs allowed to connect (0 for root; 65532 for a distroless non-root apiserver).
+  allowed_peer_uids: [0, 65532]
+
+  # Required when allowing a non-root UID. Set to a group the apiserver belongs to.
+  socket_gid: 65532
 EOF
 sudo chmod 600 /etc/kubernetes-kms-plugin/config.yaml
 ```
 
 `server_url`, `wrapping_key_uid` and `allowed_peer_uids` are required; the plugin refuses to
-start with `allowed_peer_uids must list the kube-apiserver UID` when the list is empty.
-`socket_path` defaults to `/var/run/kubernetes-kms-plugin/kms.sock`.
+start with `allowed_peer_uids must list the kube-apiserver UID` when the list is empty. If
+`allowed_peer_uids` contains a non-root UID, `socket_gid` is also required. The plugin assigns that
+group to the Unix socket, which is created with mode `0660`; ensure the kube-apiserver belongs to
+the configured group. `socket_path` defaults to `/var/run/kubernetes-kms-plugin/kms.sock`.
+The packaged systemd unit grants only `CAP_CHOWN` to set the configured group.
 
 ### Peer-credential check
 
@@ -200,8 +204,8 @@ decrypt data. The `key_id` sent by kube-apiserver still selects the KEK on `Decr
 decrypting data encrypted with an older KEK after rotation works as before.
 
 !!! warning "Upgrading"
-    Plugin configurations written for earlier releases must add `allowed_peer_uids`, otherwise
-    the plugin does not start.
+    Plugin configurations written for earlier releases must add `allowed_peer_uids`, and
+    `socket_gid` when they allow a non-root UID, otherwise the plugin does not start.
 
 ### KMS reachability
 
@@ -541,7 +545,7 @@ It is **not** available via `minikube ssh` or as a system binary on most distrib
 
 ## Security considerations
 
-- The Unix socket must be readable only by the `kube-apiserver` process (mode `0600`); `allowed_peer_uids` enforces this at the connection level.
+- The Unix socket uses mode `0660` and a configurable group; `SO_PEERCRED` still rejects every UID not listed in `allowed_peer_uids`.
 - The `config.yaml` must be readable only by the plugin process (mode `0600`).
 - The KEK should be created with restricted access controls in the KMS.
 - Rotate the KEK regularly and re-encrypt Secrets after rotation with:

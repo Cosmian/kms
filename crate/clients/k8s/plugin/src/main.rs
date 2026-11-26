@@ -44,6 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let settings = PluginConfig::from_file(&args.config)?.cosmian_kms;
+    let socket_gid = settings.socket_gid;
+    let allowed_peer_uids = settings.allowed_peer_uids;
 
     info!(
         server_url = %settings.server_url,
@@ -93,13 +95,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let listener = UnixListener::bind(&socket_path)?;
-    // Allow owner+group to connect to the socket.
-    // kube-apiserver runs as UID 65532 (distroless nonroot) in Kubernetes
-    // 1.29+, so a root-owned 0o600 socket would silently block all gRPC
-    // connections.  The DaemonSet should chown the socket to the apiserver
-    // UID/GID (65532) for maximum security; 0o660 is the secure fallback.
+    if let Some(gid) = socket_gid {
+        std::os::unix::fs::chown(&socket_path, None, Some(gid))?;
+    }
+    // Filesystem permissions limit access; SO_PEERCRED independently authorizes peers.
     std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o660))?;
-    let incoming = allowed_peers(listener, settings.allowed_peer_uids);
+    let incoming = allowed_peers(listener, allowed_peer_uids);
 
     info!(socket = %socket_path, "gRPC server listening on Unix socket");
     // Graceful shutdown on SIGTERM (systemd) or Ctrl-C.

@@ -13,6 +13,7 @@ use serde::Deserialize;
 ///   wrapping_key_uid: "550e8400-e29b-41d4-a716-446655440000"
 ///   socket_path: /var/run/kubernetes-kms-plugin/kms.sock
 ///   allowed_peer_uids: [65532]
+///   socket_gid: 65532
 /// ```
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -55,6 +56,11 @@ pub struct KmsPluginSettings {
     /// kube-apiserver UID. Any other peer is disconnected.
     #[serde(default)]
     pub allowed_peer_uids: Vec<u32>,
+
+    /// Optional group ID assigned to the socket. Required when `allowed_peer_uids`
+    /// contains a non-root UID so the socket can be shared with the kube-apiserver.
+    #[serde(default)]
+    pub socket_gid: Option<u32>,
 }
 
 fn default_socket_path() -> String {
@@ -72,6 +78,17 @@ impl PluginConfig {
         if config.cosmian_kms.allowed_peer_uids.is_empty() {
             return Err(crate::error::PluginError::Config(
                 "allowed_peer_uids must list the kube-apiserver UID".to_owned(),
+            ));
+        }
+        if config
+            .cosmian_kms
+            .allowed_peer_uids
+            .iter()
+            .any(|uid| *uid != 0)
+            && config.cosmian_kms.socket_gid.is_none()
+        {
+            return Err(crate::error::PluginError::Config(
+                "socket_gid must be set when allowed_peer_uids includes a non-root UID".to_owned(),
             ));
         }
         Ok(config)
@@ -94,6 +111,7 @@ cosmian_kms:
   wrapping_key_uid: 550e8400-e29b-41d4-a716-446655440000
   socket_path: /var/run/kubernetes-kms-plugin.sock
   allowed_peer_uids: [65532, 0]
+  socket_gid: 65532
 ";
         let cfg: PluginConfig = serde_saphyr::from_str(yaml).expect("should parse");
         assert_eq!(cfg.cosmian_kms.server_url, "https://kms.example.com:9998");
@@ -107,6 +125,7 @@ cosmian_kms:
             "/var/run/kubernetes-kms-plugin.sock"
         );
         assert_eq!(cfg.cosmian_kms.allowed_peer_uids, vec![65532, 0]);
+        assert_eq!(cfg.cosmian_kms.socket_gid, Some(65532));
     }
 
     #[test]
@@ -126,24 +145,44 @@ cosmian_kms:
     #[test]
     fn from_file_requires_allowed_peer_uids() {
         let base = "cosmian_kms:\n  server_url: http://localhost:9998\n  wrapping_key_uid: k\n";
-        for (name, extra, ok) in [
-            ("missing", "", false),
-            ("empty", "  allowed_peer_uids: []\n", false),
-            ("listed", "  allowed_peer_uids: [65532]\n", true),
+        for (name, extra, expected_error) in [
+            (
+                "missing",
+                "",
+                Some("allowed_peer_uids must list the kube-apiserver UID"),
+            ),
+            (
+                "empty",
+                "  allowed_peer_uids: []\n",
+                Some("allowed_peer_uids must list the kube-apiserver UID"),
+            ),
+            ("root", "  allowed_peer_uids: [0]\n", None),
+            (
+                "nonroot_without_gid",
+                "  allowed_peer_uids: [65532]\n",
+                Some("socket_gid must be set when allowed_peer_uids includes a non-root UID"),
+            ),
+            (
+                "nonroot_with_gid",
+                "  allowed_peer_uids: [65532]\n  socket_gid: 65532\n",
+                None,
+            ),
         ] {
             let path = std::env::temp_dir()
                 .join(format!("kms_plugin_cfg_{name}_{}.yaml", std::process::id()));
             std::fs::write(&path, format!("{base}{extra}")).expect("write temp config");
             let result = PluginConfig::from_file(path.to_str().expect("utf-8 path"));
             std::fs::remove_file(&path).ok();
-            match (ok, result) {
-                (true, Ok(_)) => {}
-                (false, Err(e)) => assert_eq!(
-                    e.to_string(),
-                    "Configuration error: allowed_peer_uids must list the kube-apiserver UID",
-                    "{name}"
-                ),
-                (ok, r) => panic!("{name}: expected ok={ok}, got {r:?}"),
+            match (expected_error, result) {
+                (None, Ok(_)) => {}
+                (Some(expected), Err(error)) => {
+                    assert_eq!(
+                        error.to_string(),
+                        format!("Configuration error: {expected}"),
+                        "{name}"
+                    );
+                }
+                (expected, result) => panic!("{name}: expected error {expected:?}, got {result:?}"),
             }
         }
     }
