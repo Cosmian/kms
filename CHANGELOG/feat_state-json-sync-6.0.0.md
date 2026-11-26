@@ -5,4 +5,4 @@
 
 ## Build
 
-- Bump the workspace version to 5.30.0 and add `crate/clients/k8s/plugin/Cargo.toml` to `release.sh`, which missed its `cosmian_kms_k8s_plugin_proto` version pin
+- Bump the workspace version to 5.30.0. The k8s proto crate pins and the `cosmian_kms_server_database` version now come from the root workspace, so `release.sh` only seds the root `Cargo.toml` and the docs
