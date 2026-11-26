@@ -552,7 +552,13 @@ async fn import_activated(
                     ObjectType::PublicKey => {
                         CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey
                     }
-                    _ => CryptographicUsageMask::WrapKey | CryptographicUsageMask::UnwrapKey,
+                    // the KEK wraps with KMIP Encrypt on the client side, WrapKey on the server side
+                    _ => {
+                        CryptographicUsageMask::Encrypt
+                            | CryptographicUsageMask::Decrypt
+                            | CryptographicUsageMask::WrapKey
+                            | CryptographicUsageMask::UnwrapKey
+                    }
                 }),
                 ..Default::default()
             },
