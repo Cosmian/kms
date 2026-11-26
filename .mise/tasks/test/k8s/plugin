@@ -162,8 +162,8 @@ minikube ssh -- sudo cp /tmp/plugin-config.yaml "$CFG_DIR/config.yaml"
 # validates the same unit that end-users get from the package manager.
 k8s_install_service_file "${MISE_CONFIG_ROOT}/pkg/kubernetes_kms_plugin.service" kubernetes-kms-plugin
 k8s_wait_node_socket "$SOCK_PATH" 60
-SOCKET_GID_MODE=$(minikube ssh -- sudo stat -c '%g %a' "$SOCK_PATH" | tr -d '\r')
-[ "$SOCKET_GID_MODE" = "65532 660" ] ||
+SOCKET_GID_MODE=$(minikube ssh -- sudo stat -c '%g:%a' "$SOCK_PATH" | tr -d '\r')
+[ "$SOCKET_GID_MODE" = "65532:660" ] ||
   print_error "socket has unexpected group/mode: $SOCKET_GID_MODE"
 print_success "socket group and mode are configured correctly"
 
