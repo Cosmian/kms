@@ -95,13 +95,27 @@ pub(crate) fn check_read_only(tag: Option<Tag>, operation: KmipOperation) -> KRe
     Ok(())
 }
 
-/// Rejects `rotate_name` values containing `@`, which is reserved for keyset versioning.
-pub(crate) fn check_rotate_name(attribute: &Attribute, operation: &str) -> KResult<()> {
+/// Validates client-written rotation attributes: `rotate_name` must not contain `@`
+/// (reserved for keyset versioning); Rotate Interval / Rotate Offset are KMIP Interval
+/// values (unsigned 32-bit seconds, `ttlv::Interval(u32)`): larger or negative values
+/// overflow the auto-rotation date arithmetic.
+pub(crate) fn check_rotation_attribute(attribute: &Attribute, operation: &str) -> KResult<()> {
     match attribute {
         Attribute::RotateName(name) if name.contains('@') => {
             Err(KmsError::InvalidRequest(format!(
                 "{operation}: rotate_name must not contain '@' (reserved for keyset versioning)"
             )))
+        }
+        Attribute::RotateInterval(secs) | Attribute::RotateOffset(secs)
+            if u32::try_from(*secs).is_err() =>
+        {
+            Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Attribute_Value,
+                format!(
+                    "{operation}: {attribute} must be between 0 and {} seconds, got {secs}",
+                    u32::MAX
+                ),
+            ))
         }
         _ => Ok(()),
     }
@@ -199,6 +213,37 @@ mod tests {
             assert!(
                 matches!(read_only_error(operation), KmsError::Kmip21Error(reason, _) if reason == expected),
                 "{operation:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rotation_interval_and_offset_are_kmip_intervals() {
+        for attribute in [
+            Attribute::RotateInterval(i64::MAX),
+            Attribute::RotateInterval(-1),
+            Attribute::RotateOffset(i64::MIN),
+            Attribute::RotateOffset(i64::from(u32::MAX) + 1),
+        ] {
+            assert!(
+                matches!(
+                    check_rotation_attribute(&attribute, "SetAttribute"),
+                    Err(KmsError::Kmip21Error(
+                        ErrorReason::Invalid_Attribute_Value,
+                        _
+                    ))
+                ),
+                "{attribute:?}"
+            );
+        }
+        for attribute in [
+            Attribute::RotateInterval(0),
+            Attribute::RotateInterval(i64::from(u32::MAX)),
+            Attribute::RotateOffset(0),
+        ] {
+            assert!(
+                check_rotation_attribute(&attribute, "SetAttribute").is_ok(),
+                "{attribute:?}"
             );
         }
     }

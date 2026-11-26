@@ -67,6 +67,12 @@ type CrlCacheInner = HashMap<String, (Vec<u8>, Instant, String, Instant)>;
 /// per-process: without a bound, a node that did not regenerate the CRL itself kept
 /// serving its stale copy (missing new revocations, even past its nextUpdate).
 const CRL_MEMORY_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Largest client-requested CRL validity (`GET /certificates/{id}/crl?validity_days=`), as
+/// documented in `pki-revocation.md` and the CRL ADR (1–365): a later `nextUpdate` lets
+/// public caches keep a stale CRL.
+pub(crate) const MAX_CRL_VALIDITY_DAYS: u32 = 365;
+
 static GENERATED_CRL_CACHE: LazyLock<tokio::sync::RwLock<CrlCacheInner>> =
     LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
 
@@ -267,6 +273,13 @@ pub(crate) async fn generate_crl(
     requester: CrlRequester<'_>,
 ) -> KResult<X509Crl> {
     crate::core::require_leader_region(kms, "CRL generation")?;
+    if let Some(days) = validity_days
+        && days > MAX_CRL_VALIDITY_DAYS
+    {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "validity_days must be at most {MAX_CRL_VALIDITY_DAYS}, got {days}"
+        )));
+    }
     debug!(
         "Generating CRL for issuer certificate: {}",
         issuer_certificate_id
@@ -420,7 +433,13 @@ pub(crate) async fn generate_crl(
 
     // Compute next_update timestamp for DB storage (validity_days from now).
     let generated_at = OffsetDateTime::now_utc();
-    let next_update = generated_at + time::Duration::days(i64::from(validity));
+    let next_update = generated_at
+        .checked_add(time::Duration::days(i64::from(validity)))
+        .ok_or_else(|| {
+            KmsError::ServerError(format!(
+                "CRL nextUpdate is out of range for a validity of {validity} days"
+            ))
+        })?;
     let generated_at_str = generated_at
         .format(&time::format_description::well_known::Rfc3339)
         .map_err(|e| {

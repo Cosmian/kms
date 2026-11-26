@@ -14,8 +14,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{debug, trace};
 
 use super::policy::{
-    check_grant, check_read_only, check_rotate_name, check_sql_rotate_name, check_vendor_attribute,
-    read_only_error, single_valued,
+    check_grant, check_read_only, check_rotation_attribute, check_sql_rotate_name,
+    check_vendor_attribute, read_only_error, single_valued,
 };
 use crate::{
     core::{
@@ -40,7 +40,7 @@ pub(crate) async fn add_attribute(
 
     // Read-only guard — these attributes are server-managed.
     check_read_only(request.new_attribute.tag(), KmipOperation::AddAttribute)?;
-    check_rotate_name(&request.new_attribute, "AddAttribute")?;
+    check_rotation_attribute(&request.new_attribute, "AddAttribute")?;
     check_vendor_attribute(&request.new_attribute, KmipOperation::AddAttribute)?;
     // KMIP 2.1 §4.59: clients set Total and Unit only; the server owns the Count.
     if let Attribute::UsageLimits(limits) = &mut request.new_attribute {
