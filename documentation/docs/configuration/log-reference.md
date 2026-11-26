@@ -880,6 +880,7 @@ Crate path: `crate/server_database`
 | `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/mysql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
 | `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/pgsql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
 | `warn` | `find: object store '{prefix}' failed: {e}` | `src/core/database_objects.rs` | `prefix`, `e` | ×2 in this file |
+| `error` | `ceremony record was sealed for another user (record moved between rows); treating as inactive` | `src/core/database_permissions.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 
