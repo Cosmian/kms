@@ -39,7 +39,10 @@ use super::pgp_ops;
 use crate::{
     core::{
         KMS,
-        operations::{export_get::resolve_pkcs12_password, validate::verify_crls},
+        operations::{
+            export_get::resolve_pkcs12_password,
+            validate::{CrlVerdict, verify_crls},
+        },
         uid_utils::ObjectHandle,
         wrapping::{unwrap_object, wrap_and_cache},
     },
@@ -134,7 +137,7 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
             )
             .await
             {
-                Err(KmsError::Certificate(_)) => {
+                Ok(CrlVerdict::Revoked) => {
                     debug!(
                         "Import: certificate is revoked per CRL check, \
                                  setting state to Compromised"
@@ -142,13 +145,15 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult
                     desired_state = State::Compromised;
                 }
                 Err(e) => {
-                    // Network or other transient errors: log and proceed with Active
+                    // A CRL that cannot be fetched, parsed or verified (blocked or
+                    // unreachable distribution point, oversized body, bad signature,
+                    // expired CRL) is not evidence of revocation: keep the desired state.
                     warn!(
                         "Import: CRL check could not be completed ({e}), \
                                  proceeding with {desired_state:?} state"
                     );
                 }
-                Ok(_) => {}
+                Ok(CrlVerdict::NotRevoked) => {}
             }
         }
         desired_state

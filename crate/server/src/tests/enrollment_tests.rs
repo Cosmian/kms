@@ -1329,6 +1329,34 @@ async fn scep_renewal_can_be_disabled() -> KResult<()> {
     Ok(())
 }
 
+/// A `RenewalReq` is refused under the default configuration: the default must not let a
+/// device renew with only a previously issued certificate and no challenge.
+#[tokio::test]
+async fn scep_renewal_is_refused_under_the_default_configuration() -> KResult<()> {
+    let default_allow = ScepConfig::default().allow_renewal_without_challenge;
+    assert!(!default_allow, "the SCEP renewal default must be false");
+    let (kms, ca) = make_kms(false, true, default_allow).await?;
+    let app = app!(kms);
+    let (key, cert) = enroll_device(&app, &ca, "dev1.iot.example").await;
+    let message = pki_message(
+        &ca,
+        &cert,
+        &key,
+        &csr(&key, "dev1.iot.example"),
+        MESSAGE_TYPE_RENEWAL_REQ,
+        "TX-DEFAULT",
+    );
+    let req = test::TestRequest::post()
+        .uri("/scep?operation=PKIOperation")
+        .set_payload(message)
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, req).await.status(),
+        StatusCode::BAD_REQUEST
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn est_simpleenroll_requires_client_certificate_when_configured() -> KResult<()> {
     let (kms, _) = make_kms_with(true, false, true, |c| {

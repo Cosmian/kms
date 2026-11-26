@@ -33,6 +33,7 @@ fn load_test_config() -> SocketServerParams<'static> {
         port: 11117,
         p12: Some(&TEST_P12),
         client_ca_cert_pem: &TEST_CLIENT_CA_CERT_PEM,
+        clients_crl_dir: None,
         cipher_suites: None,
         server_cert_pem: &[],
         server_key_pem: &[],
