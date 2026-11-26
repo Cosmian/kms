@@ -45,6 +45,7 @@ pub(super) async fn test_wrapped_secret_data() -> KResult<()> {
         &secret_id,
         &secret_data,
         ObjectType::SecretData,
+        None,
     )
     .await?;
     assert_eq!(

@@ -15,7 +15,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             ResponseMessageBatchItemVersioned,
         },
         kmip_types::{
-            ProtocolVersion, ResultStatusEnumeration, RevocationReason, RevocationReasonCode,
+            CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration, RevocationReason,
+            RevocationReasonCode,
         },
     },
     kmip_2_1::{
@@ -384,12 +385,16 @@ async fn import_object(
     object_id: &str,
     object: &Object,
     object_type: ObjectType,
+    // FIPS builds give an imported key no mask of its own: a wrapped object carries its
+    // attributes encrypted, so the caller states the mask when it must be usable.
+    usage_mask: Option<CryptographicUsageMask>,
 ) -> KResult<UniqueIdentifier> {
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(object_id.to_owned()),
         object_type,
         attributes: Attributes {
             object_type: Some(object_type),
+            cryptographic_usage_mask: usage_mask,
             ..Default::default()
         },
         replace_existing: None,

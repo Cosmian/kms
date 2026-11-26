@@ -452,9 +452,34 @@ async fn lifecycle(alg: Alg) -> KResult<()> {
     let sk_imp = format!("{sk}-imp");
     let pk_imp = format!("{pk}-imp");
     let sk_impw = format!("{sk}-impw");
-    import_object(&kms, &owner, &sk_imp, &plain_sk, ObjectType::PrivateKey).await?;
-    import_object(&kms, &owner, &pk_imp, &plain_pk, ObjectType::PublicKey).await?;
-    import_object(&kms, &owner, &sk_impw, &wrapped_sk, ObjectType::PrivateKey).await?;
+    import_object(
+        &kms,
+        &owner,
+        &sk_imp,
+        &plain_sk,
+        ObjectType::PrivateKey,
+        None,
+    )
+    .await?;
+    import_object(
+        &kms,
+        &owner,
+        &pk_imp,
+        &plain_pk,
+        ObjectType::PublicKey,
+        None,
+    )
+    .await?;
+    let decapsulation_mask = CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey;
+    import_object(
+        &kms,
+        &owner,
+        &sk_impw,
+        &wrapped_sk,
+        ObjectType::PrivateKey,
+        Some(decapsulation_mask),
+    )
+    .await?;
     for uid in [&sk_imp, &pk_imp, &sk_impw] {
         activate(&kms, &owner, uid).await?;
         assert!(export_object(&kms, &owner, uid).await?.is_wrapped());
@@ -504,7 +529,8 @@ async fn lifecycle(alg: Alg) -> KResult<()> {
     Ok(())
 }
 
-/// Same import attributes as `ckms keys import`: activated now, usage mask from `--key-usage`.
+/// Same import attributes as `ckms keys import`: activated now, usage mask from `--key-usage`
+/// (explicit per object type: `Unrestricted` authorizes no operation in a FIPS build).
 async fn import_activated(
     kms: &Arc<KMS>,
     owner: &str,
@@ -519,7 +545,15 @@ async fn import_activated(
             attributes: Attributes {
                 object_type: Some(object_type),
                 activation_date: Some(time_normalize()?),
-                cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
+                cryptographic_usage_mask: Some(match object_type {
+                    ObjectType::PrivateKey => {
+                        CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey
+                    }
+                    ObjectType::PublicKey => {
+                        CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey
+                    }
+                    _ => CryptographicUsageMask::WrapKey | CryptographicUsageMask::UnwrapKey,
+                }),
                 ..Default::default()
             },
             replace_existing: None,
