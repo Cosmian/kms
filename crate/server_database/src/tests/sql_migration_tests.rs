@@ -495,7 +495,10 @@ async fn lock_serializes_instances<F: MigrationFixture>(fixture: &F) -> DbResult
         "Unexpected lock timeout: {error}"
     );
     drop(held);
-    expect_steps(&second.bootstrap(false, "5.30.0").await?, &[])?;
+    expect_steps(
+        &second.bootstrap(false, "5.30.0").await?,
+        &[StoredStateSync],
+    )?;
     assert_ready(&second, "5.30.0").await
 }
 
