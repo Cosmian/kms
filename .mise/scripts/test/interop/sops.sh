@@ -126,13 +126,14 @@ popd >/dev/null
 print_header "SOPS OpenPGP source"
 mkdir -p "${WORK_DIR}/pgp"
 PKCS11_LIB="$(get_cosmian_pkcs11_lib)"
-COSMIAN_KMS_CLI_CONF="${CKMS_CONF}"
-export COSMIAN_KMS_CLI_CONF
+export CKMS_CONF
+CURRENT_TEST_STEP="OpenPGP RSA key creation"
 PGP_RSA_JSON="$(
   COSMIAN_KMS_CLI_FORMAT=json "$(get_ckms_bin)" rsa keys create \
     --size_in_bits 2048 --tag gnupg-card
 )"
 PGP_PUBLIC_KEY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["public_key_unique_identifier"])' "${PGP_RSA_JSON}")"
+CURRENT_TEST_STEP="OpenPGP certificate certification"
 "$(get_ckms_bin)" certificates certify \
   --public-key-id-to-certify "${PGP_PUBLIC_KEY_ID}" \
   --subject-name "CN=SOPS PKCS#11 CI" \
