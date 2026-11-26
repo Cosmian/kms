@@ -97,14 +97,17 @@ impl RekeyOperation for SqlSymmetricRekeyer {
         Ok([RotationCandidate { owm, uid }])
     }
 
-    fn generate_replacement(
+    async fn generate_replacement(
         &self,
         kms: &KMS,
         _user: &UserId,
         candidates: &[RotationCandidate; 1],
-    ) -> impl Future<Output = KResult<[ReplacementObject; 1]>> {
-        // Key generation is synchronous CPU work: no suspension point is needed.
-        std::future::ready(Self::build_replacement(kms, candidates))
+    ) -> KResult<[ReplacementObject; 1]> {
+        let [candidate] = candidates;
+        let new_uid = kms
+            .rotation_successor_uid(&candidate.uid, candidate.owm.attributes())
+            .await?;
+        Self::build_replacement(kms, candidates, new_uid)
     }
 
     fn prepare_attributes(
@@ -160,6 +163,7 @@ impl SqlSymmetricRekeyer {
     fn build_replacement(
         kms: &KMS,
         candidates: &[RotationCandidate; 1],
+        new_uid: String,
     ) -> KResult<[ReplacementObject; 1]> {
         let [candidate] = candidates;
 
@@ -175,11 +179,6 @@ impl SqlSymmetricRekeyer {
             protection_storage_masks: None,
         };
         let (_, new_object, new_tags) = kms.create_symmetric_key_and_tags(&create_request)?;
-
-        let new_uid = UniqueIdentifier::rotation_successor(
-            candidate.owm.attributes().rotate_name.as_deref(),
-            candidate.owm.attributes().rotate_generation,
-        );
 
         Ok([ReplacementObject {
             new_uid,

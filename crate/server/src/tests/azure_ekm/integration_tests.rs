@@ -650,3 +650,163 @@ async fn test_wrap_unwrap_refuse_deactivated_key_with_key_disabled() -> KResult<
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn test_rekey_ekm_keyset_mints_azure_valid_uids() -> KResult<()> {
+    use actix_web::web::Data;
+    use cosmian_kms_access::access::Access;
+    use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attribute,
+        kmip_operations::{ReKey, ReKeyKeyPair, SetAttribute},
+    };
+
+    use crate::{
+        core::operations::{rekey, rekey_keypair},
+        routes::azure_ekm::{
+            AZURE_EKM_SYSTEM_TAG, handlers::get_key_metadata_handler, validate_key_name,
+        },
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let kms = test_kms().await?;
+    let owner = UserId::from("ekm_owner");
+
+    // 1. AES named keyset bound via /metadata: gen-1 and gen-2 must be Azure-valid (no '@')
+    //    and keep resolving via `name@latest` while inheriting `_azure_ekm`.
+    let aes_keyset = "ekm-aes-keyset";
+    kms.create(
+        symmetric_key_create_request(
+            VENDOR_ID_COSMIAN,
+            Some(UniqueIdentifier::TextString(aes_keyset.to_owned())),
+            256,
+            CryptographicAlgorithm::AES,
+            EMPTY_TAGS,
+            false,
+            None,
+        )?,
+        &owner,
+    )
+    .await?;
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(aes_keyset.to_owned())),
+            new_attribute: Attribute::RotateName(aes_keyset.to_owned()),
+        },
+        &owner,
+    )
+    .await?;
+
+    let meta_resp = get_key_metadata_handler(
+        aes_keyset.to_owned(),
+        owner.clone(),
+        Data::new(Arc::clone(&kms)),
+    )
+    .await?;
+    assert!(meta_resp.status().is_success());
+    assert!(
+        kms.database
+            .retrieve_tags(aes_keyset)
+            .await?
+            .contains(AZURE_EKM_SYSTEM_TAG)
+    );
+
+    let gen1 = Box::pin(rekey(
+        &kms,
+        ReKey {
+            unique_identifier: Some(UniqueIdentifier::TextString(aes_keyset.to_owned())),
+            offset: None,
+            attributes: None,
+            protection_storage_masks: None,
+        },
+        &owner,
+    ))
+    .await?
+    .unique_identifier
+    .to_string();
+    assert!(validate_key_name(&gen1).is_ok(), "gen1='{gen1}'");
+    assert!(
+        kms.database
+            .retrieve_tags(&gen1)
+            .await?
+            .contains(AZURE_EKM_SYSTEM_TAG)
+    );
+
+    let gen2 = Box::pin(rekey(
+        &kms,
+        ReKey {
+            unique_identifier: Some(UniqueIdentifier::TextString(format!("{aes_keyset}@latest"))),
+            offset: None,
+            attributes: None,
+            protection_storage_masks: None,
+        },
+        &owner,
+    ))
+    .await?
+    .unique_identifier
+    .to_string();
+    assert!(validate_key_name(&gen2).is_ok(), "gen2='{gen2}'");
+    assert_ne!(gen1, gen2);
+    assert!(
+        kms.database
+            .retrieve_tags(&gen2)
+            .await?
+            .contains(AZURE_EKM_SYSTEM_TAG)
+    );
+
+    // 2. Idle legacy RSA keyset identified only by a `*.managedhsmclient.azure.net` grant
+    //    (before any post-upgrade /metadata call) also mints an Azure-valid private-key UID.
+    let rsa_keyset = "ekm-rsa-keyset";
+    kms.create_key_pair(
+        create_rsa_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            Some(UniqueIdentifier::TextString(rsa_keyset.to_owned())),
+            EMPTY_TAGS,
+            2048,
+            false,
+            None,
+        )?,
+        &owner,
+    )
+    .await?;
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(rsa_keyset.to_owned())),
+            new_attribute: Attribute::RotateName(rsa_keyset.to_owned()),
+        },
+        &owner,
+    )
+    .await?;
+    kms.grant_access(
+        &Access {
+            unique_identifier: Some(UniqueIdentifier::TextString(rsa_keyset.to_owned())),
+            user_id: "contoso.managedhsmclient.azure.net".to_owned(),
+            operation_types: vec![KmipOperation::Get, KmipOperation::Decrypt],
+        },
+        &owner,
+    )
+    .await?;
+
+    let rsa_gen1 = Box::pin(rekey_keypair(
+        &kms,
+        ReKeyKeyPair {
+            private_key_unique_identifier: Some(UniqueIdentifier::TextString(
+                rsa_keyset.to_owned(),
+            )),
+            ..ReKeyKeyPair::default()
+        },
+        &owner,
+    ))
+    .await?;
+    let new_sk_uid = rsa_gen1.private_key_unique_identifier.to_string();
+    let new_pk_uid = rsa_gen1.public_key_unique_identifier.to_string();
+    assert!(validate_key_name(&new_sk_uid).is_ok(), "sk='{new_sk_uid}'");
+    assert_eq!(new_pk_uid, format!("{new_sk_uid}_pk"));
+    assert!(
+        kms.database
+            .retrieve_tags(&new_sk_uid)
+            .await?
+            .contains(AZURE_EKM_SYSTEM_TAG)
+    );
+    Ok(())
+}

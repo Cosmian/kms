@@ -142,14 +142,17 @@ impl RekeyOperation for SqlKeypairRekeyer {
         ])
     }
 
-    fn generate_replacement(
+    async fn generate_replacement(
         &self,
         kms: &KMS,
         _user: &UserId,
         candidates: &[RotationCandidate; 2],
-    ) -> impl Future<Output = KResult<[ReplacementObject; 2]>> {
-        // Key-pair generation is synchronous CPU work: no suspension point is needed.
-        std::future::ready(Self::build_replacement(kms, candidates))
+    ) -> KResult<[ReplacementObject; 2]> {
+        let [sk_candidate, _] = candidates;
+        let new_sk_uid = kms
+            .rotation_successor_uid(&sk_candidate.uid, sk_candidate.owm.attributes())
+            .await?;
+        Self::build_replacement(kms, candidates, new_sk_uid)
     }
 
     fn prepare_attributes(
@@ -226,6 +229,7 @@ impl SqlKeypairRekeyer {
     fn build_replacement(
         kms: &KMS,
         candidates: &[RotationCandidate; 2],
+        new_sk_uid: String,
     ) -> KResult<[ReplacementObject; 2]> {
         let [sk_candidate, pk_candidate] = candidates;
 
@@ -233,10 +237,6 @@ impl SqlKeypairRekeyer {
             .owm
             .attributes()
             .clean_for_generation(kms.vendor_id());
-        let new_sk_uid = UniqueIdentifier::rotation_successor(
-            sk_candidate.owm.attributes().rotate_name.as_deref(),
-            sk_candidate.owm.attributes().rotate_generation,
-        );
         // The public key UID always mirrors the private key UID with the "_pk" suffix.
         let new_pk_uid = format!("{new_sk_uid}_pk");
 

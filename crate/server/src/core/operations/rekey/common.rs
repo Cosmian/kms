@@ -30,6 +30,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::{info, warn};
+use uuid::Uuid;
 
 use crate::{
     core::{
@@ -41,6 +42,7 @@ use crate::{
     error::KmsError,
     middlewares::UserId,
     result::KResult,
+    routes::azure_ekm::AZURE_EKM_SYSTEM_TAG,
 };
 
 impl KMS {
@@ -104,6 +106,23 @@ impl KMS {
             )));
         }
         Ok(())
+    }
+
+    /// Compute the replacement UID for `uid`: a fresh UUID when bound to Azure EKM
+    /// (whose `external_key.id` rejects `@`), otherwise [`UniqueIdentifier::rotation_successor`].
+    pub(crate) async fn rotation_successor_uid(
+        &self,
+        uid: &str,
+        attrs: &Attributes,
+    ) -> KResult<String> {
+        if self.is_azure_ekm_key(uid).await? {
+            Ok(Uuid::new_v4().to_string())
+        } else {
+            Ok(UniqueIdentifier::rotation_successor(
+                attrs.rotate_name.as_deref(),
+                attrs.rotate_generation,
+            ))
+        }
     }
 
     /// Prepare retirement and dependant updates without persisting them.
@@ -512,6 +531,15 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
         .collect();
     let mut replacements = op.generate_replacement(kms, user, &candidates).await?;
     op.prepare_attributes(kms, &candidates, &mut replacements)?;
+    for (candidate, replacement) in candidates.as_ref().iter().zip(replacements.as_mut()) {
+        if matches!(
+            replacement.object.object_type(),
+            ObjectType::SymmetricKey | ObjectType::PrivateKey
+        ) && kms.is_azure_ekm_key(&candidate.uid).await?
+        {
+            replacement.tags.insert(AZURE_EKM_SYSTEM_TAG.to_owned());
+        }
+    }
     op.rewrap_new_objects(kms, user, &mut replacements, &wrap_specs)
         .await?;
     let mut persist_ops = op

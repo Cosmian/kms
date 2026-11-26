@@ -29,6 +29,8 @@ pub(crate) mod models;
 
 /// System tag stamped on keys bound to Azure Managed HSM EKM.
 pub(crate) const AZURE_EKM_SYSTEM_TAG: &str = "_azure_ekm";
+/// Managed HSM mTLS client-certificate Subject CN suffix (public Azure regions).
+const AZURE_MHSM_CLIENT_CN_SUFFIX: &str = ".managedhsmclient.azure.net";
 
 impl KMS {
     /// Ensure `key_name` carries [`AZURE_EKM_SYSTEM_TAG`] in the database tags set,
@@ -72,6 +74,25 @@ impl KMS {
             Ok(_) | Err(KmsError::Conflict(_)) => Ok(()),
             Err(e) => Err(e),
         }
+    }
+
+    /// Return `true` when `uid` is bound to Azure EKM (via [`AZURE_EKM_SYSTEM_TAG`] or a
+    /// pre-existing `*.managedhsmclient.azure.net` mTLS ACL grant).
+    pub(crate) async fn is_azure_ekm_key(&self, uid: &str) -> KResult<bool> {
+        if self
+            .database
+            .retrieve_tags(uid)
+            .await?
+            .contains(AZURE_EKM_SYSTEM_TAG)
+        {
+            return Ok(true);
+        }
+        Ok(self
+            .database
+            .list_object_operations_granted(uid)
+            .await?
+            .keys()
+            .any(|grantee| grantee.ends_with(AZURE_MHSM_CLIENT_CN_SUFFIX)))
     }
 }
 
