@@ -228,6 +228,13 @@ files = '^crate/server_database/src/stores/redis/ | ^\.mise/tasks/test/db/redis$
 # redis (Findex) is non-FIPS only
 variants = ["non-fips"]
 
+[units."db:upgrade"]
+# Every release >= 5.9.0 upgraded to the branch build (~1 h); nightly, tags and dispatch only.
+files = '^\.mise/tasks/test/db/upgrade$ | ^\.mise/scripts/test/db/(run_db_upgrade_gate\.sh|populate_db\.sh|verify_db_upgrade\.py|kmip_json_client\.py)$'
+variants = ["fips", "non-fips"]
+events = ["schedule", "tag", "workflow_dispatch"]
+timeout = 300
+
 [units."db:openbao"]
 sets = ["db_core", "pg_store", "mysql_store"]
 files = '''

@@ -193,40 +193,13 @@ jobs:
           path: target/image-scan/${{ matrix.features }}/
           if-no-files-found: warn
 
-      # populate_db.sh drives the old servers with the ckms of this branch.
-      - name: Build ckms for the database upgrade gate
-        if: matrix.runner == 'ubuntu-24.04'
-        run: mise run build:cli --variant ${{ matrix.features }}
-
       - name: Run database upgrade gate
         if: matrix.runner == 'ubuntu-24.04'
-        timeout-minutes: 150
+        timeout-minutes: 60
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
-        # Fills a database with every object kind on each release >= 5.9.0 (populate_db.sh),
-        # upgrades it to the candidate image, then re-verifies it. One gate process per backend,
-        # in parallel (own containers, ports and per-backend reports): sequentially the
-        # ~30 releases x backends would not fit the timeout.
-        run: |
-          ckms="${CARGO_TARGET_DIR:-$PWD/target}/debug/ckms"
-          out="target/db-upgrade-gate/${{ matrix.features }}"
-          mkdir -p "$out"
-          backends=(sqlite postgresql mysql)
-          [ "${{ matrix.features }}" = "non-fips" ] && backends+=(redis)
-          pids=()
-          for b in "${backends[@]}"; do
-            mise run test:upgrade-db --variant ${{ matrix.features }} --backend "$b" \
-              --old-version all --ckms "$ckms" >"$out/gate-$b.log" 2>&1 &
-            pids+=($!)
-          done
-          rc=0
-          for i in "${!pids[@]}"; do
-            wait "${pids[$i]}" || { echo "::error::upgrade gate failed on ${backends[$i]}"; rc=1; }
-          done
-          for b in "${backends[@]}"; do
-            echo "::group::upgrade gate log: $b"; cat "$out/gate-$b.log"; echo "::endgroup::"
-          done
-          exit "$rc"
+        # 5.9.0, N-1 and 2 rotating releases upgraded to the candidate image; every release runs in the nightly db:upgrade leg.
+        run: mise run test:db:upgrade --variant ${{ matrix.features }} --new-image "$DOCKER_IMAGE_NAME" --old-version nightly
 
       - name: Upload database upgrade failure artifacts
         if: failure() && matrix.runner == 'ubuntu-24.04'

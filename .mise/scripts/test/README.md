@@ -18,7 +18,7 @@ The task documentation (scenarios, diagrams) lives in [`.mise/tasks/test/README.
 |`ui/`|`test:ui`|Web UI Playwright harnesses (standard, Auth Verifier, OIDC, SAML) and the `saml_sso/` Keycloak stack|
 |`pkg/`|`test:pkg`|Docker image smoke, scan and Oracle tests, Alpine musl test, load-balancer shutdown test, CBOM and SBOM tests|
 |`k8s/`|`test:k8s`|Kubernetes HSM image checks|
-|`db/`|`test:db`, `test:upgrade-db`|Database upgrade gate, seed/verify tool and its KMIP JSON client, migration fixture generator|
+|`db/`|`test:db`, `test:db:upgrade`|Database upgrade gate, seed/verify tool and its KMIP JSON client, migration fixture generator|
 |`vectors/`|`dev:vectors-*`|Test vector maintenance tools (rekey vector generator, unused JSON finder)|
 
 ## Rules

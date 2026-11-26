@@ -27,6 +27,11 @@ ROTATION_INDEX=""
 ARTIFACTS_DIR="${REPO_ROOT}/target/db-upgrade-gate/fips"
 NEW_KMS=""
 CKMS_BIN=""
+KEK_ID="upgrade-gate-kek" # key encryption key created on the old server; configured on every later start
+KEK_ACTIVE=""
+PHASE=""
+OLD_KMS=""
+EXPLICIT_NEW_KMS=""
 HOST_KMS_PID=""
 DB_HOST_PORT=""
 KMS_HOST_PORT=""
@@ -48,6 +53,8 @@ parse_args() {
       --new-kms) NEW_KMS="$2" ;;
       --ckms) CKMS_BIN="$2" ;;
       --seed) SEED_ARG="$2" ;;
+      --old-kms) OLD_KMS="$2" ;;
+      --explicit-new-kms) EXPLICIT_NEW_KMS="$2" ;;
       --random-count) RANDOM_COUNT="$2" ;;
       --rotation-index) ROTATION_INDEX="$2" ;;
       --artifacts-dir) ARTIFACTS_DIR="$2" ;;
@@ -62,6 +69,7 @@ parse_args() {
     [ ! -e /etc/cosmian/kms.toml ] || print_error "/etc/cosmian/kms.toml would override the host server CLI flags; move it away."
   fi
   if [ -n "${CKMS_BIN}" ]; then [ -x "${CKMS_BIN}" ] || print_error "--ckms is not an executable file: ${CKMS_BIN}"; fi
+  if [ -n "${OLD_KMS}" ]; then [ -x "${OLD_KMS}" ] || print_error "--old-kms is not an executable file: ${OLD_KMS}"; fi
 }
 
 # Resolve the ordered list of old KMS versions to test (baseline 5.9.0, N-1, + 2 round-robin middle tags; or all).
@@ -235,8 +243,10 @@ start_kms_container() {
   local db_args=() vol_args=(-v "${REPO_ROOT}/test_data:/test_data:ro")
   local cert_dir=/test_data/certificates/client_server
   local tls_args=(--tls-cert-file "${cert_dir}/server/kmserver.acme.com.crt" --tls-key-file "${cert_dir}/server/kmserver.acme.com.key")
-  # Releases before 5.13.0 only accept a PKCS#12 server identity.
-  if [ -n "${old_version}" ] && version_lt "${old_version}" 5.13.0; then
+  # PKCS#12 identity: fips images before 5.13.0 (5.13.0+ list only --tls-cert-file), non-fips images before 5.17.0.
+  local p12_before=5.17.0
+  [ "${VARIANT}" != "fips" ] || p12_before=5.13.0
+  if [ -n "${old_version}" ] && version_lt "${old_version}" "${p12_before}"; then
     tls_args=(--tls-p12-file "${cert_dir}/server/kmserver.acme.com.p12" --tls-p12-password password)
   fi
   case "${backend}" in
@@ -258,7 +268,7 @@ start_kms_container() {
   docker run --detach --name "${KMS_CONTAINER}" --network "${NETWORK}" \
     --publish 127.0.0.1::9998 "${vol_args[@]}" "${image}" "${db_args[@]}" \
     "${tls_args[@]}" \
-    --clients-ca-cert-file "${cert_dir}/ca/ca.crt" >/dev/null
+    --clients-ca-cert-file "${cert_dir}/ca/ca.crt" ${KEK_ACTIVE:+"${KEK_ID}"} >/dev/null
   local addr
   addr="$(docker port "${KMS_CONTAINER}" 9998/tcp | head -n 1)"
   KMS_HOST_PORT="${addr##*:}"
@@ -271,7 +281,7 @@ start_kms_container() {
 
 # Start the host (cargo-built) candidate server with mTLS on a free port.
 start_host_kms() {
-  local backend="$1" target="$2" log="$3"
+  local bin="$1" backend="$2" target="$3" log="$4"
   local cert_dir="${REPO_ROOT}/test_data/certificates/client_server"
   KMS_HOST_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
   local args=()
@@ -284,8 +294,8 @@ start_host_kms() {
   mkdir -p "${log%.log}-workspace" "${log%.log}-tmp"
   args+=(--hostname 127.0.0.1 --port "${KMS_HOST_PORT}" --root-data-path "${log%.log}-workspace" --tmp-path "${log%.log}-tmp"
     --tls-cert-file "${cert_dir}/server/kmserver.acme.com.crt" --tls-key-file "${cert_dir}/server/kmserver.acme.com.key"
-    --clients-ca-cert-file "${cert_dir}/ca/ca.crt")
-  env -u COSMIAN_KMS_CONF "${NEW_KMS}" "${args[@]}" >"${log}" 2>&1 &
+    --clients-ca-cert-file "${cert_dir}/ca/ca.crt" ${KEK_ACTIVE:+"${KEK_ID}"})
+  env -u COSMIAN_KMS_CONF "${bin}" "${args[@]}" >"${log}" 2>&1 &
   HOST_KMS_PID=$!
   if ! wait_for_command 120 probe_host_kmip; then
     tail -n 30 "${log}" >&2 || true
@@ -302,10 +312,28 @@ stop_host_kms() {
   HOST_KMS_PID=""
 }
 
+# Start the old server (host binary with --old-kms, else release container).
+start_old() {
+  if [ -n "${OLD_KMS}" ]; then
+    start_host_kms "${OLD_KMS}" "$1" "$2" "$3"
+  else
+    start_kms_container "$@"
+  fi
+}
+
+# Stop the old server and keep its logs.
+stop_old() {
+  if [ -n "${OLD_KMS}" ]; then
+    stop_host_kms
+  else
+    stop_kms_container "$@"
+  fi
+}
+
 # Start the candidate server (host binary with --new-kms, else container).
 start_candidate() {
   if [ -n "${NEW_KMS}" ]; then
-    start_host_kms "$@"
+    start_host_kms "${NEW_KMS}" "$@"
   else
     start_kms_container "${NEW_IMAGE}" "$@"
   fi
@@ -367,8 +395,10 @@ prepare_restore_db() {
     cp "${cell_dir}/backup.rdb" "${cell_dir}/redis-restore/dump.rdb"
     chmod 644 "${cell_dir}/redis-restore/dump.rdb"
     docker run --detach --name "${DB_CONTAINER}" --network "${NETWORK}" \
-      -v "${cell_dir}/redis-restore:/data" "${REDIS_IMAGE}" \
+      --publish "127.0.0.1::6379" -v "${cell_dir}/redis-restore:/data" "${REDIS_IMAGE}" \
       --dbfilename dump.rdb --dir /data >/dev/null
+    DB_HOST_PORT="$(docker port "${DB_CONTAINER}" 6379/tcp | head -n1)"
+    DB_HOST_PORT="${DB_HOST_PORT##*:}"
     wait_for_command 60 db_client redis ready >/dev/null 2>&1
   fi
 }
@@ -386,10 +416,11 @@ save_failure_artifacts() {
 # Format the one-line replay command for a (backend, old_version, seed) cell.
 format_replay_cmd() {
   local backend="$1" old_version="$2" seed="$3"
-  local cmd="mise run test:upgrade-db --variant ${VARIANT} --backend ${backend} --old-version ${old_version} --new-image ${NEW_IMAGE} --seed ${seed}"
-  if [ -n "${NEW_KMS}" ]; then
-    cmd="mise run test:db:upgrade-all --variant ${VARIANT} --backend ${backend} --old-version ${old_version} --seed ${seed}"
-  fi
+  local old_flag="--old-version ${old_version}"
+  if [ -n "${OLD_KMS}" ]; then old_flag="--old-kms ${OLD_KMS}"; fi
+  local cmd="mise run test:db:upgrade --variant ${VARIANT} --backend ${backend} ${old_flag} --seed ${seed}"
+  if [ -n "${NEW_IMAGE}" ]; then cmd+=" --new-image ${NEW_IMAGE}"; fi
+  if [ -n "${EXPLICIT_NEW_KMS}" ]; then cmd+=" --new-kms ${NEW_KMS}"; fi
   if [ "${RANDOM_COUNT}" != "10" ]; then
     cmd+=" --random-count ${RANDOM_COUNT}"
   fi
@@ -441,15 +472,30 @@ report_coverage() {
   done
 }
 
-# Seed the database with the old KMS container and capture the pre-upgrade snapshot.
+# Create the key encryption key (KEK) on the active, KEK-less server; every later start configures it.
+create_kek() {
+  [ -n "${CKMS_BIN}" ] || return 0
+  COSMIAN_KMS_CLI_FORMAT=json "${CKMS_BIN}" -c "${REPO_ROOT}/test_data/configs/client/cert_owner.toml" \
+    --url "https://127.0.0.1:${KMS_HOST_PORT}" sym keys create --number-of-bits 256 "${KEK_ID}" >/dev/null
+}
+
+# Seed the database with the old KMS container and capture the pre-upgrade snapshot. With --ckms, then
+# restart the old server with a KEK configured (KEK_ACTIVE for every later start) and fill it again,
+# so the objects created by that run are wrapped at rest by the KEK.
 seed_cell_db() {
   local backend="$1" old_version="$2" old_image="$3" seed="$4" cell_dir="$5" seed_target="$6"
-  start_kms_container "${old_image}" "${backend}" "${seed_target}" "${cell_dir}/old-seed.log" "${old_version}" &&
+  start_old "${old_image}" "${backend}" "${seed_target}" "${cell_dir}/old-seed.log" "${old_version}" &&
     run_py_verifier seed "${backend}" "${old_version}" "${seed}" \
       --snapshot "${cell_dir}/snapshot.json" --seed "${seed}" --count "${RANDOM_COUNT}" \
       --sample-cert "${REPO_ROOT}/test_data/certificates/client_server/server/kmserver.acme.com.crt" &&
     run_populate populate "${cell_dir}/populate-old" --prefix pop --lenient &&
-    stop_kms_container "${backend}" "${cell_dir}/old-seed.log"
+    create_kek &&
+    stop_old "${backend}" "${cell_dir}/old-seed.log" || return 1
+  [ -n "${CKMS_BIN}" ] || return 0
+  KEK_ACTIVE=1
+  start_old "${old_image}" "${backend}" "${seed_target}" "${cell_dir}/old-kek.log" "${old_version}" &&
+    run_populate populate "${cell_dir}/populate-kek" --prefix kek --lenient &&
+    stop_old "${backend}" "${cell_dir}/old-kek.log"
 }
 
 # Run the 4-phase upgrade gate for one (backend, old_version) pair.
@@ -466,28 +512,40 @@ run_upgrade_cell() {
 
   local legacy_state=() # releases before 5.13.0 stored a State in the JSON that lags the enforced column
   ! version_lt "${old_version}" 5.13.0 || legacy_state=(--legacy-state)
+  # Redis releases before 5.29.0 can leave a Findex tag the stored record lost; see populate_db.sh
+  if [ "${backend}" = "redis" ] && version_lt "${old_version}" 5.29.0; then legacy_state+=(--legacy-locate); fi
+  local nested_wrap=() # releases before 5.29.0 cannot unwrap a key wrapped by a user key after a restart when a KEK is configured
+  ! version_lt "${old_version}" 5.29.0 || nested_wrap=(--legacy-nested-wrap)
+  PHASE=seed
   start_db_container "${backend}" &&
     seed_cell_db "${backend}" "${old_version}" "${old_image}" "${seed}" "${cell_dir}" "${seed_target}" &&
     backup_seeded_db "${backend}" "${cell_dir}" &&
+    { PHASE=candidate; } &&
     start_candidate "${backend}" "${cand_target}" "${cell_dir}/new-candidate.log" &&
     run_py_verifier verify "${backend}" "${old_version}" "${seed}" \
       --snapshot "${cell_dir}/snapshot.json" --phase candidate --mutate &&
     run_populate verify "${cell_dir}/populate-old" "${legacy_state[@]}" &&
-    run_populate populate "${cell_dir}/populate-new" --prefix new --migrated-state "${cell_dir}/populate-old" &&
+    { [ -z "${KEK_ACTIVE}" ] || run_populate verify "${cell_dir}/populate-kek" "${legacy_state[@]}"; } &&
+    run_populate populate "${cell_dir}/populate-new" --prefix new --migrated-state "${cell_dir}/populate-old" ${KEK_ACTIVE:+--kek-wrapped} &&
+    { PHASE=candidate-restart; } &&
     stop_candidate "${backend}" "${cell_dir}/new-candidate.log" &&
     start_candidate "${backend}" "${cand_target}" "${cell_dir}/new-restart.log" &&
     run_py_verifier verify "${backend}" "${old_version}" "${seed}" \
       --snapshot "${cell_dir}/snapshot.json" --phase candidate-restart &&
     run_populate verify "${cell_dir}/populate-old" "${legacy_state[@]}" &&
+    { [ -z "${KEK_ACTIVE}" ] || run_populate verify "${cell_dir}/populate-kek" "${legacy_state[@]}"; } &&
     run_populate verify "${cell_dir}/populate-new" &&
     stop_candidate "${backend}" "${cell_dir}/new-restart.log" &&
+    { PHASE=restore; } &&
     prepare_restore_db "${backend}" "${cell_dir}" &&
-    start_kms_container "${old_image}" "${backend}" "${rest_target}" "${cell_dir}/old-restore.log" "${old_version}" &&
+    start_old "${old_image}" "${backend}" "${rest_target}" "${cell_dir}/old-restore.log" "${old_version}" &&
     run_py_verifier verify "${backend}" "${old_version}" "${seed}" \
       --snapshot "${cell_dir}/snapshot.json" --phase restore &&
     run_populate verify "${cell_dir}/populate-old" "${legacy_state[@]}" &&
-    stop_kms_container "${backend}" "${cell_dir}/old-restore.log"
+    { [ -z "${KEK_ACTIVE}" ] || run_populate verify "${cell_dir}/populate-kek" "${legacy_state[@]}" "${nested_wrap[@]}"; } &&
+    stop_old "${backend}" "${cell_dir}/old-restore.log"
   local rc="$?"
+  [ "${rc}" = 0 ] || echo "cell ${backend}:${old_version} failed in phase: ${PHASE}" >&2
   [ -z "${HOST_KMS_PID}" ] || stop_host_kms
   docker rm --force "${DB_CONTAINER}" >/dev/null 2>&1 || true
   return "${rc}"
@@ -496,7 +554,13 @@ run_upgrade_cell() {
 parse_args "$@"
 NEW_LABEL="${NEW_IMAGE}"
 if [ -n "${NEW_KMS}" ]; then NEW_LABEL="$("${NEW_KMS}" --version | head -n1)"; fi
-RAW_VERSIONS="$(resolve_old_versions)"
+if [ -n "${OLD_KMS}" ]; then
+  RAW_VERSIONS="$("${OLD_KMS}" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+  [ -n "${RAW_VERSIONS}" ] || print_error "Cannot read a version from: ${OLD_KMS} --version"
+  ! version_lt "${RAW_VERSIONS}" 5.17.0 || print_error "--old-kms needs a >= 5.17.0 binary (host start uses PEM TLS)"
+else
+  RAW_VERSIONS="$(resolve_old_versions)"
+fi
 RAW_BACKENDS="$(resolve_backends)"
 mapfile -t VERSIONS <<<"${RAW_VERSIONS}"
 read -r -a BACKENDS <<<"${RAW_BACKENDS}"
@@ -527,7 +591,7 @@ FAILED=()
 REPLAYS=()
 for old_ver in "${VERSIONS[@]}"; do
   old_img="${REPO_PREFIX}:${old_ver}"
-  pull_image_with_retry "${old_img}"
+  [ -n "${OLD_KMS}" ] || pull_image_with_retry "${old_img}"
   for backend in "${BACKENDS[@]}"; do
     if [ "${backend}" = "redis" ] && version_lt "${old_ver}" 5.12.0; then
       print_warning "redis: skipping ${old_ver} (pre-5.12.0 Redis/Findex data is refused by design, crate/server_database/src/stores/redis/migrations/mod.rs:122)"

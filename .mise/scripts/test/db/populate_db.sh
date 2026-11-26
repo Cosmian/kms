@@ -3,14 +3,19 @@
 # `ckms` (plus curl for the operations `ckms` cannot send), then re-check it later.
 #
 #   populate_db.sh populate --ckms BIN --url URL --state-dir DIR [--prefix pop] [--variant fips|non-fips]
-#                           [--lenient] [--migrated-state DIR]
-#   populate_db.sh verify   --ckms BIN --url URL --state-dir DIR [--legacy-state]
+#                           [--lenient] [--kek-wrapped] [--migrated-state DIR]
+#   populate_db.sh verify   --ckms BIN --url URL --state-dir DIR [--legacy-state] [--legacy-locate] [--legacy-nested-wrap]
 #
 # populate writes DIR/{artifacts.tsv,ops.tsv,ids.env}; verify replays artifacts.tsv against a server
 # holding a (possibly migrated) copy of the database. --lenient records unsupported operations as SKIP
 # instead of aborting (used against old releases). --legacy-state (verify) accepts the State drift of
 # releases before 5.13.0 (stored JSON PreActive/Deactivated vs enforced column Active/Destroyed) and Locate
-# entries whose stored record lacks the tag (5.12.x Redis stale Findex index).
+# entries whose stored record lacks the tag (5.12.x Redis stale Findex index). --legacy-locate (verify) accepts
+# only that Locate drift, for Redis releases before 5.29.0 whose re-certified certificates lost the tag.
+# --kek-wrapped (populate) is for a server configured with a key encryption key: every server version refuses to
+# export a wrapped private key in a requested format, so those Get/Export operations are recorded as SKIP.
+# --legacy-nested-wrap (verify) skips the decrypt check of keys wrapped by a user key on a server configured with a
+# key encryption key: releases before 5.29.0 cannot unwrap them after a restart (Incompatible_Cryptographic_Usage_Mask).
 set -euo pipefail
 
 MISE_CONFIG_ROOT="${MISE_CONFIG_ROOT:-$(git rev-parse --show-toplevel)}"
@@ -24,7 +29,7 @@ cd "$(get_repo_root "${MISE_CONFIG_ROOT}")"
 
 MODE="${1:-}"
 [ "$#" -eq 0 ] || shift
-CKMS="" URL="" STATE="" P="pop" VARIANT="fips" LENIENT=0 LEGACY_STATE=0 MIGRATED=""
+CKMS="" URL="" STATE="" P="pop" VARIANT="fips" LENIENT=0 LEGACY_STATE=0 LEGACY_LOCATE=0 KEK_WRAPPED=0 LEGACY_NESTED=0 MIGRATED=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --ckms) CKMS="$2" ;;
@@ -33,8 +38,8 @@ while [ "$#" -gt 0 ]; do
     --prefix) P="$2" ;;
     --variant) VARIANT="$2" ;;
     --migrated-state) MIGRATED="$2" ;;
-    --lenient | --legacy-state)
-      [ "$1" = --lenient ] && LENIENT=1 || LEGACY_STATE=1
+    --lenient | --legacy-state | --legacy-locate | --kek-wrapped | --legacy-nested-wrap)
+      case "$1" in --lenient) LENIENT=1 ;; --legacy-state) LEGACY_STATE=1 ;; --kek-wrapped) KEK_WRAPPED=1 ;; --legacy-nested-wrap) LEGACY_NESTED=1 ;; *) LEGACY_LOCATE=1 ;; esac
       shift
       continue
       ;;
@@ -82,7 +87,8 @@ op() {
     return 0
   fi
   err="$(tail -n 3 "${STATE}/last.err" | tr '\t\n' '  ')"
-  if [ "${LENIENT}" = 1 ]; then
+  [ -n "${err// /}" ] || err="$(tail -n 3 "${STATE}/ckms.log" | tr '\t\n' '  ')" # owner_ckms/user_ckms send stderr to ckms.log
+  if [ "${LENIENT}" = 1 ] || { [ "${KEK_WRAPPED}" = 1 ] && [[ "${err}" == *"wrapped key with a requested Key Format Type"* ]]; }; then
     printf '%s\tSKIP\t%s\n' "${name}" "${err:0:200}" >>"${STATE}/ops.tsv"
     return 1
   fi
@@ -468,6 +474,7 @@ verify() {
         [ "${actual}" = "${d}" ] || fail digest "${b}" "${d}" "${actual}"
         ;;
       cipher)
+        [ "${LEGACY_NESTED}" = 1 ] && [[ "${b}" == *_wrapped ]] && continue
         out="${STATE}/verify.dec.tmp"
         rm -f "${out}"
         if [ "${a}" = rsa ]; then
@@ -497,7 +504,7 @@ verify() {
         # so Locate found the object; the upgrade re-indexes it from the record. Tolerated when the record lacks the tag.
         for m in $(comm -23 <(comm -23 <(sort "${STATE}/${b}") <(printf '%s\n' "${absent}")) <(printf '%s\n' "${cur}")); do
           [ "$(state_of "${m}" 2>/dev/null || true)" = Destroyed ] && continue
-          [ "${LEGACY_STATE}" = 1 ] && ! has_tag "${m}" "${a}" && continue
+          { [ "${LEGACY_STATE}" = 1 ] || [ "${LEGACY_LOCATE}" = 1 ]; } && ! has_tag "${m}" "${a}" && continue
           actual+="${m} "
         done
         [ -z "${actual}" ] || fail locate "${a}" "all located objects" "missing ${actual}"
