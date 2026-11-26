@@ -813,6 +813,7 @@ Crate path: `crate/server`
 | `error` | `OCSP certificate status lookup failed: {e}` | `src/routes/ocsp/handler.rs` | `e` | - |
 | `debug` | `Serving UI feature flags` | `src/routes/ui_auth.rs` | - | - |
 | `trace` | `GET /ui/config` | `src/routes/ui_auth.rs` | - | - |
+| `warn` | `[{idx}] CRL not obtainable for '{:?}', skipping revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
 
 ### `cosmian_kms_server_database`
 
