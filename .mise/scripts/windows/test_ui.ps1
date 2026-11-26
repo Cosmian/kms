@@ -152,7 +152,9 @@ $PreviewPort = Get-FreeTcpPort -StartPort 5173 -EndPort 5190
 
 # Launch the pre-built binary directly — startup is near-instant.
 $oldRustLog = $env:RUST_LOG
+$oldUiEnable = $env:KMS_UI_ENABLE
 $env:RUST_LOG = "cosmian_kms_server=info,cosmian_kms_server_database=info"
+$env:KMS_UI_ENABLE = "false"
 try {
     $KmsProc = Start-Process -FilePath $KmsBin `
         -ArgumentList @(
@@ -170,6 +172,7 @@ try {
 }
 finally {
     $env:RUST_LOG = $oldRustLog
+    $env:KMS_UI_ENABLE = $oldUiEnable
 }
 
 Write-Host "==> Waiting for KMS to be ready ..." -ForegroundColor Cyan

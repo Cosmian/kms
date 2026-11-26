@@ -15,7 +15,7 @@ For UI testing, install the [Chrome DevTools MCP server](https://github.com/mcp/
 A live KMS server must also be reachable before any test scenario can execute. The skill will either detect one or start one for you. It's usually better to start the server instead of letting the agent figure it out **especially if the new feature introduces new configurations**. Running as "read-to-use" server is a better practice that saves tokens, computing power, and time. The most cummon server that the skill will be using is the one ran using this command :
 
 ```bash
-pnpm -C ui build && cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/no_auth.toml
+pnpm -C ui build && cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/auth/none.toml
 ```
 
 ### External systems
@@ -24,11 +24,11 @@ If the KMS has to interact with other systems: a HSM, another server, another KM
 
 ## Sample prompts
 
-#### _Example: PR that introduces AWS BYOK_
+### _Example: PR that introduces AWS BYOK_
 
 > You are the last testing gate. In this PR, I added an API, Cli commands and an AI that lets us communicate with an Amazon KMS (or AWS KMS) and perform the BYOK flow as per the docs joint in this chat. I have made the AWS KMS available at address=... port=... and the Eviden KMS at=... . Read the diffs and perform the tests
 
-#### _Example: A simple UI button_
+### _Example: A simple UI button_
 
 > I introduced a UI button that lets users change the layout colors in this PR. Test this.
 

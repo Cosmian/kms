@@ -322,7 +322,7 @@ async fn aws_byok_with_rsa_aes_key_wrap_sha256() -> KmsCliResult<()> {
     let temp_dir = tmp_dir.path();
     // Generate an ECC keypair in the KMS (the key material to wrap will be the private key)
     let create_keypair_action = CreateEccKeyPairAction {
-        sensitive: false,
+        sensitive: None,
         ..Default::default()
     };
 

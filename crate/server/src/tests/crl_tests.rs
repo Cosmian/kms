@@ -1808,3 +1808,43 @@ async fn test_auto_crl_regeneration_when_revoker_lacks_ca_key_access() -> KResul
     );
     Ok(())
 }
+
+/// `validity_days` above `MAX_CRL_VALIDITY_DAYS` is refused before any state change
+/// (it used to panic on `u32::MAX` and publish far-future `nextUpdate` values).
+#[tokio::test]
+async fn test_crl_rejects_out_of_range_validity_days() -> KResult<()> {
+    use crate::{
+        core::operations::generate_crl::{CrlRequester, MAX_CRL_VALIDITY_DAYS, generate_crl},
+        error::KmsError,
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::new("crl_owner");
+    let (ca_id, _) = certify(&kms, &owner, "Validity CA", None, None, CA_EXT).await?;
+
+    for days in [MAX_CRL_VALIDITY_DAYS + 1, u32::MAX] {
+        let res = generate_crl(&kms, &ca_id, Some(days), CrlRequester::User(&owner))
+            .await
+            .map(|_| ());
+        assert!(
+            matches!(res, Err(KmsError::InvalidRequest(_))),
+            "validity_days {days} must be rejected, got {res:?}"
+        );
+    }
+
+    let crl = generate_crl(
+        &kms,
+        &ca_id,
+        Some(MAX_CRL_VALIDITY_DAYS),
+        CrlRequester::User(&owner),
+    )
+    .await?;
+    let next_update = crl.next_update().expect("CRL must have a nextUpdate");
+    let diff = crl.last_update().diff(next_update).expect("time diff");
+    assert!(
+        (364..=365).contains(&diff.days),
+        "nextUpdate must be about 365 days after thisUpdate, got {} days",
+        diff.days
+    );
+    Ok(())
+}

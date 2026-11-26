@@ -29,6 +29,10 @@ pub(crate) fn create_rsa_key_pair(
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["keys", "create"];
+    // `--sensitive` takes an optional value: it must not directly precede the positional key id
+    if options.sensitive {
+        args.push("--sensitive");
+    }
 
     let num_s;
     if let Some(size_in_bits) = options.number_of_bits {
@@ -40,9 +44,6 @@ pub(crate) fn create_rsa_key_pair(
     for tag in &options.tags {
         args.push("--tag");
         args.push(tag);
-    }
-    if options.sensitive {
-        args.push("--sensitive");
     }
     if let Some(key_id) = options.key_id.as_ref() {
         args.push(key_id);

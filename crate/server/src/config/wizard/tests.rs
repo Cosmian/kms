@@ -258,6 +258,7 @@ fn test_config_toml_round_trip_preserves_values() {
             tls_cert_file: Some(PathBuf::from("/etc/cosmian/server.crt")),
             tls_key_file: Some(PathBuf::from("/etc/cosmian/server.key")),
             clients_ca_cert_file: Some(PathBuf::from("/etc/cosmian/ca.crt")),
+            clients_crl_dir: Some(PathBuf::from("/etc/cosmian/crls")),
             ..TlsConfig::default()
         },
         kms_public_url: Some("https://kms.example.com".to_owned()),
@@ -301,6 +302,10 @@ fn test_config_toml_round_trip_preserves_values() {
     assert_eq!(
         restored.tls.clients_ca_cert_file.as_deref(),
         Some(Path::new("/etc/cosmian/ca.crt"))
+    );
+    assert_eq!(
+        restored.tls.clients_crl_dir.as_deref(),
+        Some(Path::new("/etc/cosmian/crls"))
     );
     assert_eq!(
         restored.kms_public_url.as_deref(),

@@ -21,10 +21,11 @@ Actix-web evaluates `.wrap()` in **LIFO** order: the last `.wrap()` runs
 **first** on the incoming request, and **last** on the outgoing response.
 
 ```text
-// Request flow (top-to-bottom):
-//   .wrap(Cors::permissive())          ← runs LAST  (outermost for response)
-//   .wrap(auth_extractor())            ← runs SECOND
-//   .wrap(ensure_auth_middleware(...)) ← runs FIRST  (innermost, closest to handler)
+// Registration order (LIFO — last `.wrap()` runs FIRST on incoming request):
+//   .wrap(ensure_auth_middleware(...))   ← runs LAST on ingress  (innermost auth gate, closest to handler)
+//   .wrap(auth_extractor())              ← runs BEFORE ensure_auth_middleware
+//   .wrap(AuditMiddleware::new(...))     ← wraps auth (records both success and failure)
+//   .wrap(allowed_origins_cors(...))     ← runs FIRST on ingress (outermost; handles OPTIONS preflight)
 //   .service(handler)
 ```
 
@@ -35,19 +36,19 @@ Since actix-web is LIFO, this means auth extractors must appear **after**
 
 ### Check each scope for
 
-| Scope | Auth extractors (run first) | Gate (runs second) |
-|-------|---------------------------|-------------------|
-| kmip | `tls_auth_fn` → `jwt_auth_middleware` → `api_token_middleware` → `vault_token_optional_middleware` | `ensure_auth_middleware` |
-| ms_dke | `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `api_token_middleware` | `ensure_auth_middleware` |
-| tokenize | `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `api_token_middleware` | `ensure_auth_middleware` |
-| crypto | `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `api_token_middleware` | `ensure_auth_middleware` |
-| transit/PKI | `spire_token_middleware` (strict — mandates `X-Vault-Token`) | (none — handled inside middleware) |
+| Scope | Outer wraps (ingress first) | Auth extractors (ingress order) | Gate (runs after extractors) |
+|-------|-----------------------------|---------------------------------|------------------------------|
+| default (`""` — KMIP, permissions, TEE) | `allowed_origins_cors` → `AuditMiddleware` | `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `AuthVerifier` → `api_token_middleware` → `SessionAuth` (`wrap_native_auth`) | `ensure_auth_middleware` |
+| `crypto` (`/v1/crypto`) | `allowed_origins_cors` → `AuditMiddleware` | `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `AuthVerifier` → `api_token_middleware` → `SessionAuth` (`wrap_native_auth`) | `ensure_auth_middleware` |
+| `tokenize` (`/tokenize`) | `allowed_origins_cors` | `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `AuthVerifier` → `api_token_middleware` → `SessionAuth` (`wrap_native_auth`) | `ensure_auth_middleware` |
+| `ms_dke` (`/ms_dke`) | `Cors::permissive()` | `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `api_token_middleware` | `ensure_auth_middleware` |
+| `transit` / `PKI` (`/v1/<mount>`) | `Cors::default()` | `spire_token_middleware` (strict — mandates `X-Vault-Token`) | (none — handled inside middleware) |
 
 ### Verify
 
-- [ ] `vault_token_optional_middleware` is the **outermost** `.wrap()` on every scope (LIFO: runs first, injects user before native auth)
+- [ ] `vault_token_optional_middleware` is the **outermost auth extractor** inside `wrap_native_auth` (and inline on `ms_dke`) so it runs before native auth; `AuditMiddleware` and CORS wrap **outside** `wrap_native_auth`
 - [ ] `spire_token_middleware` (strict) is only on transit/PKI scopes — never on scopes that accept native auth
-- [ ] `ensure_auth_middleware` is always the innermost auth-related wrap
+- [ ] `ensure_auth_middleware` is always the innermost auth-related wrap (barring inner post-auth guards such as `reject_forgeable_session_mutation` on KV scopes)
 - [ ] Each `Condition` guard's boolean matches the auth method actually configured
 
 ## Step 3 — Extension injection check
@@ -67,9 +68,7 @@ Is present in every auth path, not just the happy path.
 
 ## Step 4 — CORS placement
 
-`Cors::permissive()` must be the **innermost** wrap (runs last on ingress,
-first on egress). Verify it's the first `.wrap()` in the chain (closest
-to `.service()`).
+CORS (`allowed_origins_cors`, `Cors::permissive()`, or `Cors::default()`) must be the **outermost** `.wrap()` on each scope (last `.wrap()` in the chain — runs **first** on ingress and **last** on egress) so `OPTIONS` preflight requests are handled before authentication and audit middleware.
 
 ## Step 5 — Report
 
@@ -79,4 +78,4 @@ Flag any of:
 - 🔴 Missing `AuthenticatedUser` injection in one auth path
 - 🟠 `spire_token_middleware` (strict) on a native-auth scope (double-auth required)
 - 🟡 `vault_token_optional_middleware` missing from a scope that should accept vault tokens
-- 🟢 CORS ordering suboptimal (not innermost)
+- 🟢 CORS ordering suboptimal (not outermost — `OPTIONS` preflight hits auth middleware)

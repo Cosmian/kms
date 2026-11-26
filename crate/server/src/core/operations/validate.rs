@@ -27,7 +27,7 @@ use crate::{
     config::ProxyParams,
     core::{
         KMS,
-        certificate::validate_crl_url,
+        certificate::{resolve_crl_host, validate_crl_url, validate_resolved_addrs},
         operations::certify::rfc9608,
         retrieve_object_utils::{retrieve_object_for_operation, user_has_permission},
         uid_utils::ObjectHandle,
@@ -36,6 +36,18 @@ use crate::{
     middlewares::UserId,
     result::{KResult, KResultHelper},
 };
+
+/// Outcome of a CRL check that completed: a certificate listed in a CRL is `Revoked`.
+///
+/// Failures to obtain or validate a CRL are *not* a verdict: they are returned as errors so
+/// that callers never mistake an infrastructure problem for evidence of revocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CrlVerdict {
+    /// No certificate of the chain appears in the CRLs.
+    NotRevoked,
+    /// At least one certificate is listed in a CRL.
+    Revoked,
+}
 
 /// Fetched CRLs: `uri` → `(bytes, fetched_at)`.
 ///
@@ -293,14 +305,20 @@ async fn check_chain(
     // this function to return an error — the certificate is treated as valid when
     // the CRL DP is simply unreachable. Only deterministic revocation evidence
     // or a malformed/expired CRL propagates here as an error.
-    verify_crls(
+    match verify_crls(
         certificates,
         kms.params.proxy_params.as_ref(),
         kms.params.kms_public_url.as_deref(),
+        false,
     )
     .await
-    .map_err(|crl_err| KmsError::Certificate(format!("CRL validation failed: {crl_err}")))?;
-    Ok(())
+    .map_err(|crl_err| KmsError::Certificate(format!("CRL validation failed: {crl_err}")))?
+    {
+        CrlVerdict::NotRevoked => Ok(()),
+        CrlVerdict::Revoked => Err(KmsError::Certificate(
+            "CRL validation failed: Certificate is revoked or removed from CRL".to_owned(),
+        )),
+    }
 }
 
 /// Extracts the subject key identifier and authority key identifier from an X509 certificate.
@@ -594,6 +612,158 @@ fn verify_chain_signature(certificates: &[X509]) -> KResult<ValidityIndicator> {
 /// Real-world CRLs are typically a few kilobytes to a few megabytes.
 const CRL_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 
+/// Maximum number of CRLs kept in [`CRL_CACHE_MAP`].
+const CRL_CACHE_MAX_ENTRIES: usize = 256;
+
+/// Maximum combined size of the CRLs kept in [`CRL_CACHE_MAP`] (64 MiB).
+const CRL_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+/// Maximum number of CRL downloads running at the same time.
+const CRL_MAX_CONCURRENT_FETCHES: usize = 8;
+
+/// Bounds the number of concurrent outbound CRL fetches.
+static CRL_FETCH_PERMITS: LazyLock<tokio::sync::Semaphore> =
+    LazyLock::new(|| tokio::sync::Semaphore::new(CRL_MAX_CONCURRENT_FETCHES));
+
+/// Insert a CRL in the cache, dropping aged-out entries first and then the oldest entries
+/// until both [`CRL_CACHE_MAX_ENTRIES`] and [`CRL_CACHE_MAX_BYTES`] hold.
+///
+/// A single CRL is at most [`CRL_MAX_RESPONSE_BYTES`], below the byte bound, and the entry
+/// just inserted is never the one evicted.
+fn insert_bounded(crls: &mut HashMap<String, (Vec<u8>, Instant)>, uri: &str, crl_bytes: Vec<u8>) {
+    crls.retain(|_, (_, fetched_at)| fetched_at.elapsed() < CRL_CACHE_MAX_AGE);
+    crls.insert(uri.to_owned(), (crl_bytes, Instant::now()));
+    let mut total_bytes: usize = crls.values().map(|(bytes, _)| bytes.len()).sum();
+    while crls.len() > CRL_CACHE_MAX_ENTRIES || total_bytes > CRL_CACHE_MAX_BYTES {
+        let Some(oldest) = crls
+            .iter()
+            .filter(|(cached_uri, _)| cached_uri.as_str() != uri)
+            .min_by_key(|(_, (_, fetched_at))| *fetched_at)
+            .map(|(uri, _)| uri.clone())
+        else {
+            break;
+        };
+        if let Some((bytes, _)) = crls.remove(&oldest) {
+            total_bytes = total_bytes.saturating_sub(bytes.len());
+        }
+    }
+}
+
+/// Download a CRL over HTTP(S): no redirects, 30 s total timeout, body capped at
+/// [`CRL_MAX_RESPONSE_BYTES`] while streaming (a chunked response without `Content-Length`
+/// cannot make the server buffer more), at most [`CRL_MAX_CONCURRENT_FETCHES`] in flight.
+///
+/// `pinned` is the `(host name, checked addresses)` pair the connection is restricted to.
+async fn fetch_crl_http(
+    uri: &str,
+    proxy_params: Option<&ProxyParams>,
+    pinned: Option<&(String, Vec<std::net::SocketAddr>)>,
+) -> KResult<Vec<u8>> {
+    let _permit = CRL_FETCH_PERMITS
+        .acquire()
+        .await
+        .map_err(|e| KmsError::ServerError(format!("CRL fetch limiter is closed: {e}")))?;
+
+    let mut client_builder = reqwest::Client::builder()
+        // SECURITY (COSMIAN-2026-021): never follow redirects — a 3xx to an
+        // internal address would bypass the URL validation.
+        .redirect(reqwest::redirect::Policy::none())
+        // Bound the total request time to prevent slowloris / resource exhaustion.
+        .timeout(std::time::Duration::from_secs(30));
+
+    if let Some((domain, addrs)) = pinned {
+        client_builder = client_builder.resolve_to_addrs(domain, addrs);
+    }
+
+    if let Some(proxy_params) = proxy_params {
+        let mut proxy = reqwest::Proxy::all(proxy_params.url.clone()).map_err(|e| {
+            KmsError::Certificate(format!(
+                "Failed to configure the HTTPS proxy for CRL fetch: {e}"
+            ))
+        })?;
+        if let Some(username) = &proxy_params.basic_auth_username {
+            proxy = proxy.basic_auth(
+                username,
+                proxy_params
+                    .basic_auth_password
+                    .as_deref()
+                    .unwrap_or_default(),
+            );
+        } else if let Some(custom_auth_header) = &proxy_params.custom_auth_header {
+            proxy = proxy.custom_http_auth(
+                reqwest::header::HeaderValue::from_str(custom_auth_header).map_err(|e| {
+                    KmsError::Certificate(format!(
+                        "Failed to set custom HTTP auth header for CRL fetch: {e}"
+                    ))
+                })?,
+            );
+        }
+        if !proxy_params.exclusion_list.is_empty() {
+            proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
+                &proxy_params.exclusion_list.join(","),
+            ));
+        }
+        client_builder = client_builder.proxy(proxy);
+    }
+
+    let mut response = client_builder
+        .build()
+        .map_err(|e| {
+            KmsError::Certificate(format!("Failed to build reqwest client for CRL fetch: {e}"))
+        })?
+        .get(uri)
+        .send()
+        // IMPORTANT: use `?` (not `.map_err`) so that `From<reqwest::Error>`
+        // converts network errors to `KmsError::ClientConnectionError`.
+        // `verify_crls()` treats `ClientConnectionError` as a soft failure
+        // (unreachable CRL DP) and `Certificate` as a hard failure.
+        .await?;
+
+    debug!(
+        "CRL response received: uri={uri} status={}",
+        response.status()
+    );
+
+    if !response.status().is_success() {
+        // ServerError (not Certificate): a CRL that cannot be obtained (404 before the
+        // first revocation, 5xx) is no evidence of revocation. `verify_crls` skips it
+        // for `Import` (`skip_unobtainable_crls`) and fails closed for `Validate`.
+        return Err(KmsError::ServerError(format!(
+            "CRL at '{uri}' returned non-success status: {}",
+            response.status()
+        )));
+    }
+
+    // SECURITY (COSMIAN-2026-021): cap the body size to prevent memory exhaustion.
+    // Use saturating conversion: on 32-bit targets a u64 > usize::MAX would overflow;
+    // we treat that as "exceeds limit" which is correct.
+    let content_length =
+        usize::try_from(response.content_length().unwrap_or(0)).unwrap_or(usize::MAX);
+    if content_length > CRL_MAX_RESPONSE_BYTES {
+        return Err(KmsError::Certificate(format!(
+            "CRL at '{uri}' reports Content-Length {content_length} which exceeds the \
+             {CRL_MAX_RESPONSE_BYTES}-byte limit"
+        )));
+    }
+
+    // Stream the body: a chunked response has no Content-Length, so the cap is enforced
+    // while reading and the connection is dropped as soon as it is exceeded.
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| KmsError::Certificate(format!("Error reading CRL body from '{uri}': {e}")))?
+    {
+        if body.len().saturating_add(chunk.len()) > CRL_MAX_RESPONSE_BYTES {
+            return Err(KmsError::Certificate(format!(
+                "CRL body from '{uri}' exceeds the {CRL_MAX_RESPONSE_BYTES}-byte limit"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 /// Retrieves Certificate Revocation List (CRL) bytes from a list of URIs.
 ///
 /// In production, only `http://` and `https://` URIs are fetched. All other URI
@@ -624,8 +794,11 @@ const CRL_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 /// - A URI uses a non-HTTP(S) scheme or is a bare filesystem path (production).
 /// - The URL targets a private, loopback, link-local, or internal hostname
 ///   (and is not the server's own URL).
-/// - The HTTP request fails, times out, or returns a non-2xx status.
+/// - The HTTP request fails or times out.
 /// - The response body exceeds [`CRL_MAX_RESPONSE_BYTES`].
+///
+/// Returns [`KmsError::ServerError`] if the server answers with a non-2xx status or the body
+/// cannot be read: no CRL could be obtained, which is not evidence of revocation.
 async fn get_crl_bytes(
     uri_list: Vec<String>,
     proxy_params: Option<&ProxyParams>,
@@ -699,100 +872,39 @@ async fn get_crl_bytes(
             debug!("CRL cache entry stale, refetching: {uri}");
         }
 
-        let mut client_builder = reqwest::Client::builder()
-            // SECURITY (COSMIAN-2026-021): never follow redirects — a 3xx to an
-            // internal address would bypass the URL validation above.
-            .redirect(reqwest::redirect::Policy::none())
-            // Bound the total request time to prevent slowloris / resource exhaustion.
-            .timeout(std::time::Duration::from_secs(30));
+        // SECURITY (F-032): a public-looking host name may resolve to an internal address.
+        // Resolve it here, reject any blocked address, and pin the connection to exactly the
+        // checked addresses so the HTTP client cannot re-resolve to a different answer.
+        // With a proxy the proxy resolves the name itself; that residual risk is documented.
+        let pinned = if is_own_url {
+            None
+        } else {
+            let parsed = url::Url::parse(&uri).map_err(|e| {
+                KmsError::Certificate(format!("Invalid CRL Distribution Point URL: {e}"))
+            })?;
+            let addrs = resolve_crl_host(&parsed).await?;
+            validate_resolved_addrs(&addrs)?;
+            match parsed.host() {
+                Some(url::Host::Domain(domain)) => Some((domain.to_owned(), addrs)),
+                _ => None,
+            }
+        };
 
-        if let Some(proxy_params) = proxy_params {
-            let mut proxy = reqwest::Proxy::all(proxy_params.url.clone()).map_err(|e| {
+        let crl_bytes = fetch_crl_http(&uri, proxy_params, pinned.as_ref()).await?;
+
+        // Only well-formed CRLs enter the cache. Signatures are verified on every use in
+        // `verify_crls`, so caching parsed-but-unverified bytes bypasses nothing.
+        X509Crl::from_pem(&crl_bytes)
+            .or_else(|_| X509Crl::from_der(&crl_bytes))
+            .map_err(|e| {
                 KmsError::Certificate(format!(
-                    "Failed to configure the HTTPS proxy for CRL fetch: {e}"
+                    "CRL fetched from '{uri}' is neither a valid PEM nor DER CRL: {e}"
                 ))
             })?;
-            if let Some(ref username) = proxy_params.basic_auth_username {
-                proxy = proxy.basic_auth(
-                    username,
-                    proxy_params
-                        .basic_auth_password
-                        .as_deref()
-                        .unwrap_or_default(),
-                );
-            } else if let Some(ref custom_auth_header) = proxy_params.custom_auth_header {
-                proxy = proxy.custom_http_auth(
-                    reqwest::header::HeaderValue::from_str(custom_auth_header).map_err(|e| {
-                        KmsError::Certificate(format!(
-                            "Failed to set custom HTTP auth header for CRL fetch: {e}"
-                        ))
-                    })?,
-                );
-            }
-            if !proxy_params.exclusion_list.is_empty() {
-                proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
-                    &proxy_params.exclusion_list.join(","),
-                ));
-            }
-            client_builder = client_builder.proxy(proxy);
-        }
-
-        let response = client_builder
-            .build()
-            .map_err(|e| {
-                KmsError::Certificate(format!("Failed to build reqwest client for CRL fetch: {e}"))
-            })?
-            .get(&uri)
-            .send()
-            // IMPORTANT: use `?` (not `.map_err`) so that `From<reqwest::Error>`
-            // converts network errors to `KmsError::ClientConnectionError`.
-            // `verify_crls()` treats `ClientConnectionError` as a soft failure
-            // (unreachable CRL DP) and `Certificate` as a hard failure.
-            .await?;
-
-        debug!(
-            "CRL response received: uri={uri} status={}",
-            response.status()
-        );
-
-        if !response.status().is_success() {
-            return Err(KmsError::Certificate(format!(
-                "CRL at '{uri}' returned non-success status: {}",
-                response.status()
-            )));
-        }
-
-        // SECURITY (COSMIAN-2026-021): cap the body size to prevent memory
-        // exhaustion from an unbounded response.bytes().await call.
-        // Use saturating conversion: on 32-bit targets a u64 > usize::MAX
-        // would overflow; we treat that as "exceeds limit" which is correct.
-        let content_length =
-            usize::try_from(response.content_length().unwrap_or(0)).unwrap_or(usize::MAX);
-        if content_length > CRL_MAX_RESPONSE_BYTES {
-            return Err(KmsError::Certificate(format!(
-                "CRL at '{uri}' reports Content-Length {content_length} which exceeds the \
-                 {CRL_MAX_RESPONSE_BYTES}-byte limit"
-            )));
-        }
-
-        let crl_bytes = response.bytes().await.map_err(|e| {
-            KmsError::Certificate(format!("Error reading CRL body from '{uri}': {e}"))
-        })?;
-
-        if crl_bytes.len() > CRL_MAX_RESPONSE_BYTES {
-            return Err(KmsError::Certificate(format!(
-                "CRL body from '{uri}' is {} bytes, exceeding the {CRL_MAX_RESPONSE_BYTES}-byte \
-                 limit",
-                crl_bytes.len()
-            )));
-        }
-
-        let crl_bytes = crl_bytes.to_vec();
         debug!("CRL fetched: uri={uri} size={}", crl_bytes.len());
         {
             let mut crls = CRL_CACHE_MAP.write().await;
-            crls.retain(|_, (_, fetched_at)| fetched_at.elapsed() < CRL_CACHE_MAX_AGE);
-            crls.insert(uri.clone(), (crl_bytes.clone(), Instant::now()));
+            insert_bounded(&mut crls, &uri, crl_bytes.clone());
         }
         result.insert(uri, crl_bytes);
     }
@@ -813,24 +925,28 @@ async fn get_crl_bytes(
 /// # Arguments
 ///
 /// * `certificates` - A vector of `X509` certificates to be verified.
+/// * `proxy_params` / `kms_public_url` - outbound proxy and the server's own public URL.
+/// * `skip_unobtainable_crls` - When `true`, a CRL that the distribution point cannot serve
+///   (HTTP non-2xx, unreadable body) is skipped with a warning, like an unreachable one, so
+///   that the remaining certificates of the chain are still checked (used by `Import`).
+///   When `false` it is an error (used by `Validate`: fail closed).
 ///
 /// # Returns
 ///
-/// * `KResult<ValidityIndicator>` - Returns `ValidityIndicator::Valid` if all certificates are valid,
-///   otherwise returns an error indicating the reason for invalidity.
+/// * `KResult<CrlVerdict>` - [`CrlVerdict::Revoked`] when a CRL lists a certificate,
+///   [`CrlVerdict::NotRevoked`] when every certificate is absent from the CRLs.
 ///
 /// # Errors
 ///
-/// This function will return an error in the following cases:
-/// * If a certificate is found to be revoked or removed from the CRL.
-/// * If there is an issue deserializing a CRL.
-/// * If the CRL signature is invalid.
-/// * If there is an issue fetching the CRL bytes from the URIs.
+/// Any failure to obtain or validate a CRL (fetch, parse, freshness, signature, blocked
+/// distribution point) is an `Err`: it says nothing about the certificate's revocation status,
+/// so callers must not treat it as evidence of revocation.
 pub(crate) async fn verify_crls(
     certificates: Vec<X509>,
     proxy_params: Option<&ProxyParams>,
     kms_public_url: Option<&str>,
-) -> KResult<ValidityIndicator> {
+    skip_unobtainable_crls: bool,
+) -> KResult<CrlVerdict> {
     let mut current_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
     for (idx, certificate) in certificates.iter().enumerate() {
@@ -853,9 +969,7 @@ pub(crate) async fn verify_crls(
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Parent CRL verification: revocation status: {res:?}");
                 if res == ValidityIndicator::Invalid {
-                    return Err(KmsError::Certificate(
-                        "Certificate is revoked or removed from CRL".to_owned(),
-                    ));
+                    return Ok(CrlVerdict::Revoked);
                 }
             }
         }
@@ -900,6 +1014,14 @@ pub(crate) async fn verify_crls(
                     warn!(
                         "[{idx}] CRL distribution point unreachable for '{:?}', skipping \
                          revocation check: {e}",
+                        certificate.subject_name()
+                    );
+                    current_crls = HashMap::new();
+                    continue;
+                }
+                Err(KmsError::ServerError(ref e)) if skip_unobtainable_crls => {
+                    warn!(
+                        "[{idx}] CRL not obtainable for '{:?}', skipping revocation check: {e}",
                         certificate.subject_name()
                     );
                     current_crls = HashMap::new();
@@ -970,15 +1092,13 @@ pub(crate) async fn verify_crls(
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Revocation status: result: {res:?}");
                 if res == ValidityIndicator::Invalid {
-                    return Err(KmsError::Certificate(
-                        "Certificate is revoked or removed from CRL".to_owned(),
-                    ));
+                    return Ok(CrlVerdict::Revoked);
                 }
             }
         }
     }
     trace!("verify_crls: exiting in success");
-    Ok(ValidityIndicator::Valid)
+    Ok(CrlVerdict::NotRevoked)
 }
 
 // If fetching a certificate fails, the method reports the first error happening.
@@ -1380,21 +1500,26 @@ mod tests {
 
     // ── get_crl_bytes integration tests ────────────────────────────────────────
 
-    /// Spawn a one-shot HTTP server that immediately returns a 307 redirect.
-    async fn one_shot_redirect_server(redirect_to: String) -> u16 {
+    /// Spawn a one-shot HTTP server that answers the first request with `response` (raw HTTP).
+    async fn one_shot_server(response: String) -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buf = vec![0_u8; 4096];
             drop(stream.read(&mut buf).await);
-            let response = format!(
-                "HTTP/1.1 307 Temporary Redirect\r\nLocation: {redirect_to}\r\n\
-                 Content-Length: 0\r\nConnection: close\r\n\r\n"
-            );
             drop(stream.write_all(response.as_bytes()).await);
         });
         port
+    }
+
+    /// Spawn a one-shot HTTP server that immediately returns a 307 redirect.
+    async fn one_shot_redirect_server(redirect_to: String) -> u16 {
+        one_shot_server(format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: {redirect_to}\r\n\
+             Content-Length: 0\r\nConnection: close\r\n\r\n"
+        ))
+        .await
     }
 
     /// SR-CRL-07: a 307 redirect to a loopback address must NOT be followed.
@@ -1509,6 +1634,107 @@ mod tests {
             result[&uri], sentinel,
             "Returned bytes must match the sentinel written to the temp file"
         );
+    }
+
+    /// F-025: a chunked response (no `Content-Length`) larger than the cap is cut off while
+    /// streaming: the call fails and the server sees the connection close before the end.
+    #[actix_web::test]
+    async fn sr_crl_17_chunked_body_over_cap_is_aborted() {
+        const TOTAL_CHUNKS: usize = 64;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0_u8; 4096];
+            drop(stream.read(&mut buf).await);
+            drop(
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\
+                          Connection: close\r\n\r\n",
+                    )
+                    .await,
+            );
+            let chunk = vec![b'A'; 1024 * 1024];
+            for sent in 0..TOTAL_CHUNKS {
+                let header = format!("{:x}\r\n", chunk.len());
+                if stream.write_all(header.as_bytes()).await.is_err()
+                    || stream.write_all(&chunk).await.is_err()
+                    || stream.write_all(b"\r\n").await.is_err()
+                {
+                    return sent;
+                }
+            }
+            TOTAL_CHUNKS
+        });
+
+        // The server's own URL is exempt from the SSRF check, which allows a loopback mock.
+        let base = format!("http://127.0.0.1:{port}");
+        let err = get_crl_bytes(vec![format!("{base}/crl.der")], None, Some(&base))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds the"),
+            "Expected a body-cap error, got: {err}"
+        );
+        let sent = tokio::time::timeout(std::time::Duration::from_secs(10), server)
+            .await
+            .expect("mock server did not notice the closed connection")
+            .unwrap();
+        assert!(
+            sent < TOTAL_CHUNKS,
+            "server streamed the whole {TOTAL_CHUNKS} MiB body: the client did not stop reading"
+        );
+    }
+
+    /// F-025: a response that is not a parseable CRL is rejected and never cached.
+    #[actix_web::test]
+    async fn sr_crl_18_non_crl_body_is_not_cached() {
+        let port = one_shot_server(
+            "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nnot a CRL!!!"
+                .to_owned(),
+        )
+        .await;
+        let base = format!("http://127.0.0.1:{port}");
+        let url = format!("{base}/crl.der");
+        let err = get_crl_bytes(vec![url.clone()], None, Some(&base))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("neither a valid PEM nor DER CRL"),
+            "Expected a parse error, got: {err}"
+        );
+        assert!(!CRL_CACHE_MAP.read().await.contains_key(&url));
+    }
+
+    /// F-025: the CRL cache never exceeds its entry-count and byte bounds.
+    #[test]
+    fn sr_crl_19_cache_is_bounded() {
+        let mut crls = HashMap::new();
+        for i in 0..300 {
+            insert_bounded(
+                &mut crls,
+                &format!("http://crl.example.com/{i}.crl"),
+                vec![0; 1024],
+            );
+        }
+        assert!(
+            crls.len() <= CRL_CACHE_MAX_ENTRIES,
+            "{} entries",
+            crls.len()
+        );
+
+        let mut crls = HashMap::new();
+        for i in 0..10 {
+            insert_bounded(
+                &mut crls,
+                &format!("http://crl.example.com/big{i}.crl"),
+                vec![0; CRL_MAX_RESPONSE_BYTES],
+            );
+        }
+        let total: usize = crls.values().map(|(bytes, _)| bytes.len()).sum();
+        assert!(total <= CRL_CACHE_MAX_BYTES, "{total} cached bytes");
+        assert!(!crls.is_empty());
     }
 }
 

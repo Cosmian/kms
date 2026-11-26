@@ -1,35 +1,27 @@
-#[cfg(feature = "non-fips")]
 use std::{fs, path::PathBuf};
 
-#[cfg(feature = "non-fips")]
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     read_bytes_from_file,
     reexport::cosmian_kms_client_utils::{
         export_utils::{ExportKeyFormat, WrappingAlgorithm},
         import_utils::{CertificateInputFormat, ImportKeyFormat, KeyUsage},
+        rsa_utils::RsaEncryptionAlgorithm,
     },
 };
-use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::rsa_utils::RsaEncryptionAlgorithm;
-#[cfg(feature = "non-fips")]
 use cosmian_logger::{debug, trace};
-#[cfg(feature = "non-fips")]
 use tempfile::TempDir;
-#[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
-#[cfg(feature = "non-fips")]
 use uuid::Uuid;
 
 use super::SUB_COMMAND;
-#[cfg(feature = "non-fips")]
-use crate::tests::{
-    certificates::import::{ImportCertificateInput, import_certificate},
-    shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
-    utils::owner_config,
-};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::utils::{ckms_bin, recover_cmd_logs},
+    tests::{
+        certificates::import::{ImportCertificateInput, import_certificate},
+        shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
+    },
 };
 
 /// Encrypts a file using the given public key and access policy.
@@ -68,7 +60,6 @@ pub(crate) fn encrypt(
 }
 
 /// Decrypt a file using the given private key
-#[cfg(feature = "non-fips")] // only used by the non-FIPS certificate encryption tests
 pub(crate) fn decrypt(
     cli_conf_path: &str,
     input_file: &str,
@@ -214,7 +205,6 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> CosmianResult<
     .await
 }
 
-#[cfg(feature = "non-fips")] // only used by the non-FIPS certificate encryption tests
 async fn import_encrypt_decrypt(
     filename: &str,
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
@@ -395,9 +385,6 @@ async fn test_certificate_encrypt_using_secp521r1() -> CosmianResult<()> {
     import_encrypt_decrypt("secp521r1", None).await
 }
 
-// FIPS: the imported certificate carries no `WrapKey` usage, so the server refuses
-// CKM_RSA_AES_KEY_WRAP ("not meant to wrap keys"); this test never ran in FIPS before #1522.
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certificate_encrypt_using_rsa() -> CosmianResult<()> {
     import_encrypt_decrypt("rsa-2048", Some(RsaEncryptionAlgorithm::CkmRsaAesKeyWrap)).await?;

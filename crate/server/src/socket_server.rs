@@ -1,6 +1,7 @@
 use std::{
     io::{self, ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
+    path::Path,
     sync::{
         Arc, RwLock,
         atomic::{AtomicUsize, Ordering},
@@ -70,6 +71,8 @@ pub struct SocketServerParams<'a> {
     pub server_chain_pem: Option<&'a [u8]>,
     /// Client CA certificate (PEM format, X509)
     pub client_ca_cert_pem: &'a [u8],
+    /// Hashed directory of CRLs used to reject revoked client certificates (fail-closed)
+    pub clients_crl_dir: Option<&'a Path>,
     /// Configured cipher suites to use for TLS connections (OpenSSL cipher string format)
     pub cipher_suites: Option<&'a String>,
 }
@@ -94,6 +97,7 @@ impl<'a> TryFrom<&'a ServerParams> for SocketServerParams<'a> {
             #[cfg(feature = "non-fips")]
             p12: tls_params.p12.as_ref(),
             client_ca_cert_pem,
+            clients_crl_dir: tls_params.clients_crl_dir.as_deref(),
             cipher_suites: tls_params.cipher_suites.as_ref(),
             server_cert_pem: &tls_params.server_cert_pem,
             server_key_pem: &tls_params.server_key_pem,
@@ -646,6 +650,7 @@ pub(crate) fn create_openssl_acceptor(server_config: &SocketServerParams) -> KRe
         &mut builder,
         server_config.client_ca_cert_pem,
         "socket server",
+        server_config.clients_crl_dir,
     )?;
     // The socket server authenticates exclusively via mTLS: abort the handshake
     // when the client sends no certificate (the shared helper only sets PEER).
@@ -668,6 +673,7 @@ mod tests {
         fs,
         io::{self, ErrorKind, Read, Write},
         net::{TcpListener, TcpStream},
+        path::Path,
         sync::{Arc, mpsc},
         thread,
         time::{Duration, Instant},
@@ -695,14 +701,16 @@ mod tests {
     use crate::{
         middlewares::UserId,
         routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER},
+        tls_config::tests::{OWNER, USER, write_crl},
     };
 
     type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
     const CERTS: &str = "../../test_data/certificates/client_server";
 
-    /// The socket server TLS acceptor configured with the test server certificate and client CA.
-    fn test_acceptor() -> TestResult<SslAcceptor> {
+    /// The socket server TLS acceptor configured with the test server certificate and client CA,
+    /// checking client certificates against the CRLs in `crl_dir` when set.
+    fn test_acceptor(crl_dir: Option<&Path>) -> TestResult<SslAcceptor> {
         let cert = fs::read(format!("{CERTS}/server/kmserver.acme.com.crt"))?;
         let key = PKey::private_key_from_pem(&fs::read(format!(
             "{CERTS}/server/kmserver.acme.com.key"
@@ -718,18 +726,20 @@ mod tests {
             server_key_pem: &key,
             server_chain_pem: None,
             client_ca_cert_pem: &ca,
+            clients_crl_dir: crl_dir,
             cipher_suites: None,
         };
         Ok(create_openssl_acceptor(&params)?)
     }
 
-    /// Run one server-side TLS handshake against a client built by `client_setup` and return
-    /// `on_accept` applied to the accepted server stream (`None` when the server refused it).
+    /// Run one server-side TLS handshake with `acceptor` against a client built by
+    /// `client_setup` and return `on_accept` applied to the accepted server stream (`None`
+    /// when the server refused it).
     fn serve_one<T: Send + 'static>(
+        acceptor: SslAcceptor,
         client_setup: impl FnOnce(&mut SslConnectorBuilder) -> TestResult,
         on_accept: impl FnOnce(&SslStream<DeadlineStream<'_>>) -> T + Send + 'static,
     ) -> TestResult<Option<T>> {
-        let acceptor = test_acceptor()?;
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let addr = listener.local_addr()?;
         let server = thread::spawn(move || -> io::Result<Option<T>> {
@@ -749,11 +759,13 @@ mod tests {
         Ok(server.join().map_err(|_e| "server thread panicked")??)
     }
 
-    /// Run one server-side TLS handshake and return whether the *server* accepted it.
+    /// Run one server-side TLS handshake with `acceptor` and return whether the *server*
+    /// accepted it.
     fn server_accepts(
+        acceptor: SslAcceptor,
         client_setup: impl FnOnce(&mut SslConnectorBuilder) -> TestResult,
     ) -> TestResult<bool> {
-        Ok(serve_one(client_setup, |_| ())?.is_some())
+        Ok(serve_one(acceptor, client_setup, |_| ())?.is_some())
     }
 
     /// A client certificate for `cn`, issued by the trusted test client CA.
@@ -782,6 +794,7 @@ mod tests {
         let cert = client_certificate(cn, key)?;
         let key = key.clone();
         Ok(serve_one(
+            test_acceptor(None)?,
             move |b| {
                 b.set_certificate(&cert)?;
                 b.set_private_key(&key)?;
@@ -831,7 +844,7 @@ mod tests {
 
     #[test]
     fn handshake_fails_without_client_certificate() -> TestResult {
-        if server_accepts(|_| Ok(()))? {
+        if server_accepts(test_acceptor(None)?, |_| Ok(()))? {
             return Err("server accepted a handshake without a client certificate".into());
         }
         Ok(())
@@ -839,7 +852,7 @@ mod tests {
 
     #[test]
     fn handshake_succeeds_with_valid_client_certificate() -> TestResult {
-        let accepted = server_accepts(|b| {
+        let accepted = server_accepts(test_acceptor(None)?, |b| {
             let cert =
                 X509::from_pem(&fs::read(format!("{CERTS}/user/user.client.acme.com.crt"))?)?;
             b.set_certificate(&cert)?;
@@ -855,6 +868,37 @@ mod tests {
         Ok(())
     }
 
+    /// The socket server rejects a client whose certificate its issuer's CRL revokes, and
+    /// (fail-closed) every client while the issuer has no CRL.
+    #[test]
+    fn revoked_client_certificate_is_rejected() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let present = |client: &'static str| {
+            move |b: &mut SslConnectorBuilder| -> TestResult {
+                b.set_certificate_file(format!("{CERTS}/{client}.crt"), SslFiletype::PEM)?;
+                b.set_private_key_file(format!("{CERTS}/{client}.key"), SslFiletype::PEM)?;
+                Ok(())
+            }
+        };
+
+        let accepts = |client: &'static str| -> TestResult<bool> {
+            server_accepts(test_acceptor(Some(dir.path()))?, present(client))
+        };
+
+        if accepts(OWNER)? {
+            return Err("accepted a client while the issuer has no CRL".into());
+        }
+
+        write_crl(dir.path(), 0, &[USER], 1)?;
+        if accepts(USER)? {
+            return Err("accepted a client whose certificate the CRL revokes".into());
+        }
+        if !accepts(OWNER)? {
+            return Err("rejected a client the CRL does not revoke".into());
+        }
+        Ok(())
+    }
+
     /// A client trickling its `ClientHello` faster than any per-`recv` timeout is still cut off
     /// at the handshake deadline, so it cannot hold a connection slot indefinitely.
     #[test]
@@ -863,7 +907,7 @@ mod tests {
         const TRICKLE_INTERVAL: Duration = Duration::from_millis(50);
         const CLIENT_GIVE_UP: Duration = Duration::from_secs(4);
 
-        let acceptor = test_acceptor()?;
+        let acceptor = test_acceptor(None)?;
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let addr = listener.local_addr()?;
         let server = thread::spawn(move || -> io::Result<(bool, Duration)> {

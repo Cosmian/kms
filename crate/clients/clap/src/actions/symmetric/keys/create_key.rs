@@ -61,9 +61,11 @@ pub struct CreateKeyAction {
     #[clap(required = false)]
     pub key_id: Option<String>,
 
-    /// Sensitive: if set, the key will not be exportable
-    #[clap(long = "sensitive", default_value = "false")]
-    pub sensitive: bool,
+    /// Sensitive: `--sensitive` (or `--sensitive true`) makes the key non-exportable;
+    /// `--sensitive false` explicitly allows its export, including on an HSM, where keys
+    /// are sensitive (non-extractable) by default.
+    #[clap(long = "sensitive", num_args = 0..=1, default_missing_value = "true")]
+    pub sensitive: Option<bool>,
 
     /// The key encryption key (KEK) used to wrap this new key with.
     /// If the wrapping key is:
@@ -126,15 +128,18 @@ impl CreateKeyAction {
                 .key_id
                 .as_ref()
                 .map(|id| UniqueIdentifier::TextString(id.clone()));
-            let create_key_request = symmetric_key_create_request(
+            let mut create_key_request = symmetric_key_create_request(
                 vendor_id,
                 key_id,
                 number_of_bits,
                 algorithm,
                 &self.tags,
-                self.sensitive,
+                self.sensitive == Some(true),
                 self.wrapping_key_id.as_ref(),
             )?;
+            if self.sensitive == Some(false) {
+                create_key_request.attributes.sensitive = Some(false);
+            }
             kms_rest_client
                 .create(create_key_request)
                 .await

@@ -122,6 +122,9 @@ for single-`CertID` requests without a nonce, is keyed by the full `CertID` (has
 algorithm, issuer hashes and serial), never serves a response past its `nextUpdate`,
 and does not store `unknown` responses.
 
+If the KMS cannot look up the certificate status (for example, the database is unavailable),
+it answers an unsigned `tryLater` response (RFC 6960 §2.3) instead of `unknown`, and caches nothing.
+
 If the **CA itself** is revoked with a compromise reason, every certificate it issued
 is reported `revoked` with reason `cACompromise`, regardless of the leaf certificate's
 own state ([RFC 6960](https://www.rfc-editor.org/rfc/rfc6960), Section 2.7, "CA Key Compromise"):

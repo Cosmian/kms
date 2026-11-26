@@ -14,8 +14,8 @@ scope wiring.
 - [ ] Config struct updated in `crate/server/src/config/`
 - [ ] Wizard step added/updated in `crate/server/src/config/wizard/auth_wizard.rs`
 - [ ] Middleware implemented in `crate/server/src/middlewares/`
-- [ ] Every authenticated scope in `start_kms_server.rs` wraps the middleware with `Condition::new(use_<auth>, <Middleware>)`
-- [ ] `EnsureAuth::new` boolean: `use_jwt_auth || use_cert_auth || use_api_token_auth` (every scope except mTLS-only)
+- [ ] Every authenticated scope in `start_kms_server.rs` wraps the middleware via `wrap_native_auth` / `Condition::new(use_<auth>, ...)`
+- [ ] `ensure_auth_middleware(kms, use_any_auth)` boolean in `start_kms_server.rs`: `use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier` (every native-authenticated scope)
 
 > Rule 4.9 of `/kms-sync-rules`.
 > Authentication or trust-boundary changes require `/security-review` and `/threat-model`; mechanical scans do not replace either review.

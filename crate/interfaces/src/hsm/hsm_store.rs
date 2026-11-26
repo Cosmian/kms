@@ -330,7 +330,7 @@ impl ObjectsStore for HsmStore {
                 usize::try_from(*key_length).map_err(|e| {
                     InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                 })?,
-                attributes.sensitive.unwrap_or(false),
+                attributes.sensitive.unwrap_or(true),
                 tags,
             )
             .await?;
@@ -499,7 +499,7 @@ impl ObjectsStore for HsmStore {
                     .map_err(|e| {
                         InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                     })?,
-                    attributes.sensitive.unwrap_or_default(),
+                    attributes.sensitive.unwrap_or(true),
                     &tags,
                 )
                 .await?;

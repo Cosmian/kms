@@ -11,7 +11,7 @@ applyTo: '**/*.py'
 Python is used for:
 
 - **Documentation generation scripts** (`documentation/theme/scripts/`): generate SUMMARY.md, process mdBook tabs.
-- **Test helpers** (`test_data/`): SPIFFE/SPIRE identity test, PyKMIP integration helpers.
+- **Test helpers**: SPIFFE/SPIRE identity test helpers (`test_data/spire/`), KAT source importer (`test_data/scripts/`), and PyKMIP integration helpers (`.mise/scripts/pykmip/`).
 - **KMIP test vector extraction** (`kmip/v1.0/XML/`): parse XML test vectors.
 
 Python is **not** the primary language of this project. Keep Python usage minimal and confined to these areas.

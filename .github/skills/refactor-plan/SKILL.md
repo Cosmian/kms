@@ -28,8 +28,8 @@ Use these at each phase checkpoint:
 cargo clippy-all                        # zero warnings required
 cargo fmt --all                         # formatting
 cargo test -p <crate>                   # targeted test (preferred)
-cargo test-fips                         # full FIPS test suite (only if needed)
-cargo test-non-fips                     # full non-FIPS suite (only if needed)
+cargo test-fips                         # workspace --lib unit tests, FIPS (only if needed; excludes integration/binary tests)
+cargo test-non-fips                     # workspace --lib unit tests, non-FIPS (only if needed; excludes integration/binary tests)
 ```
 
 Use `cargo test -p <crate> <test_name>` to run the narrowest scope first.

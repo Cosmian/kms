@@ -55,7 +55,7 @@ hsm_slot     = [0]                       # From vtl verify output
 hsm_password = ["<partition-password>"]  # Or the KMS_HSM_PASSWORD environment variable
 ```
 
-HSM keys must be created sensitive (`ckms ... keys create --sensitive`) on partitions where
+HSM keys are created sensitive by default (`ckms ... keys create`; do not pass `--sensitive false`) on partitions where
 *Allow private key wrapping* is off.
 
 ## Kubernetes and logging

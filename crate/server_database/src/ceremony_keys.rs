@@ -6,7 +6,8 @@
 //! 1. **Confidentiality**: Participant names, `activated_by`, and `key_hash` are
 //!    encrypted at rest — an attacker with DB read access sees only opaque blobs.
 //! 2. **Integrity**: The GCM authentication tag prevents forging ceremony records
-//!    via direct DB writes — tampered records fail unsealing.
+//!    via direct DB writes — tampered records fail unsealing; the verifier also requires
+//!    `activated_by` to equal the row's user, and revocation erases the record.
 //! 3. **Key obfuscation** (Redis): Role names are not stored in plaintext as Redis
 //!    keys — an attacker cannot enumerate which roles have ceremonies.
 

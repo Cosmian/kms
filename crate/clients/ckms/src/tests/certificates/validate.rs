@@ -1,86 +1,113 @@
-use std::path::PathBuf;
-
 use cosmian_kms_cli_actions::reexport::{
     cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
 use    test_kms_server::start_default_test_kms_server;
-use tempfile::TempDir;
-use cosmian_logger::{debug, info};
+use cosmian_logger::info;
 
 use crate::tests::utils::{ckms_bin, owner_config};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        certificates::{
-            encrypt::encrypt,
-            import::{ImportCertificateInput, import_certificate},
-        },
+        certificates::import::{ImportCertificateInput, import_certificate},
         utils::recover_cmd_logs,
     },
 };
 
-async fn import_revoked_certificate_encrypt(curve_name: &str) -> CosmianResult<()> {
-    let ctx = start_default_test_kms_server().await;
-    let owner_client_conf_path = owner_config(ctx);
+/// A revoked leaf imported with its issuer must not be usable for encryption (#1461).
+#[tokio::test]
+#[cfg(all(feature = "non-fips", not(target_os = "windows")))]
+async fn test_import_revoked_certificate_encrypt_prime256() -> CosmianResult<()> {
+    use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::{
+        certificate_utils::Algorithm, export_utils::CertificateExportFormat,
+    };
+    use tempfile::TempDir;
+    use test_kms_server::{TestClientOptions, start_test_server_with_patch, test_config_path};
 
-    // create a temp dir
+    use crate::tests::{
+        certificates::{
+            certify::{CertifyOp, certify},
+            encrypt::encrypt,
+            export::export_certificate,
+        },
+        shared::revoke,
+        utils::force_save_kms_cli_config,
+    };
+
+    // The CRL distribution point of the issued leaf is `kms_public_url`: the shared test
+    // server advertises an unreachable port, so use a server that points at itself.
+    let ctx = start_test_server_with_patch(
+        &test_config_path("auth/plain.toml"),
+        |config| config.kms_public_url = Some(format!("http://127.0.0.1:{}", config.http.port)),
+        TestClientOptions::default(),
+    )
+    .await?;
+    let (conf, _) = force_save_kms_cli_config(&ctx);
     let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    // let tmp_path = std::path::Path::new("./");
+    let leaf_pem = tmp_dir.path().join("leaf.pem");
+    let leaf_pem = leaf_pem.to_str().unwrap();
+    let output_file = tmp_dir.path().join("plain.enc");
 
-    let input_file = PathBuf::from("../../../test_data/plain.txt");
-    let output_file = tmp_path.join("plain.enc");
-    let _recovered_file = tmp_path.join("plain.txt");
+    // the CA must carry cRLSign, otherwise the server cannot publish its CRL
+    let ca_ext = tmp_dir.path().join("ca_ext.cnf");
+    std::fs::write(
+        &ca_ext,
+        "[v3_ca]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,crlSign\n",
+    )?;
+    let ca_id = certify(
+        &conf,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some("CN=Revoked Import CA,O=Cosmian".to_owned()),
+            certificate_extensions: Some(ca_ext),
+            ..Default::default()
+        },
+    )?;
+    let leaf_id = certify(
+        &conf,
+        CertifyOp {
+            generate_keypair: true,
+            algorithm: Some(Algorithm::NistP256),
+            subject_name: Some("CN=Revoked Import Leaf,O=Cosmian".to_owned()),
+            issuer_certificate_id: Some(ca_id.clone()),
+            ..Default::default()
+        },
+    )?;
+    // `revoke` is generic over the object type: the sub-command only selects the CLI family
+    revoke(&conf, "ec", &leaf_id, "key compromise")?;
+    export_certificate(
+        &conf,
+        &leaf_id,
+        leaf_pem,
+        Some(CertificateExportFormat::Pem),
+        None,
+        true,
+    )?;
 
-    let tags = &[curve_name];
-
-    std::fs::remove_file(&output_file).ok();
-    // assert!(!output_file.exists());
-
-    debug!("\n\nImport Certificate");
-    let root_certificate_id = import_certificate(ImportCertificateInput {
-        cli_conf_path: &owner_client_conf_path,
+    let imported_id = import_certificate(ImportCertificateInput {
+        cli_conf_path: &conf,
         sub_command: "certificates",
-        key_file: &format!("../../../test_data/certificates/openssl/{curve_name}-cert.pem"),
+        key_file: leaf_pem,
         format: &CertificateInputFormat::Pem,
-        tags: Some(tags),
-        replace_existing: true,
+        issuer_certificate_id: Some(ca_id),
         ..Default::default()
     })?;
+    assert_ne!(imported_id, leaf_id);
 
-    debug!("\n\nImport Certificate");
-    let certificate_id = import_certificate(ImportCertificateInput {
-        cli_conf_path: &owner_client_conf_path,
-        sub_command: "certificates",
-        key_file: &format!("../../../test_data/certificates/openssl/{curve_name}-revoked.crt"),
-        format: &CertificateInputFormat::Pem,
-        issuer_certificate_id: Some(root_certificate_id),
-        tags: Some(tags),
-        replace_existing: true,
-        ..Default::default()
-    })?;
-
-    debug!("\n\nEncrypt with certificate");
     assert!(
         encrypt(
-            &owner_client_conf_path,
-            input_file.to_str().unwrap(),
-            &certificate_id,
+            &conf,
+            "../../../test_data/plain.txt",
+            &imported_id,
             Some(output_file.to_str().unwrap()),
             None,
             None
         )
         .is_err()
     );
-
+    ctx.stop_server().await?;
     Ok(())
-}
-
-#[tokio::test]
-#[ignore = "revoked certificate is still usable for encryption, see #1461"]
-async fn test_import_revoked_certificate_encrypt_prime256() -> CosmianResult<()> {
-    import_revoked_certificate_encrypt("prime256v1").await
 }
 
 pub(crate) fn validate_certificate(

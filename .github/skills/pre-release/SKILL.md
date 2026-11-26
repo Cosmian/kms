@@ -34,7 +34,7 @@ Record: which crates changed, whether crypto/KMIP/auth/UI was touched, whether a
 
 Invoke `/kms-sync-rules` with the full diff since the last tag.
 
-Verify every applicable sub-rule (4.1–4.18) is satisfied. Block on any open item.
+Verify every applicable sub-rule (4.1–4.21) is satisfied. Block on any open item.
 
 ## Step 2 — Security review
 
@@ -91,9 +91,11 @@ Run locally to confirm CI will pass:
 ```bash
 cargo clippy-all          # zero warnings required
 cargo fmt --all           # no formatting drift
-cargo test-fips           # full FIPS suite
-cargo test-non-fips       # full non-FIPS suite
+cargo test-fips           # workspace --lib unit tests (FIPS)
+cargo test-non-fips       # workspace --lib unit tests (non-FIPS)
 ```
+
+Both Cargo aliases select library test targets only. For each affected area, also run the integration and binary tests that cover the change and record the suite and build variant. A non-FIPS run does not cover FIPS-specific behavior. The `ckms` integration suite runs only with `non-fips` (`cargo test -p ckms --features non-fips`).
 
 ## Step 8 — CHANGELOG completeness
 
@@ -107,10 +109,10 @@ supported algorithms, operator-visible error messages.
 
 Invoke `/kms-release-notes <version>` (substitute the actual semver).
 
-This writes the `## [<version>]` entry at the top of the root `CHANGELOG.md`,
-then runs `/kms-changelog consolidate <version>`, which merges every
-`CHANGELOG/*.md` into that entry and deletes the branch files. Review the entry
-before proceeding:
+This creates or updates the `## [<version>]` entry in the root `CHANGELOG.md`,
+then runs `/kms-changelog consolidate <version>` to merge the optional `Unreleased`
+notes for this release and the `CHANGELOG/*.md` entries. Consolidation verifies
+coverage before deleting the branch files. Review the entry before proceeding:
 
 - All Breaking Changes are documented with a migration guide.
 - Security section is present if any security fix was merged.
@@ -128,7 +130,7 @@ Produce this exact report:
 
 | Check | Status | Blocking findings |
 |-------|--------|-------------------|
-| Sync rules (4.1–4.18) | ✅ PASS / ❌ BLOCK | [list open items] |
+| Sync rules (4.1–4.21) | ✅ PASS / ❌ BLOCK | [list open items] |
 | Security review | ✅ PASS / ❌ BLOCK | [HIGH/CRITICAL findings] |
 | FIPS audit | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | [violations] |
 | KMIP compliance | ✅ PASS / ⏭ SKIPPED / ❌ BLOCK | [spec deviations] |
@@ -136,11 +138,13 @@ Produce this exact report:
 | Clippy | ✅ PASS / ❌ BLOCK | [warning count] |
 | Test suite (FIPS) | ✅ PASS / ❌ BLOCK | [failing tests] |
 | Test suite (non-FIPS) | ✅ PASS / ❌ BLOCK | [failing tests] |
-| CHANGELOG | ✅ PASS / ❌ BLOCK | [missing entries] || Release notes | ✅ PASS / ❌ BLOCK | [missing sections] |
+| CHANGELOG | ✅ PASS / ❌ BLOCK | [missing entries] |
+| Release notes | ✅ PASS / ❌ BLOCK | [missing sections] |
+
 ### Verdict
 **GO** — all checks pass. Trigger `release.yml` with inputs:
+  - `old_version`: <previous X.Y.Z>
   - `new_version`: <X.Y.Z>
-  - `base`: develop
 
 **NO-GO** — resolve blocking findings before release.
 ```

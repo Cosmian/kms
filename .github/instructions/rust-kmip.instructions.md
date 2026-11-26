@@ -8,27 +8,26 @@ applyTo: 'crate/kmip/**/*.rs'
 
 ## Source of truth
 
-- The KMIP 2.1 specification HTML files in `crate/kmip/src/` are the authoritative reference.
+- The KMIP 2.1 specification HTML files in the repo-root `kmip/` submodule (`kmip/v2.1/kmip-spec-v2.1-os.html`; run `git submodule update --init kmip` if empty) are the authoritative reference.
 - Tag names, enum values, and field types **must match the spec exactly**.
 - When in doubt, verify against the spec HTML — do not rely on training-data recall.
 
 ## TTLV serialization
 
-- Use `kmip-derive` proc macros for automatic TTLV (Tag-Type-Length-Value) serialization.
-- Custom serialization is only needed for protocol edge cases; document why with a comment.
-- Tag values are hex constants defined in the spec.
+- TTLV (Tag-Type-Length-Value) serialization goes through `serde` (`crate/kmip/src/ttlv/`) plus `kmip-derive` enum macros and the 3-byte hex tag table in `crate/kmip/src/ttlv/wire/kmip_tag.rs`.
+- Custom `Serialize`/`Deserialize` impls are only needed for protocol edge cases (such as `Attribute` / `Object` dispatch); document why with a comment.
+- Tag values are 3-byte hex constants (`0x42XXXX`) mapped in `kmip_tag.rs`.
 
 ## Type conventions
 
-- KMIP enumerations → Rust `enum` with `#[derive(KmipEnum)]`.
-- KMIP structures → Rust `struct` with `#[derive(KmipStruct)]`.
-- Optional fields → `Option<T>`.
+- KMIP enumerations → Rust `#[repr(u32)] pub enum` annotated with `#[kmip_enum]` and `#[derive(KmipEnumSerialize, KmipEnumDeserialize, ...)]` (`crate/kmip-derive`).
+- KMIP structures → Rust `pub struct` with `#[derive(Serialize, Deserialize, ...)]` and `#[serde(rename_all = "PascalCase")]` (plus `#[serde(rename = "...")]` when the KMIP tag name contains acronyms like `PKCS11` or `IVCounterNonce`).
+- Optional fields → `Option<T>` with `#[serde(skip_serializing_if = "Option::is_none")]`.
 - KMIP `TextString` → `String`, `ByteString` → `Vec<u8>`, or `cosmian_kmip::SensitiveBytes` for secrets (see `rust-security.instructions.md` § Secret memory).
 
 ## Backward compatibility
 
-- KMIP 1.4 operations are supported alongside 2.1.
-- Use `#[kmip(tag = 0x...)]` to override tag values when they differ between versions.
+- KMIP 1.4 operations are supported alongside 2.1 via dedicated types in `crate/kmip/src/kmip_1_4/` with `From` / `TryFrom` conversions to and from KMIP 2.1 types (and `#[serde(alias = "...")]` when wire tag spellings vary).
 
 ## Testing
 

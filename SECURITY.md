@@ -5,6 +5,11 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-083 — A CRL fetch error marked an imported certificate Compromised](#cosmian-2026-083--a-crl-fetch-error-marked-an-imported-certificate-compromised)
+      - [COSMIAN-2026-082 — SSRF via DNS names resolving to internal addresses in CRL Distribution Points](#cosmian-2026-082--ssrf-via-dns-names-resolving-to-internal-addresses-in-crl-distribution-points)
+      - [COSMIAN-2026-081 — CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit](#cosmian-2026-081--crl-distribution-point-fetch-accepted-unbounded-chunked-bodies-and-grew-its-cache-without-limit)
+      - [COSMIAN-2026-080 — A failing database lookup made CRL generation, OCSP and Locate see no certificates](#cosmian-2026-080--a-failing-database-lookup-made-crl-generation-ocsp-and-locate-see-no-certificates)
+      - [COSMIAN-2026-079 — mTLS client certificates were never checked against a revocation list](#cosmian-2026-079--mtls-client-certificates-were-never-checked-against-a-revocation-list)
       - [COSMIAN-2026-078 — Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted](#cosmian-2026-078--web-ui-session-key-derived-with-the-public-url-as-password-guessable-ui_session_salt-accepted)
       - [COSMIAN-2026-077 — Web UI session cookie could be replayed after logout and had no server-enforced lifetime](#cosmian-2026-077--web-ui-session-cookie-could-be-replayed-after-logout-and-had-no-server-enforced-lifetime)
       - [COSMIAN-2026-076 — `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure](#cosmian-2026-076--post-uilogin_as-had-no-kms-side-rate-limit-and-turned-an-auth-verifier-throttle-into-an-authentication-failure)
@@ -138,6 +143,101 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-083 — A CRL fetch error marked an imported certificate Compromised
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Low |
+| Published  | Pending |
+| Affected   | before 6.0.0 |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tests/test_validate.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+
+**Summary:** `Import` of an `Active` certificate checks the CRLs of its distribution points and stored the certificate as `Compromised` on any `KmsError::Certificate` error from that check, including an expired CRL, a CRL fetch that failed on a non-success status, an oversized body or a distribution point blocked by the SSRF check.
+
+**Impact:** An error while obtaining a CRL is not evidence of revocation. Whoever controls a distribution point named in a certificate, or any condition that makes the fetch fail, could make the KMS store a valid certificate as `Compromised`, which then appears on the KMS-generated CRL and OCSP responses.
+
+**Mitigation:** Upgrade to 6.0.0. `verify_crls` now returns a verdict (`Revoked` / `NotRevoked`) and reports every failure to obtain or validate a CRL as an error; `Import` sets `Compromised` only for `Revoked` and keeps the requested state (with a warning) on any error. `Validate` behavior is unchanged.
+
+---
+
+#### COSMIAN-2026-082 — SSRF via DNS names resolving to internal addresses in CRL Distribution Points
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | from 5.27.0 before 6.0.0 |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [COSMIAN-2026-021](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport), [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/core/certificate/mod.rs) |
+
+**Summary:** The fix for COSMIAN-2026-021 rejected internal IP literals and internal host names in CRL Distribution Points but never checked the addresses a public-looking host name resolves to, and its IPv4 blocklist missed carrier-grade NAT, documentation, benchmarking, multicast and reserved ranges.
+
+**Impact:** A user allowed to call `Validate` or `Import` could point a distribution point at a DNS name resolving (or rebinding) to an internal address, a CGNAT address or a cloud metadata endpoint, and make the KMS issue a blind HTTP request to it.
+
+**Mitigation:** Upgrade to 6.0.0. The KMS resolves the host name itself, rejects the fetch when any resolved address is blocked (private, loopback, link-local, `0.0.0.0/8`, `100.64.0.0/10`, `192.0.0.0/24`, documentation, `198.18.0.0/15`, multicast, `240.0.0.0/4`, IPv6 loopback/unique-local/link-local/multicast/documentation, IPv4-mapped and NAT64-embedded blocked IPv4) and pins the connection to the checked addresses. With an outbound proxy the proxy resolves the name itself: enforce egress restrictions on the proxy.
+
+---
+
+#### COSMIAN-2026-081 — CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | from 5.27.0 before 6.0.0 |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [COSMIAN-2026-021](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport), [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/core/operations/validate.rs) |
+
+**Summary:** The 10 MiB cap on CRL downloads was enforced from the `Content-Length` header only; a chunked response has none, and the body was buffered whole. Fetched CRLs were cached without checking that they were CRLs and without bound on entry count or size. The number of concurrent downloads was unlimited.
+
+**Impact:** A user allowed to call `Validate` or `Import` could make the KMS buffer arbitrarily large chunked responses, fill the CRL cache with distinct URLs, or open many parallel downloads, for a denial of service by memory or connection exhaustion.
+
+**Mitigation:** Upgrade to 6.0.0. The cap is enforced while streaming (the connection is dropped once exceeded), only parseable CRLs are cached, the cache is limited to 256 entries and 64 MiB (oldest evicted first), and at most 8 downloads run at once.
+
+---
+
+#### COSMIAN-2026-080 — A failing database lookup made CRL generation, OCSP and Locate see no certificates
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | before 6.0.0 |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server_database/src/core/database_objects.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+
+**Summary:** `Database::find` and `Database::find_all` replaced an error of any object store by an empty result.
+
+**Impact:** While the database failed, the OCSP responder answered `unknown` for revoked certificates instead of an error, certificate lookups used for CRL generation and enrollment saw no certificates, and `Locate` returned an empty list, so a relying party could accept a revoked certificate during a database fault.
+
+**Mitigation:** Upgrade to 6.0.0. An error of the default store is returned to the caller; an error of an HSM store is logged and skipped. The OCSP responder answers an unsigned `tryLater` response (RFC 6960 §2.3) when the status lookup fails, and never caches it.
+
+---
+
+#### COSMIAN-2026-079 — mTLS client certificates were never checked against a revocation list
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | Pending |
+| Affected   | before 6.0.0 |
+| Fixed in   | 6.0.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tls_config.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+
+**Summary:** The HTTPS and KMIP socket servers verified client certificates against `clients_ca_cert_file` only. No CRL was consulted, so a revoked client certificate was accepted until it expired.
+
+**Impact:** A client whose certificate was revoked (for example after a key compromise) could keep authenticating to the KMS, with every permission of the mapped user, until the certificate expired.
+
+**Mitigation:** Upgrade to 6.0.0 and set `clients_crl_dir` (`--clients-crl-dir`, `KMS_CLIENTS_CRL_DIR`) to an OpenSSL hashed directory of CRLs (`openssl rehash`). The leaf client certificate is checked against the CRL of its issuer on both servers; the check is fail-closed (missing or expired CRL rejects the client) and new `.rN` files are read without a restart. Connections already open keep their identity until closed.
+
+---
 
 #### COSMIAN-2026-078 — Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted
 
@@ -1903,6 +2003,11 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-083    | Low | before 6.0.0 | 6.0.0 | A CRL fetch error marked an imported certificate Compromised |
+| COSMIAN-2026-082    | Moderate | from 5.27.0 before 6.0.0 | 6.0.0 | SSRF via DNS names resolving to internal addresses in CRL Distribution Points |
+| COSMIAN-2026-081    | Moderate | from 5.27.0 before 6.0.0 | 6.0.0 | CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit |
+| COSMIAN-2026-080    | Moderate | before 6.0.0 | 6.0.0 | A failing database lookup made CRL generation, OCSP and Locate see no certificates |
+| COSMIAN-2026-079    | High | before 6.0.0 | 6.0.0 | mTLS client certificates were never checked against a revocation list |
 | COSMIAN-2026-078    | Moderate | from 5.15.0 before 6.0.0 (deployments setting `ui_session_salt`) | 6.0.0 | Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted |
 | COSMIAN-2026-077    | Moderate | from 5.26.0 before 6.0.0 | 6.0.0 | Web UI session cookie could be replayed after logout and had no server-enforced lifetime |
 | COSMIAN-2026-076    | Moderate | from 5.26.0 before 6.0.0 | 6.0.0 | `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure |

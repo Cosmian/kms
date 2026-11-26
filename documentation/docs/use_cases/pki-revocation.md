@@ -49,12 +49,19 @@ GET /certificates/{issuer_id}/crl?format=pem&validity_days=7
 
 Returns `application/pkix-crl` (DER, default) or `application/x-pem-file` (PEM).
 
+`validity_days` must be at most 365; larger values are rejected with HTTP 422.
+
 !!! note "Access control"
     Any **authenticated** user with `Get` access to the CA certificate may call
     this endpoint — no Crypto Officer role is required. CRL content is public
     information (RFC 5280 §3); the authentication check exists to prevent the CA
     private key from being used as an unauthenticated signing oracle, not to
     restrict access to the revocation list itself.
+
+!!! tip "mTLS client certificates"
+    To make the KMS reject revoked **client** certificates, write the PEM CRL into the
+    `clients_crl_dir` directory; see
+    [Revoking client certificates (CRL)](../configuration/authentication.md#revoking-client-certificates-crl).
 
 The generated CRL includes:
 
@@ -145,6 +152,33 @@ To override or set a custom CDP manually (e.g. for an external CA), add a
 [ v3_ext ]
 crlDistributionPoints=URI:http://ca.example.com/crl.pem
 ```
+
+### CRLs fetched by the KMS (`Validate`, `Import`)
+
+When the KMS validates a certificate chain (KMIP `Validate`) or imports an `Active` certificate, it
+downloads the CRLs named in the certificates' distribution points. Safeguards:
+
+- Only `http://` and `https://` URIs are fetched; redirects are never followed; the request times out
+  after 30 s; at most 8 downloads run at the same time.
+- The body is capped at 10 MiB **while streaming**, including chunked responses without `Content-Length`.
+- The host name is resolved by the KMS and every resolved address is checked. Distribution points that
+  resolve to a loopback, private, link-local, carrier-grade NAT (`100.64.0.0/10`), documentation,
+  benchmarking, multicast or reserved address (and IPv6 equivalents, including NAT64 embedding such
+  an IPv4 address) are rejected; the connection is then pinned to the checked addresses. The server's
+  own `kms_public_url` is exempt.
+- Only well-formed CRLs are cached (at most 256 entries and 64 MiB in total, 5 minutes each). CRL
+  signatures are verified on every use.
+
+!!! warning "Outbound proxy"
+    When an outbound proxy is configured, the proxy resolves the distribution point host name itself.
+    The KMS still checks its own resolution of the name (a name that only the proxy can resolve is
+    treated as an unreachable distribution point), but cannot pin the proxy's connection:
+    enforce egress restrictions (internal address ranges, cloud metadata endpoints) on the proxy.
+
+A CRL that cannot be fetched, parsed or verified is **not** treated as evidence of revocation: `Import`
+keeps the requested state (`Active`), and `Validate` skips an unreachable distribution point with a
+warning (an address blocked by the rules above makes `Validate` report the chain as invalid). Only a
+certificate actually listed in a verified CRL is imported as `Compromised`.
 
 ## Public (unauthenticated) CRL endpoint
 

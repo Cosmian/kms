@@ -11,13 +11,13 @@ description: Acts as the final quality gate for Eviden KMS PRs. Assumes all auto
 
 ```bash
 # non-FIPS (most common — all algorithms enabled)
-pnpm -C ui build && cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/no_auth.toml
+pnpm -C ui build && cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/auth/none.toml
 
 # FIPS only
-pnpm -C ui build && cargo run -p cosmian_kms_server -- -c test_data/configs/server/no_auth.toml
+pnpm -C ui build && cargo run -p cosmian_kms_server -- -c test_data/configs/server/auth/none.toml
 ```
 
-Adapt config to the PR: TLS → `tls_auth_non_fips.toml`, JWT → `jwt_auth.toml`, PostgreSQL → start DB with `docker compose up -d` first. Full config reference: `reference/kmip-ops-and-configs.md`.
+Adapt config to the PR: TLS → `tls/non_fips.toml`, JWT → `auth/jwt.toml`, PostgreSQL → `db/postgres.toml` (start DB with `docker compose up -d` first). Full config reference: `reference/kmip-ops-and-configs.md`.
 
 **Health check:**
 
@@ -29,7 +29,7 @@ curl -s http://127.0.0.1:9998/server-info | jq .
 # {"version":"...","fips_mode":false,...}
 ```
 
-**Chrome DevTools MCP** (for UI testing): install `npx -y chrome-devtools-mcp@latest`. Skill is designed for VS Code but works in any MCP-capable IDE. See `reference/ui-routes.md` for fully-qualified tool names.
+**Chrome DevTools MCP** (for UI testing): see [UI testing notes](reference/ui-routes.md#testing-with-chrome-devtools-mcp).
 
 ---
 
@@ -45,7 +45,7 @@ Identify which channel(s) the PR affects and test accordingly.
 cargo run -p ckms --features non-fips -- <subcommand> [args]
 ```
 
-Full command tree, roundtrip examples → **`reference/cli-commands.md`**
+See [CLI source links and roundtrip examples](reference/cli-commands.md).
 
 ### 1.2 — HTTP endpoints (`curl`)
 
@@ -74,7 +74,7 @@ Context-window size is capacity, not a separate free-token category.
 
 UI is served at `http://127.0.0.1:9998/ui/`. Use `io.github.ChromeDevTools:navigate_page` to open a route, `io.github.ChromeDevTools:fill_form` and `io.github.ChromeDevTools:click` to interact, `io.github.ChromeDevTools:take_screenshot` and `io.github.ChromeDevTools:wait_for` to observe results.
 
-Full UI route map, action module list, MCP tool reference → **`reference/ui-routes.md`**
+See [UI route, form, and test guidance](reference/ui-routes.md).
 
 ### 1.4 — Other channels
 
@@ -82,10 +82,10 @@ Full UI route map, action module list, MCP tool reference → **`reference/ui-ro
 | --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | **PKCS#11 module**    | Changes to `crate/clients/pkcs11/`             | `cargo test -p cosmian_pkcs11`                                                                |
 | **WASM client**       | Changes to `crate/clients/wasm/`               | `cd crate/clients/wasm && wasm-pack test --headless --chrome`                                 |
-| **TCP socket server** | Changes to socket handling                     | Enable `start_socket_server = true` (port 5696), send raw TTLV bytes                         |
+| **TCP socket server** | Changes to socket handling                     | Enable `socket_server_start = true` under `[socket_server]` (port 5696), send raw TTLV bytes  |
 | **Database backends** | Changes to `crate/server_database/`            | `docker compose up -d`, use appropriate config                                                |
 | **OpenSSL/crypto**    | Changes to `crate/crypto/`                     | `cargo test -p cosmian_kms_crypto`                                                            |
-| **HSM integrations**  | Changes to `crate/hsm/`                        | Requires HSM hardware or SoftHSM2 (`test_data/configs/server/hsm/softhsm2_config.toml`)      |
+| **HSM integrations**  | Changes to `crate/hsm/`                        | Requires HSM hardware or SoftHSM2 (`test_data/configs/server/hsm/softhsm2.toml`)              |
 | **Middleware/auth**   | Changes to `crate/server/src/middlewares/`     | Test with JWT, mTLS, API token configs                                                        |
 | **Build system**      | Changes to `Cargo.toml`, `build.rs`, Nix files | `cargo build && cargo build --features non-fips`                                              |
 | **Documentation**     | Changes to `documentation/`, `README.md`       | `cd documentation && mdbook build`                                                            |
@@ -118,21 +118,21 @@ Before writing a single test scenario, construct a cognitive map of what the PR 
 
 ### Components (KMS structural modules)
 
-| Component               | Crate/path                                                              | What it covers                                                 |
-| ----------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Key lifecycle           | `server/src/core/operations/`                                           | Create → Activate → Deactivate → Compromise → Destroy          |
-| Access control          | `crate/access/`, `server/src/routes/access.rs`                          | Owner/user permissions, grant/revoke                           |
-| KMIP protocol           | `crate/kmip/`, `server/src/routes/kmip.rs`                              | TTLV serialization, operation dispatch                         |
-| Crypto primitives       | `crate/crypto/`                                                         | AES, RSA, EC, PQC, FPE, Covercrypt, hashing, MAC               |
-| Database layer          | `crate/server_database/`                                                | SQLite, PostgreSQL, MySQL, Redis-Findex backends               |
-| CLI                     | `crate/clients/clap/`, `crate/clients/ckms/`                            | User-facing command tree                                       |
-| Web UI                  | `ui/src/`                                                               | React SPA with WASM bindings                                   |
-| Enterprise integrations | `server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/`              | Cloud vendor endpoints                                         |
-| Auth middleware         | `server/src/middlewares/`                                               | JWT, mTLS, API token, session cookies                          |
-| Configuration           | `server/src/config/`                                                    | Server params, KMIP policy, algorithm allowlists               |
-| Tokenization            | `server/src/routes/tokenize/`, `crate/crypto/src/crypto/anonymization/` | Hash, noise, mask, aggregate (non-fips)                        |
-| JOSE REST Crypto API    | `server/src/routes/crypto/`                                             | JWK key management, JWE encrypt/decrypt, JWS sign/verify, HMAC |
-| JWKS endpoint           | `server/src/routes/jwks.rs`                                             | RFC 7517 public key discovery (`/.well-known/jwks.json`)       |
+| Component               | Crate/path                                                                    | What it covers                                                 |
+| ----------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Key lifecycle           | `crate/server/src/core/operations/`                                           | Create → Activate → Deactivate → Compromise → Destroy          |
+| Access control          | `crate/access/`, `crate/server/src/routes/access.rs`                          | Owner/user permissions, grant/revoke                           |
+| KMIP protocol           | `crate/kmip/`, `crate/server/src/routes/kmip/`                                | TTLV serialization, operation dispatch                         |
+| Crypto primitives       | `crate/crypto/`                                                               | AES, RSA, EC, PQC, FPE, Covercrypt, hashing, MAC               |
+| Database layer          | `crate/server_database/`                                                      | SQLite, PostgreSQL, MySQL, Redis-Findex backends               |
+| CLI                     | `crate/clients/clap/`, `crate/clients/ckms/`                                  | User-facing command tree                                       |
+| Web UI                  | `ui/src/`                                                                     | React SPA with WASM bindings                                   |
+| Enterprise integrations | `crate/server/src/routes/{aws_xks,azure_ekm,google_cse,ms_dke}/`              | Cloud vendor endpoints                                         |
+| Auth middleware         | `crate/server/src/middlewares/`                                               | JWT, mTLS, API token, session cookies                          |
+| Configuration           | `crate/server/src/config/`                                                    | Server params, KMIP policy, algorithm allowlists               |
+| Tokenization            | `crate/server/src/routes/tokenize/`, `crate/crypto/src/crypto/anonymization/` | Hash, noise, mask, aggregate (non-fips)                        |
+| JOSE REST Crypto API    | `crate/server/src/routes/jose/`                                               | JWK key management, JWE encrypt/decrypt, JWS sign/verify, HMAC |
+| JWKS endpoint           | `crate/server/src/routes/jwks.rs`                                             | RFC 7517 public key discovery (`/.well-known/jwks.json`)       |
 
 ### Building the Capabilities Matrix
 
@@ -191,7 +191,7 @@ Propose **tours** — themed exploratory runs against the live KMS — not indiv
 | **Obsessive Tour**     | Repeated operations don't degrade state          | Create 100 keys with the same tag; rotate the same key 50 times in a loop; grant+revoke access 100 times; send 100 concurrent encrypt requests on the same key                                                                          |
 | **Configuration Tour** | Non-default configs don't break invariants       | Run with `clear_database = true`; run with a custom `kmip_policy` restricting key sizes; run with `force_default_username`; switch database backends mid-session                                                                        |
 | **Amnesia Tour**       | Restart/crash recovery preserves guarantees      | Kill the KMS mid-encrypt; restart; verify key state is consistent; verify no partial objects in DB; verify the health endpoint comes back UP with correct DB status                                                                     |
-| **Privilege Tour**     | Access control is not bypassable at edges        | Call admin-only endpoints (`/access/grant`) without auth; with `no_auth.toml`, verify `default_username` is used; test `non_revocable_key_id` enforcement; grant access to a key, destroy the key, check the access entry is cleaned up |
+| **Privilege Tour**     | Access control is not bypassable at edges        | Call admin-only endpoints (`/access/grant`) without auth; with `auth/none.toml`, verify `default_username` is used; test `non_revocable_key_id` enforcement; grant access to a key, destroy the key, check the access entry is cleaned up |
 | **Feature-Flag Tour**  | FIPS/non-FIPS boundaries are enforced            | In FIPS mode, attempt to create a Covercrypt key (should fail); in non-FIPS mode, attempt to use the `/tokenize/` endpoints (should work); verify that `server-info` reports the correct `fips_mode`                                    |
 
 For each tour relevant to the PR's diff, produce a **concrete sequence** of test steps using whichever channel from §1 is most direct for the surface being tested:
@@ -214,7 +214,7 @@ cargo run -p ckms --features non-fips -- sym encrypt -k "$KEY_ID" test_data/plai
 # Expected: error mentioning key state or usage mask
 
 # Destroy the key
-cargo run -p ckms --features non-fips -- objects destroy -k "$KEY_ID"
+cargo run -p ckms --features non-fips -- sym keys destroy -k "$KEY_ID"
 
 # Try to export the destroyed key — must fail
 cargo run -p ckms --features non-fips -- sym keys export -k "$KEY_ID" /tmp/dead-key.json
@@ -308,7 +308,7 @@ The tester agent **must be aware** of which feature flags are active and test ac
 
 ## 11 — KMIP Operations & Test Configurations
 
-Full dispatch table (all 31 operations, handlers, notes) and server config reference → **`reference/kmip-ops-and-configs.md`**
+See [KMIP dispatch and fixture sources](reference/kmip-ops-and-configs.md).
 
 ---
 
@@ -316,7 +316,7 @@ Full dispatch table (all 31 operations, handlers, notes) and server config refer
 
 Copy and track progress for each PR review:
 
-```
+```text
 PR Review Progress:
 - [ ] A: KMS server running on port 9998 (health check green)
 - [ ] A: Chrome DevTools MCP available (if PR touches UI)
@@ -374,13 +374,13 @@ PR Review Progress:
 
 ## 14 — Literature and References
 
-| Resource                                                 | What to extract                                                                             |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| James Whittaker, _Exploratory Software Testing_ (2009)   | Tour metaphors: Saboteur, Antisocial, Obsessive, Configuration, Time tours                  |
-| James Whittaker, ACC framework (Google)                  | Attributes/Components/Capabilities matrix for rapid risk mapping                            |
-| SFDIPOT heuristic (Satisfice / RST)                      | Seven-dimension checklist: Structure, Function, Data, Interface, Platform, Operations, Time |
-| Michael Bolton & James Bach — Rapid Software Testing     | Oracles vs. exploration distinction; error guessing with domain priors                      |
-| KMIP 2.1 specification (HTML files in `crate/kmip/src/`) | Normative reference for all KMIP operations, object types, attributes                       |
-| FIPS 140-3 / NIST SP 800-175B                            | Approved algorithms, key management requirements                                            |
-| Eviden KMS AGENTS.md                                    | Canonical project instructions, build commands, CI workflows                                |
-| `test_data/configs/server/`                              | All available server configurations for different test scenarios                            |
+| Resource                                                                                   | What to extract                                                                             |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| James Whittaker, _Exploratory Software Testing_ (2009)                                     | Tour metaphors: Saboteur, Antisocial, Obsessive, Configuration, Time tours                  |
+| James Whittaker, ACC framework (Google)                                                    | Attributes/Components/Capabilities matrix for rapid risk mapping                            |
+| SFDIPOT heuristic (Satisfice / RST)                                                        | Seven-dimension checklist: Structure, Function, Data, Interface, Platform, Operations, Time |
+| Michael Bolton & James Bach — Rapid Software Testing                                       | Oracles vs. exploration distinction; error guessing with domain priors                      |
+| KMIP 2.1 specification (`kmip/v2.1/kmip-spec-v2.1-os.html`; `git submodule update --init kmip`) | Normative reference for all KMIP operations, object types, attributes                  |
+| FIPS 140-3 / NIST SP 800-175B                                                              | Approved algorithms, key management requirements                                            |
+| Eviden KMS AGENTS.md                                                                       | Canonical project instructions, build commands, CI workflows                                |
+| `test_data/configs/server/`                                                                | All available server configurations for different test scenarios                            |

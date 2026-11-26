@@ -83,6 +83,10 @@ async fn test_hsm_all() {
     Box::pin(export_key_bytes::test_hsm_export_key_bytes())
         .await
         .unwrap();
+    info!("HSM: default_key_is_sensitive");
+    Box::pin(export_key_bytes::test_hsm_default_key_is_sensitive())
+        .await
+        .unwrap();
     info!("HSM: non_extractable_key_bytes");
     Box::pin(non_extractable_key_bytes::test_hsm_non_extractable_key_bytes())
         .await
@@ -284,10 +288,10 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 
 async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
-    // sensitive = false so that export-based tests can retrieve the key material;
-    // HSM tests that specifically exercise non-extractable keys create their own
-    // sensitive key directly.
-    let create_request = symmetric_key_create_request(
+    // Sensitive=false so that export-based tests can retrieve the key material (HSM keys are
+    // sensitive by default); HSM tests that specifically exercise non-extractable keys
+    // create their own sensitive key directly.
+    let mut create_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
@@ -296,6 +300,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
         false,
         None,
     )?;
+    create_request.attributes.sensitive = Some(false);
     let response = send_message(
         kms.clone(),
         owner,
@@ -314,7 +319,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
 
 async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
-    let create_request = create_rsa_key_pair_request(
+    let mut create_request = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         EMPTY_TAGS,
@@ -322,6 +327,9 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
         false,
         None,
     )?;
+    if let Some(private_key_attributes) = create_request.private_key_attributes.as_mut() {
+        private_key_attributes.sensitive = Some(false);
+    }
     let response = send_message(
         kms.clone(),
         owner,

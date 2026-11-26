@@ -1,13 +1,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{
-    HttpRequest, HttpResponse, get,
+    HttpMessage, HttpRequest, HttpResponse, get,
     http::header::{self, SET_COOKIE},
     post, web,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
-use cosmian_logger::{debug, warn};
+use cosmian_logger::{debug, trace, warn};
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -17,12 +17,14 @@ use url::Url;
 use crate::{
     config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig},
     core::KMS,
+    error::KmsError,
     middlewares::{
-        AUTH_VERIFIER_SESSION_COOKIE, JwtConfig, JwtTokenHeaders, LoginAsLimiter, UiSession,
-        UiSessionCookie, UserId, authenticate_auth_verifier_session_cookie,
-        hardened_client_builder, reject_reserved_service_identity, request_cookie,
-        validate_jwt_svid,
+        AUTH_VERIFIER_SESSION_COOKIE, AuthMethod, AuthenticatedUser, JwtConfig, JwtTokenHeaders,
+        LoginAsLimiter, UiSession, UiSessionCookie, UserId,
+        authenticate_auth_verifier_session_cookie, hardened_client_builder,
+        reject_reserved_service_identity, request_cookie, validate_jwt_svid,
     },
+    result::KResult,
 };
 
 fn random_b64url(rng: &KmsRng, len_bytes: usize) -> Result<String, ()> {
@@ -880,6 +882,53 @@ pub(crate) async fn get_auth_method(auth_methods: web::Data<Vec<String>>) -> Htt
         "auth_method": primary,
         "auth_methods": methods,
     }))
+}
+
+#[derive(Serialize)]
+struct UiConfigResponse {
+    kv: bool,
+    hsm: bool,
+    google_cse: bool,
+    crypto_officer: bool,
+}
+
+/// Report only the optional UI sections available to the authenticated UI caller.
+#[get("")]
+pub(crate) async fn get_ui_config(
+    req: HttpRequest,
+    kms: web::Data<Arc<KMS>>,
+) -> KResult<HttpResponse> {
+    trace!("GET /ui/config");
+    let method = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .map(|user| user.auth_method)
+        .ok_or_else(|| KmsError::Unauthorized("No authentication provided".to_owned()))?;
+    if !matches!(
+        method,
+        AuthMethod::Session
+            | AuthMethod::AuthVerifierSession
+            | AuthMethod::Mtls
+            | AuthMethod::DefaultUser
+    ) {
+        return Ok(HttpResponse::Forbidden().finish());
+    }
+
+    let params = &kms.params;
+    let user = kms.get_user(&req);
+    debug!("Serving UI feature flags");
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CACHE_CONTROL, "private, no-store"))
+        .json(UiConfigResponse {
+            kv: params.kv.enabled,
+            hsm: !params.hsm_instances.is_empty(),
+            google_cse: params.google_cse_routes_enabled(),
+            crypto_officer: params
+                .crypto_officer
+                .users
+                .iter()
+                .any(|name| name == user.as_str()),
+        }))
 }
 
 // Function to register all auth routes

@@ -378,8 +378,6 @@ Crate path: `crate/server`
 | `trace` | `{jwt_authorization_config:#?}` | `src/routes/google_cse/jwt.rs` | `jwt_authorization_config` — … | — |
 | `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
 | `error` | `OpenSSL does not appear to be available (version number is 0).              Please verify that OpenSSL is correctly installed and accessible.` | `src/main.rs` | — | — |
-| `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
-| `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip/handlers.rs` | `x` | — |
@@ -810,6 +808,10 @@ Crate path: `crate/server`
 | `warn` | `UI session revocation lookup failed, refusing the session: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | The database could not be read; the logged-in session is refused (fail closed). |
 | `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral session key. Sessions will be invalidated on server restart and are not portable across instances. For persistent sessions and load-balanced deployments, set `ui_session_salt` (or KMS_SESSION_SALT) to a strong random secret value. `` | `src/start_kms_server.rs` | - | Each instance seals its cookies with its own random key, so behind a load balancer users are logged out whenever a request reaches another instance. |
 | `debug` | `UI session cookie rejected: revoked` | `src/middlewares/ui_session.rs` | - | The session id was revoked by a logout on this or another instance. |
+| `error` | `OCSP certificate status lookup failed: {e}` | `src/routes/ocsp/handler.rs` | `e` | - |
+| `debug` | `Serving UI feature flags` | `src/routes/ui_auth.rs` | - | - |
+| `trace` | `GET /ui/config` | `src/routes/ui_auth.rs` | - | - |
+| `warn` | `[{idx}] CRL not obtainable for '{:?}', skipping revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -876,6 +878,8 @@ Crate path: `crate/server_database`
 | `debug` | `[metrics] skipping unparsable DeactivationDate {json}: {e}` | `src/stores/sql/mod.rs` | `json`, `e` | - |
 | `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/mysql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
 | `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/pgsql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
+| `warn` | `find: object store '{prefix}' failed: {e}` | `src/core/database_objects.rs` | `prefix`, `e` | ×2 in this file |
+| `error` | `ceremony record was sealed for another user (record moved between rows); treating as inactive` | `src/core/database_permissions.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 
@@ -1337,6 +1341,7 @@ Crate path: `crate/clients/pkcs11/provider`
 | `debug` | `mac: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
 | `debug` | `mac_verify: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`, `algorithm` | - |
 | `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}, {mac_usage:?}` | `src/backend.rs` | `algorithm`, `key_length`, `label`, `mac_usage` | - |
+| `error` | `failed to initialize PKCS#11 runtime: {error}` | `src/lib.rs` | `error` | - |
 
 ### `cosmian_pkcs11_module`
 
@@ -1533,6 +1538,7 @@ Crate path: `ui/src/`
 | `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateGenerateCsr.tsx` | - | - |
 | `error` | `Error loading EC algorithms from WASM:` | `actions/Secrets/SshCa.tsx` | - | - |
 | `error` | `Error loading MAC options from WASM:` | `actions/MAC/macParams.ts` | - | - |
+| `warn` | `Could not load UI configuration; retaining existing menu behavior` | `utils/uiConfig.ts` | - | - |
 
 ---
 

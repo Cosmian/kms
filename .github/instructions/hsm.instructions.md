@@ -14,7 +14,7 @@ matrix.
 - [ ] PKCS#11 loader crate in `crate/hsm/<model>/`
 - [ ] HSM model enum updated in `crate/server/src/config/` or `crate/hsm/base_hsm/`
 - [ ] Wizard step in `crate/server/src/config/wizard/hsm_wizard.rs`
-- [ ] Test vectors in `test_data/vectors/hsm/<model>/`
+- [ ] Test vectors in `test_data/vectors/hsm/<scenario>/`
 - [ ] CI added to `.github/workflows/test_all.yml` and `.github/ci-paths.toml` (software HSMs: list the leaf in `.mise/tasks/test/hsm/_default` and add the model to the `bench` of `[units.hsm]`; real hardware: add a `hsm:<model>` unit with `lock`, `upstream = true` and `events` to `.github/ci-paths.toml`, its secrets in `test_all.yml` and `test-group.yml`, plus `skip` it in the `skip:` of `test-suites`), and the upstream `env:` gate (`print_error` when `CI=true` and a secret is unset, then `skip_test`) in `.mise/tasks/test/hsm/<model>` for hardware HSMs
 
 > Rule 4.13 of `/kms-sync-rules`.

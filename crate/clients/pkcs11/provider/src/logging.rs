@@ -1,4 +1,4 @@
-use std::{fs, fs::OpenOptions, path::PathBuf, sync::Once};
+use std::{fs, fs::OpenOptions, io::Write, path::PathBuf, sync::Once};
 
 use cosmian_logger::reexport::tracing::Level;
 use tracing_error::ErrorLayer;
@@ -11,7 +11,10 @@ static TRACING_INIT: Once = Once::new();
 pub(crate) fn initialize_logging(log_name: &str, level: Option<Level>, log_home: Option<String>) {
     TRACING_INIT.call_once(|| {
         init(log_name, level, log_home).unwrap_or_else(|e| {
-            eprintln!("Failed to initialize logging: {e}");
+            drop(writeln!(
+                std::io::stderr(),
+                "Failed to initialize logging: {e}"
+            ));
         });
     });
 }
@@ -40,7 +43,6 @@ fn init(
     level: Option<Level>,
     log_home: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Write as _;
     let level = level.unwrap_or(Level::INFO);
     let log_folder = match std::env::var("COSMIAN_PKCS11_LOGGING_FOLDER") {
         Ok(folder) => PathBuf::from(folder),
@@ -54,11 +56,11 @@ fn init(
         }
     };
 
-    writeln!(
-        std::io::stdout().lock(),
+    drop(writeln!(
+        std::io::stdout(),
         "cosmian-pkcs11 module logging at {level} level to file {}/{log_name}.log",
         log_folder.display()
-    )?;
+    ));
     log_to_file(log_name, level, &log_folder)
 }
 

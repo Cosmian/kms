@@ -1,10 +1,12 @@
 import React from "react";
 import { Navigate, Outlet, useOutletContext } from "react-router-dom";
+import type { UiFeatures } from "../../utils/uiConfig";
 
 /** Context provided by `MainLayout` to its child routes. */
 export type LayoutOutletContext = {
     /** True when the server runs in FIPS mode, or when that is not (yet) known: fail closed. */
     isFips: boolean;
+    features?: UiFeatures;
 };
 
 /**

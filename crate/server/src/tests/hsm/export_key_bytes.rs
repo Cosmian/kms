@@ -34,7 +34,7 @@ pub(super) async fn create_hsm_aes_key(
     uid: &str,
     sensitive: bool,
 ) -> KResult<()> {
-    let request = symmetric_key_create_request(
+    let mut request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(uid.to_owned())),
         256,
@@ -43,6 +43,8 @@ pub(super) async fn create_hsm_aes_key(
         sensitive,
         None,
     )?;
+    // HSM keys are sensitive unless the request says otherwise
+    request.attributes.sensitive = Some(sensitive);
     let response = send_message(
         kms.clone(),
         owner,
@@ -111,5 +113,52 @@ pub(super) async fn test_hsm_export_key_bytes() -> KResult<()> {
 
     delete_key(&extractable_uid, &owner, &kms).await?;
     delete_key(&sensitive_uid, &owner, &kms).await?;
+    Ok(())
+}
+
+/// An HSM AES key created WITHOUT a `Sensitive` attribute is sensitive and non-extractable by
+/// default (issue #1490): the export is refused and the server only holds an empty stub whose
+/// `Sensitive` attribute is `true`.
+pub(super) async fn test_hsm_default_key_is_sensitive() -> KResult<()> {
+    let owner = Uuid::new_v4().to_string();
+    let mut clap_config = hsm_clap_config(&owner, None)?;
+    clap_config.db.sqlite_path = get_tmp_sqlite_path();
+    let slot = clap_config.hsm.hsm_slot[0];
+    let kms = test_kms_with_config(clap_config).await?;
+
+    let uid = as_hsm_uid!(slot, Uuid::new_v4());
+    let request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(uid.clone())),
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false, // no Sensitive attribute is sent
+        None,
+    )?;
+    assert_eq!(request.attributes.sensitive, None);
+    send_message(
+        kms.clone(),
+        &owner,
+        vec![Operation::Create(Box::new(request))],
+    )
+    .await?;
+
+    let err = export_object(&kms, &owner, &uid)
+        .await
+        .expect_err("an HSM key created without Sensitive must not be exportable");
+    assert!(
+        matches!(err, KmsError::Kmip21Error(ErrorReason::Sensitive, _)),
+        "unexpected error: {err}"
+    );
+    let stub = kms
+        .database
+        .retrieve_object_arc(&uid)
+        .await?
+        .ok_or_else(|| KmsError::ServerError("HSM key not found".to_owned()))?;
+    assert_eq!(stub.attributes().sensitive, Some(true));
+    assert!(stub.object().key_block()?.key_bytes()?.is_empty());
+
+    delete_key(&uid, &owner, &kms).await?;
     Ok(())
 }

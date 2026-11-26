@@ -9,7 +9,7 @@ Create an ADR document for the Eviden KMS repository.
 
 ## ADR Storage
 
-Save ADRs at: `documentation/adr/adr-YYYY-MM-DD-[title-slug].md`
+Save ADRs at: `documentation/adr/YYYY-MM-DD-[title-slug].md`
 
 Where `YYYY-MM-DD` is the current date.
 

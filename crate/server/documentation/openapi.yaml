@@ -86,6 +86,16 @@ components:
     mtls:
       type: mutualTLS
       description: Client certificate presented during TLS handshake
+    uiSession:
+      type: apiKey
+      in: cookie
+      name: auth_session
+      description: KMS browser session established by UI login
+    authVerifierSession:
+      type: apiKey
+      in: cookie
+      name: _ea_
+      description: Auth Verifier SAML browser session for the configured realm
     basicAuth:
       type: http
       scheme: basic
@@ -2649,10 +2659,11 @@ paths:
         - name: validity_days
           in: query
           required: false
-          description: 'CRL validity period in days (default: server-configured value, typically 7)'
+          description: 'CRL validity period in days, 1–365 (default: server-configured value, typically 7)'
           schema:
             type: integer
             minimum: 1
+            maximum: 365
             default: 7
       responses:
         '200':
@@ -2677,7 +2688,7 @@ paths:
         '404':
           description: Issuer certificate not found or caller lacks read access to the CA key
         '422':
-          description: Invalid request — e.g. unsupported `format` value
+          description: Invalid request — e.g. unsupported `format` value or `validity_days` above 365
         '500':
           description: Internal server error — CRL generation failed
 
@@ -2865,7 +2876,8 @@ paths:
         '200':
           description: |
             Signed, DER-encoded `OCSPResponse` (RFC 6960 §4.2). Also returned for
-            protocol-level rejections (`malformedRequest`, `unauthorized`) per
+            protocol-level rejections (`malformedRequest`, `unauthorized`, `tryLater` when the
+            certificate status cannot be looked up) per
             RFC 6960 §2.3 — these are unsigned, minimal `OCSPResponse` bodies, not
             HTTP error statuses, since standard OCSP clients cannot parse anything
             other than a DER `OCSPResponse`.
@@ -4656,6 +4668,52 @@ paths:
                     example: alice@example.com
         '401':
           description: No active session
+
+  /ui/config:
+    get:
+      tags: [UI Auth]
+      summary: Optional sections available to the current UI user
+      description: >-
+        Available when KMS serves the Web UI. Accepts a KMS or Auth Verifier browser
+        session or an authenticated client certificate. If no authentication is
+        configured, the flags apply to the default user. The flags describe UI
+        visibility and do not grant permissions.
+      operationId: uiConfig
+      security:
+        - uiSession: []
+        - authVerifierSession: []
+        - mtls: []
+        - {}
+      responses:
+        '200':
+          description: UI visibility flags
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: "private, no-store"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kv, hsm, google_cse, crypto_officer]
+                additionalProperties: false
+                properties:
+                  kv:
+                    type: boolean
+                  hsm:
+                    type: boolean
+                  google_cse:
+                    type: boolean
+                  crypto_officer:
+                    type: boolean
+                    description: Whether the caller is configured as a Crypto Officer
+        '401':
+          description: Authentication required or invalid
+        '403':
+          description: The authenticated credential is not accepted for UI configuration
+        '404':
+          description: UI configuration route is not mounted
 
   /ui/logout:
     get:

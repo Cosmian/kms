@@ -38,11 +38,12 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `openssl-build.instructions.md` | `crate/crypto/build.rs` | Sync rule 4.17 — OpenSSL build script ⇔ provider init ⇔ CBOM/SBOM |
 | `dependencies.instructions.md` | `**/Cargo.toml`, `Cargo.lock`, `supply-chain/**`, `deny.toml`, `.cargo/audit.toml`, `ui/package.json`, `ui/pnpm-lock.yaml`, `crate/clients/wasm/package.json`, `**/requirements*.in`, `**/requirements*.txt`, `**/go.mod`, `**/go.sum`, `**/Dockerfile*`, `.github/dependabot.yml`, `.github/workflows/**`, `.github/actions/**` | Sync rule 4.19 — third-party dependency vetting (cargo-vet, pnpm, pip, Go, Docker digests, Action SHAs, installers) per issue #1265 |
 | `rust-cli.instructions.md` | `crate/clients/**/*.rs` | CLI actions, WASM bindings, PKCS#11 |
+| `ffi-exports.instructions.md` | `crate/clients/pkcs11/**/*.rs`, `crate/clients/cng/**/*.rs` | Panic containment, unwind profile, pointer preconditions, and `Once`-guarded tables for cdylibs loaded into foreign hosts |
 | `typescript-ui.instructions.md` | `ui/src/**/*.{ts,tsx}` | React 19, Ant Design 5, Tailwind 4, WASM |
 | `i18n.instructions.md` | `ui/src/i18n/**/*.{ts,json}` | Locale bundles, en/zh-CN parity, useTranslation/Trans |
 | `playwright.instructions.md` | `ui/tests/e2e/**/*.ts` | Playwright E2E test conventions; sync rule 4.16 — E2E test documentation |
 | `bash.instructions.md` | `**/*.sh` | Shell scripts, MISE tasks, reusable scripts |
-| `mise.instructions.md` | `.mise/**, scripts/**, .github/reusable_scripts/**` | MISE task headers, lib usage, variant flags |
+| `mise.instructions.md` | `.mise/**, .github/reusable_scripts/**` | MISE task headers, lib usage, variant flags |
 | `github-actions.instructions.md` | `.github/workflows/**, .github/actions/**` | CI/CD YAML conventions |
 | `toml.instructions.md` | `**/*.toml` | Cargo.toml, workspace, config TOML |
 | `python.instructions.md` | `**/*.py` | Documentation scripts, test helpers |
@@ -51,8 +52,6 @@ The following files in `.github/instructions/` are automatically applied by agen
 | `nix.instructions.md` | `nix/**/*.nix` | Nix build expressions, vendor hashes |
 | `docker.instructions.md` | `nix/docker.nix`, `nix/k8s-images.nix`, `docker-compose.yml`, `.mise/scripts/docker-compose.yml`, `.mise/scripts/test/pkg/test_docker_image.sh`, `.mise/lib/k8s.sh`, `.mise/tasks/build/docker`, `.mise/tasks/test/pkg/docker`, `.mise/tasks/test/k8s/**`, `charts/cosmian-kms/**/*`, `.github/workflows/packaging-docker.yml` | Docker image build/test (Nix), docker-compose, Helm chart, Kubernetes helpers |
 | `mermaid.instructions.md` | `**/*.md` | Mermaid diagram conventions: `<br/>` line breaks, no list markers in node/edge labels, label width limits (no right-edge clipping), supported Markdown subset, no keyword ids, mmdc render check |
-| `rust-security.instructions.md` | `crate/**/*.rs` | Constant-time secret comparison, secret memory and log hygiene, no test-only auth branches, fail-closed authorization |
-| `test-configs.instructions.md` | `**/*.sh`, `.mise/**`, `crate/test_kms_server/**/*.rs`, `crate/**/tests/**/*.rs`, `crate/server/src/config/**/*.rs`, `test_data/configs/**`, `test_data/spire/config/**` | Never write partial KMS or Auth Verifier configs; reuse or add complete fixtures in the test_data submodule |
 | `test-task-readme.instructions.md` | `.mise/tasks/test/**`, `.mise/scripts/test/**` | `.mise/tasks/test/README.md` is the only test-task doc: update the affected task entries and their Mermaid diagrams on every task or script change; sync rule 4.21 |
 | `database-compatibility.instructions.md` | `crate/server_database/**`, `crate/kmip/src/kmip_0/kmip_types.rs`, `crate/kmip/src/kmip_2_1/kmip_attributes.rs`, `crate/kmip/src/kmip_2_1/kmip_objects.rs`, `crate/kmip/src/kmip_2_1/kmip_types.rs` | Sync rule 4.18 — upgrade, downgrade (N-1), round-trip and mixed-version rules for SQL / Redis-with-Findex / persisted KMIP serde changes |
 | `database-replication.instructions.md` | `crate/server_database/**`, `crate/interfaces/src/stores/**`, `**/*.sql` | Cluster (several KMS instances on one database) and multi-region (PostgreSQL Spock, MySQL Galera) decisions to take whenever a database change adds, alters or relies on stored data |
@@ -110,7 +109,6 @@ Start backends with `docker compose up -d`, then set:
 | `KMS_MYSQL_URL`    | `mysql://kms:kms@localhost:3306/kms`      |
 | `KMS_SQLITE_PATH`  | `data/shared`                             |
 
-> MySQL tests are currently disabled in CI.
 > Redis-findex tests are skipped in FIPS mode.
 > `postgres-mtls` and `mysql-mtls` (profile `mtls`), and `jaeger` and `otel-collector` (profile `otel-test`), are not started by a bare `docker compose up -d`. Use `--profile <name>` or name the service, for example `docker compose up -d postgres-mtls`.
 
@@ -132,48 +130,7 @@ Do not ever commit without fixing pre-commit hook errors. Do not use git commit 
 
 ### Workspace layout
 
-```text
-crate/
-  access/           cosmian_kms_access         — access-control utilities
-  clients/
-    clap/           cosmian_kms_cli_actions    — CLI actions library (clap commands)
-    client/         cosmian_kms_client         — HTTP client library
-    client_utils/   cosmian_kms_client_utils   — shared client helpers
-    ckms/           ckms                       — CLI binary (subcommands live here)
-    pkcs11/
-      loader/       cosmian_pkcs11_verify      — diagnostic binary to verify PKCS#11 module loadability
-      module/       cosmian_pkcs11_module      — PKCS#11 module implementation
-      provider/     cosmian_pkcs11             — PKCS#11 provider binary
-    wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
-  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.5
-  hsm/
-    base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
-    softhsm2/       softhsm2_pkcs11_loader     — SoftHSM2
-    utimaco/        utimaco_pkcs11_loader      — Utimaco
-    proteccio/      proteccio_pkcs11_loader    — Proteccio
-    crypt2pay/      crypt2pay_pkcs11_loader    — Crypt2Pay
-    smartcardhsm/   smartcardhsm_pkcs11_loader — SmartCard HSM
-  interfaces/       cosmian_kms_interfaces     — Database/HSM traits
-  kmip/             cosmian_kmip               — KMIP 2.1 protocol types
-  kmip-derive/      kmip-derive                — proc-macros for KMIP serialisation
-  server/           cosmian_kms_server         — server binary + lib (main codebase)
-  server_database/  cosmian_kms_server_database — DB backends (SQLite, PostgreSQL, Redis-findex)
-  test_kms_server/  test_kms_server            — in-process test server helper
-
-.github/            CI workflows (.github/workflows/) and helper scripts
-.mise/              MISE tasks and scripts (single source of truth for all automation)
-cbom/               Cryptographic Bill of Materials (CBOM)
-documentation/docs/kms_clients/  CLI documentation (integrated into main docs)
-documentation/      mdBook documentation source
-monitoring/         Grafana / Prometheus / OTLP monitoring stack
-nix/                Nix build expressions and expected vendor hashes
-pkg/                deb/rpm service files and configs
-resources/          Server config templates
-sbom/               Software Bill of Materials (SBOM)
-scripts/            Project scripts
-test_data/          Test fixtures (submodule)
-ui/                 Web UI source (React + Vite + Playwright E2E tests)
-```
+See the root [Cargo.toml](Cargo.toml) for workspace members and each crate's manifest for its package name. The [submodule declarations](.gitmodules) identify the specification and test-fixture checkouts: `kmip/` holds the specs; `crate/kmip/` holds Rust protocol code.
 
 ---
 
@@ -183,7 +140,7 @@ ui/                 Web UI source (React + Vite + Playwright E2E tests)
 HTTP client
   │
   ▼
-crate/server/src/routes/kmip.rs               — Actix-web handler, deserialises TTLV
+crate/server/src/routes/kmip/                 — Actix-web handlers, deserialise TTLV
   │
   ▼
 crate/server/src/core/operations/dispatch.rs  — matches TTLV tag → operation function
@@ -205,7 +162,7 @@ Enterprise routes:
 - `crate/server/src/routes/google_cse/` — Google CSE
 - `crate/server/src/routes/ms_dke/` — Microsoft DKE
 
-You must always verify that changes related to KMIP protocol are compliant with KMIP specifications (HTML files found in crate/kmip/src)
+You must always verify that changes related to the KMIP protocol are compliant with the KMIP specifications in the `kmip/` submodule (for example `kmip/v2.1/kmip-spec-v2.1-os.html`; run `git submodule update --init kmip` if absent).
 
 ---
 
@@ -266,6 +223,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Randomness**: every random byte comes from KmsRng; the root clippy.toml bans all other entropy sources and the ban is never suppressed — see .github/instructions/rust.instructions.md § Randomness.
 - **Regression test**: every bug fix ships a test that fails before the fix (or the commit message says why that is impossible) — see `rust.instructions.md` § Testing.
 - **CLI tests**: no clap action (subcommand, flag, accepted value or default) is added or changed without Rust integration tests that run the `ckms` binary in `crate/clients/ckms/src/tests/`, committed with the action — see `.github/instructions/rust-cli.instructions.md` § Mandatory and `/ckms-subcommand-test`.
+- **SQL**: follow the [SQL placement rules and exceptions](.github/instructions/rust-database.instructions.md#sql-statements-live-in-sql-files).
 - **Secrets**: compare in constant time, keep in `Zeroizing`, never log — see `rust-security.instructions.md`.
 - **Commit subjects**: conventional-commit type + a descriptive subject (`fix(server): reject MAC with wrong length`); never `fix: PR review`, `fix: commit`, `fix: last fixes`.
 
@@ -359,7 +317,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | Non-FIPS-only feature | 4.8 |
 | Auth method change | 4.9 |
 | Server config/wizard change | 4.6, 4.7 |
-| Database backend change | 4.18 |
+| Database backend or persisted KMIP serde type change | 4.18 |
 | Cloud provider integration | 4.12 |
 | HSM backend | 4.13 |
 | Documentation/behavior change | 4.14 |
@@ -502,12 +460,7 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 
 #### UI actions structure
 
-`ui/src/actions/` — 16 feature modules mapping to KMIP operation groups:
-
-```text
-Access/ Attributes/ Certificates/ CloudProviders/ Covercrypt/ EC/ FPE/ Keys/
-MAC/ Objects/ Pgp/ PQC/ RSA/ RotationPolicy/ Symmetric/ Tokenize/
-```
+Follow the route in [App.tsx](ui/src/App.tsx) to its form in [ui/src/actions/](ui/src/actions/).
 
 Update `ui/tests/e2e/README.md` when adding or removing E2E tests.
 
@@ -521,38 +474,20 @@ All CI runs go through **MISE** via:
 mise run [task] --variant [fips|non-fips] [args]
 ```
 
-#### Test types (`mise run test:<group>:<name>`)
+#### Test tasks (`mise run test:<group>:<name>` or `mise run test:<group>`)
 
-| Type            | FIPS?  | Notes                                |
-| --------------- | ------ | ------------------------------------ |
-| `sqlite`        | yes    | Default DB backend                   |
-| `psql`          | yes    | Requires PostgreSQL                  |
-| `mysql`         | yes    | Disabled in CI                       |
-| `percona`       | yes    | Percona XtraDB                       |
-| `mariadb`       | yes    | MariaDB                              |
-| `wasm`          | yes    | WASM package build + tests           |
-| `google_cse`    | yes    | Requires OAuth creds                 |
-| `gcp_cmek`      | yes    | GCP CMEK wrapping                    |
-| `otel_export`   | yes    | OpenTelemetry metrics                |
-| `hsm [backend]` | yes    | softhsm2 / utimaco / proteccio / all |
-| `redis`         | **no** | Redis-findex (non-FIPS only)         |
-| `pykmip`        | **no** | PyKMIP + Synology DSM                |
-| `aws_xks`       | **no** | AWS XKS                              |
-| `azure_ekm`     | **no** | Azure EKM                            |
-| `ui`            | **no** | Playwright E2E                       |
+Read the [test task README](.mise/tasks/test/README.md) for flags and prerequisites, the task itself for supported variants, and [ci-paths.toml](.github/ci-paths.toml) for CI test units.
 
 ### 8.3 OpenSSL handling
 
-**No external OpenSSL needed.** OpenSSL 3.6.5 is downloaded, SHA-256-verified,
-and built from source by `crate/crypto/build.rs` into `target/` on first build.
+**No external OpenSSL needed.** `crate/crypto/build.rs` downloads, SHA-256-verifies, and builds OpenSSL 3.6.5 (main library) plus OpenSSL 3.1.2 (CMVP-validated FIPS module `fips.so` in FIPS builds) from source into `target/` on first build, and emits `OPENSSL_CONF` and `OPENSSL_MODULES` at compile time via `cargo:rustc-env`.
 
-At runtime, `crate/server/src/openssl_providers.rs` initialises the correct provider:
+At runtime, `init_openssl_providers()` in `crate/server/src/openssl_providers.rs` initialises the correct provider once via `OnceLock`:
 
-- **FIPS**: loads the FIPS provider once via `OnceLock`.
-- **non-FIPS**: loads the legacy provider on top of the default provider.
+- **FIPS**: loads the `fips` provider once via `OnceLock`.
+- **non-FIPS**: loads the `legacy` provider on top of the active `default` provider.
 
-`apply_openssl_dir_env_if_needed()` sets `OPENSSL_MODULES` and `OPENSSL_CONF`
-**before** any `Provider::try_load()` call.
+Production KMS server initialization must use `init_openssl_providers()` rather than call `Provider::load` or `Provider::try_load` directly. This rule does not apply to test setup.
 
 ---
 
