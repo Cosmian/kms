@@ -17,7 +17,7 @@
 ## Refactor
 
 ### Crypto
-- Remove the `unsafe` FFI around seeded ML-KEM/ML-DSA key generation (safe `PKey::private_key_from_seed`), the hand-written `extern "C"` block and the duplicated KEM encapsulate/decapsulate code; the remaining `unsafe` (`EVP_PKEY_Q_keygen`, raw hybrid key loading, `EVP_PKEY_encapsulate`/`decapsulate`) waits for rust-openssl bindings ([#894](https://github.com/Cosmian/kms/issues/894), [#1251](https://github.com/Cosmian/kms/issues/1251))
+- Replace the hand-written `extern "C"` block and the hybrid and ML-KEM KEM encapsulate/decapsulate duplicates with shared safe-signature functions, and generate seeded ML-KEM/ML-DSA keys through `EVP_PKEY_fromdata` (so the provider's pairwise consistency test runs on import); the remaining `unsafe` (`EVP_PKEY_Q_keygen`, `EVP_PKEY_fromdata`, raw hybrid key loading, `EVP_PKEY_encapsulate`/`decapsulate`) waits for rust-openssl bindings ([#894](https://github.com/Cosmian/kms/issues/894), [#1251](https://github.com/Cosmian/kms/issues/1251))
 
 ## Documentation
 

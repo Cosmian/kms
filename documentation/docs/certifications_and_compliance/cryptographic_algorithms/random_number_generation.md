@@ -243,8 +243,8 @@ cargo test -p cosmian_kms_crypto --lib --features non-fips pqc
 ### Completed in Eviden KMS
 
 1. **Seed injection for ML-KEM and ML-DSA**: `pqc_keygen` draws 64 bytes (ML-KEM) or 32 bytes (ML-DSA) from `KmsRng`
-   and imports the key pair from that seed with the safe `PKey::private_key_from_seed` (`EVP_PKEY_fromdata`; the
-   provider runs its pairwise consistency test on import).
+   and imports the key pair from that seed with `EVP_PKEY_fromdata` (the provider runs its pairwise consistency test on
+   import).
 2. **Safe OpenSSL Migration (Issue #894)**: Replaced raw BIO serialization (`evp_pkey_to_pkcs8_der`, `evp_pkey_to_spki_der`)
    and raw buffer extraction with safe native `openssl::pkey::PKey` methods.
 

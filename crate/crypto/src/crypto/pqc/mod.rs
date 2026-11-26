@@ -23,7 +23,10 @@ use cosmian_kmip::{
     },
 };
 use foreign_types::ForeignType;
-use openssl::pkey::{KeyType, PKey, Private, Public};
+use openssl::{
+    pkey::{PKey, Private, Public},
+    pkey_ctx::PkeyCtx,
+};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -77,33 +80,91 @@ pub fn generate_pqc_seed(rng: &KmsRng, seed_len: usize) -> Result<Zeroizing<Vec<
         .map_err(|e| CryptoError::Default(format!("PQC seed generation failed: {e}")))
 }
 
-/// `KeyType` and seed length (bytes) of the algorithms OpenSSL derives from a seed:
+/// Algorithm name and seed length (bytes) of the algorithms OpenSSL derives from a seed:
 /// ML-KEM takes a 64-byte seed (FIPS 203 §7.1), ML-DSA a 32-byte seed (FIPS 204 §6.1).
-fn seeded_key_type(algorithm_name: &str) -> Option<(KeyType, usize)> {
+fn seeded_key_type(algorithm_name: &str) -> Option<(&'static CStr, usize)> {
     Some(match algorithm_name {
-        "ML-KEM-512" => (KeyType::ML_KEM_512, 64),
-        "ML-KEM-768" => (KeyType::ML_KEM_768, 64),
-        "ML-KEM-1024" => (KeyType::ML_KEM_1024, 64),
-        "ML-DSA-44" => (KeyType::ML_DSA_44, 32),
-        "ML-DSA-65" => (KeyType::ML_DSA_65, 32),
-        "ML-DSA-87" => (KeyType::ML_DSA_87, 32),
+        "ML-KEM-512" => (c"ML-KEM-512", 64),
+        "ML-KEM-768" => (c"ML-KEM-768", 64),
+        "ML-KEM-1024" => (c"ML-KEM-1024", 64),
+        "ML-DSA-44" => (c"ML-DSA-44", 32),
+        "ML-DSA-65" => (c"ML-DSA-65", 32),
+        "ML-DSA-87" => (c"ML-DSA-87", 32),
         _ => return None,
     })
 }
 
-/// Derive an ML-KEM or ML-DSA key pair from `seed` with the safe
-/// `PKey::private_key_from_seed` (`EVP_PKEY_fromdata` with the `seed` parameter; the
-/// provider's import runs the pairwise consistency test).
+/// Derive an ML-KEM or ML-DSA key pair from `seed` with `EVP_PKEY_fromdata` and the `seed`
+/// parameter; the provider's import runs the pairwise consistency test.
+///
+/// Upstream tracking: `PKey::private_key_from_seed` is gated on `ossl350`, which `openssl-sys`
+/// derives from the OpenSSL headers it is compiled against, not from the OpenSSL that
+/// `crate/crypto/build.rs` builds afterwards; use it once that holds (Issue #1251).
+#[expect(
+    unsafe_code,
+    reason = "EVP_PKEY_fromdata with a seed parameter has no ungated safe rust-openssl binding (#1251)"
+)]
 fn pqc_keygen_seeded(
-    key_type: KeyType,
+    name: &CStr,
     seed: &[u8],
     propquery: Option<&CStr>,
 ) -> Result<PKey<Private>, CryptoError> {
-    PKey::private_key_from_seed(None, key_type, propquery, seed).map_err(|e| {
-        CryptoError::Default(format!(
-            "seeded PQC key generation failed for {key_type:?}: {e}"
-        ))
-    })
+    // OSSL_PARAM_OCTET_STRING is 5 and OSSL_PARAM_UNMODIFIED is (size_t)-1.
+    let params = [
+        openssl_sys::OSSL_PARAM {
+            key: c"seed".as_ptr(),
+            data_type: 5,
+            data: seed.as_ptr().cast_mut().cast::<std::ffi::c_void>(),
+            data_size: seed.len(),
+            return_size: usize::MAX,
+        },
+        openssl_sys::OSSL_PARAM {
+            key: ptr::null(),
+            data_type: 0,
+            data: ptr::null_mut(),
+            data_size: 0,
+            return_size: 0,
+        },
+    ];
+    // SAFETY: `name`, `propquery` (when `Some`), `seed` and `params` are valid for the duration
+    // of each call; the context is owned by `PkeyCtx` and freed on every return path, and a
+    // non-null `raw_pkey` returned by `EVP_PKEY_fromdata` is owned by `PKey`.
+    unsafe {
+        openssl_sys::init();
+        let ctx = openssl_sys::EVP_PKEY_CTX_new_from_name(
+            ptr::null_mut(),
+            name.as_ptr(),
+            propquery.map_or(ptr::null(), CStr::as_ptr),
+        );
+        if ctx.is_null() {
+            return Err(CryptoError::Default(format!(
+                "EVP_PKEY_CTX_new_from_name failed for {name:?}: {}",
+                openssl::error::ErrorStack::get()
+            )));
+        }
+        let ctx = PkeyCtx::<Private>::from_ptr(ctx);
+        if openssl_sys::EVP_PKEY_fromdata_init(ctx.as_ptr()) <= 0 {
+            return Err(CryptoError::Default(format!(
+                "EVP_PKEY_fromdata_init failed for {name:?}: {}",
+                openssl::error::ErrorStack::get()
+            )));
+        }
+        let mut raw_pkey: *mut openssl_sys::EVP_PKEY = ptr::null_mut();
+        if openssl_sys::EVP_PKEY_fromdata(
+            ctx.as_ptr(),
+            &raw mut raw_pkey,
+            openssl_sys::EVP_PKEY_KEYPAIR,
+            params.as_ptr().cast_mut(),
+        ) <= 0
+            || raw_pkey.is_null()
+        {
+            return Err(CryptoError::Default(format!(
+                "seeded PQC key generation failed for {name:?}: {}",
+                openssl::error::ErrorStack::get()
+            )));
+        }
+        Ok(PKey::from_ptr(raw_pkey))
+    }
 }
 
 /// Generate a key pair by algorithm name with OpenSSL's internal DRBG.
@@ -155,7 +216,7 @@ fn parse_propquery(propquery: Option<&str>) -> Result<Option<CString>, CryptoErr
 /// - ML-KEM draws a 64-byte seed from `KmsRng` (FIPS 203 §7.1 / OpenSSL `ml_kem_kmgmt.c`).
 /// - ML-DSA draws a 32-byte seed from `KmsRng` (FIPS 204 §6.1 / OpenSSL `ml_dsa_kmgmt.c`).
 ///
-/// Seeded keys come from `PKey::private_key_from_seed`. SLH-DSA, whose seed parameter
+/// Seeded keys come from `EVP_PKEY_fromdata` with the `seed` parameter. SLH-DSA, whose seed parameter
 /// OpenSSL documents as testing-only (`EVP_PKEY-SLH-DSA(7)`), and every call with `rng`
 /// `None` use OpenSSL's internal DRBG through [`pqc_keygen_unseeded`].
 fn pqc_keygen(
@@ -710,8 +771,8 @@ mod tests {
     fn pqc_keygen_seeded_is_deterministic_ml_kem() {
         let seed = [0x42_u8; 64];
 
-        let pkey1 = pqc_keygen_seeded(KeyType::ML_KEM_768, &seed, None).expect("seeded keygen 1");
-        let pkey2 = pqc_keygen_seeded(KeyType::ML_KEM_768, &seed, None).expect("seeded keygen 2");
+        let pkey1 = pqc_keygen_seeded(c"ML-KEM-768", &seed, None).expect("seeded keygen 1");
+        let pkey2 = pqc_keygen_seeded(c"ML-KEM-768", &seed, None).expect("seeded keygen 2");
         let priv1 = pkey1.private_key_to_pkcs8().expect("priv1");
         let priv2 = pkey2.private_key_to_pkcs8().expect("priv2");
         assert_eq!(
@@ -731,8 +792,8 @@ mod tests {
     fn pqc_keygen_seeded_is_deterministic_ml_dsa() {
         let seed = [0x55_u8; 32];
 
-        let pkey1 = pqc_keygen_seeded(KeyType::ML_DSA_65, &seed, None).expect("seeded keygen 1");
-        let pkey2 = pqc_keygen_seeded(KeyType::ML_DSA_65, &seed, None).expect("seeded keygen 2");
+        let pkey1 = pqc_keygen_seeded(c"ML-DSA-65", &seed, None).expect("seeded keygen 1");
+        let pkey2 = pqc_keygen_seeded(c"ML-DSA-65", &seed, None).expect("seeded keygen 2");
         let priv1 = pkey1.private_key_to_pkcs8().expect("priv1");
         let priv2 = pkey2.private_key_to_pkcs8().expect("priv2");
         assert_eq!(
@@ -834,7 +895,7 @@ mod tests {
     fn pqc_keygen_seeded_with_propquery_fips_rejects_without_fips_provider() {
         // When "fips=yes" is requested but the FIPS provider is not loaded, key generation
         // must return an Err.
-        let result = pqc_keygen_seeded(KeyType::ML_KEM_768, &[0x77_u8; 64], Some(c"fips=yes"));
+        let result = pqc_keygen_seeded(c"ML-KEM-768", &[0x77_u8; 64], Some(c"fips=yes"));
         assert!(
             result.is_err(),
             "requesting fips=yes without loaded FIPS provider must fail"
