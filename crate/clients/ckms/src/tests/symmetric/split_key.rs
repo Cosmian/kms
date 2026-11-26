@@ -225,3 +225,29 @@ async fn test_join_split_key_nonexistent_share_fails() -> CosmianResult<()> {
 
     Ok(())
 }
+
+/// A Sensitive key must not be split: the shares would hold its plaintext (issue #1490).
+#[tokio::test]
+async fn test_split_sensitive_key_refused() -> CosmianResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let conf = owner_config(ctx);
+
+    let key_id = create_symmetric_key(&conf, &["--sensitive"])?;
+    let stderr = run_ckms_expect_error(
+        &conf,
+        &[
+            "sym",
+            "keys",
+            "create-split-key",
+            "--key-id",
+            &key_id,
+            "--total-parts",
+            "2",
+        ],
+    )?;
+    assert!(
+        stderr.to_lowercase().contains("sensitive"),
+        "expected a Sensitive denial, got: {stderr}"
+    );
+    Ok(())
+}

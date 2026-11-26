@@ -130,6 +130,10 @@ ceremony candidate exemption lets a CO candidate call `Create`, `CreateSplitKey`
 `JoinSplitKey` even before the ceremony completes, which is what breaks the
 chicken-and-egg problem of needing the role to set up the role.
 
+A sensitive or non-extractable key cannot be split (`CreateSplitKey` is refused with `Sensitive` or
+`Not_Extractable`), because the shares hold the plaintext key. Create the ceremony key without
+`--sensitive`.
+
 ```mermaid
 sequenceDiagram
     actor Candidate as CO candidate

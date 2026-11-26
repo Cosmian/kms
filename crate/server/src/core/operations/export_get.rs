@@ -63,7 +63,7 @@ use crate::{
 /// Per KMIP 1.4 §3.48 / 2.1 §4.54 (Sensitive): sensitive objects cannot leave in plaintext.
 /// Per KMIP 1.4 §3.50 / 2.1 §4.23 (Extractable): non-extractable keys cannot be exported
 /// in any form (plaintext or encrypted).
-fn check_extractable_and_sensitive(
+pub(crate) fn check_extractable_and_sensitive(
     owm: &ObjectWithMetadata,
     key_wrapping_specification: &Option<KeyWrappingSpecification>,
     is_pkcs12: bool,
