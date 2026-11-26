@@ -22,7 +22,9 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_bail,
-    middlewares::{UserId, user_from_client_certificate, verified_issuers},
+    middlewares::{
+        UserId, names_reserved_identity, user_from_client_certificate, verified_issuers,
+    },
     result::{KResult, KResultHelper},
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
 };
@@ -36,10 +38,12 @@ const SOCKET_IO_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_SOCKET_CONNECTIONS: usize = 1024;
 /// Maximum TTLV request body size, same as the HTTP payload limit.
 const MAX_SOCKET_REQUEST_BODY: usize = 64 * 1024 * 1024;
-/// Process-wide budget of request bytes held at once, from body allocation until the response
-/// is sent. The per-request limit alone allows `MAX_SOCKET_CONNECTIONS` × 64 MiB = 64 GiB; a
-/// request that does not fit in the remaining budget is refused and its connection closed.
+/// Process-wide budget of request bytes held at once, from receipt until the response is sent.
+/// The per-request limit alone allows `MAX_SOCKET_CONNECTIONS` × 64 MiB = 64 GiB; a request
+/// whose next bytes do not fit in the remaining budget is refused and its connection closed.
 const MAX_SOCKET_INFLIGHT_BYTES: usize = 256 * 1024 * 1024;
+/// Minimum growth of a request buffer; its budget reservation grows with the bytes received.
+const SOCKET_READ_CHUNK: usize = 64 * 1024;
 
 /// Releases a connection slot when the client thread ends, even on panic.
 struct ConnectionSlot(Arc<AtomicUsize>);
@@ -474,6 +478,7 @@ fn handle_client(
             break;
         };
         let username = client_username(&tls_stream)?;
+        reject_default_username_collision(&username, &kms_server.params.default_username)?;
         debug!("socket server: received request ({} bytes)", request.len());
 
         // Process the request
@@ -501,9 +506,9 @@ fn handle_client(
 /// Read one TTLV message (8-byte header followed by its body).
 ///
 /// Returns `Ok(None)` when the client closed the connection or stayed idle past
-/// [`SOCKET_IO_TIMEOUT`]. The declared length is checked, and reserved in the process-wide
-/// `inflight_bytes` budget, before allocating the body; the returned permit holds the
-/// reservation.
+/// [`SOCKET_IO_TIMEOUT`]. The declared length is checked before reading; the body buffer and its
+/// reservation in the process-wide `inflight_bytes` budget grow with the bytes received; the
+/// returned permit holds the reservation.
 fn read_request(
     stream: &mut impl Read,
     inflight_bytes: &Arc<Semaphore>,
@@ -532,25 +537,10 @@ fn read_request(
         )));
     }
     let size = 8 + length;
-    let permit = inflight_bytes
-        .clone()
-        .try_acquire_many_owned(
-            u32::try_from(size).context("socket server: failed to convert request size")?,
-        )
-        .map_err(|e| {
-            KmsError::ServerError(format!(
-                "socket server: cannot accept a {size}-byte request, the \
-                 {MAX_SOCKET_INFLIGHT_BYTES}-byte in-flight request budget is exhausted ({e}); \
-                 closing the connection"
-            ))
-        })?;
-
-    // Read the rest of the request directly into a single contiguous buffer
-    let mut request = vec![0_u8; size];
-    request
-        .get_mut(..8)
-        .context("socket server: failed to get header slice")?
-        .copy_from_slice(&header);
+    // Reserve as bytes arrive, not the declared length: a client announcing 64 MiB and
+    // trickling its body holds only what it sent (at most twice, plus one chunk).
+    let mut permit = reserve_inflight(inflight_bytes, 8, size)?;
+    let mut request = header.to_vec();
     // The body must arrive within about one `SOCKET_IO_TIMEOUT` (the deadline is checked
     // between reads, so a stalled read can add one more): a per-read timeout alone would let
     // a client trickle bytes and hold its budget reservation indefinitely.
@@ -561,6 +551,14 @@ fn read_request(
             kms_bail!(KmsError::ServerError(
                 "socket server: request body not received within the I/O timeout".to_owned()
             ));
+        }
+        if received == request.len() {
+            let grow = size
+                .saturating_sub(received)
+                .min(received.max(SOCKET_READ_CHUNK));
+            permit.merge(reserve_inflight(inflight_bytes, grow, size)?);
+            request.reserve_exact(grow);
+            request.resize(received.saturating_add(grow), 0);
         }
         let buffer = request
             .get_mut(received..)
@@ -580,6 +578,26 @@ fn read_request(
     Ok(Some((request, permit)))
 }
 
+/// Reserve `bytes` more of the in-flight budget for a request of `size` bytes.
+fn reserve_inflight(
+    inflight_bytes: &Arc<Semaphore>,
+    bytes: usize,
+    size: usize,
+) -> KResult<OwnedSemaphorePermit> {
+    inflight_bytes
+        .clone()
+        .try_acquire_many_owned(
+            u32::try_from(bytes).context("socket server: failed to convert request size")?,
+        )
+        .map_err(|e| {
+            KmsError::ServerError(format!(
+                "socket server: cannot accept a {size}-byte request, the \
+                 {MAX_SOCKET_INFLIGHT_BYTES}-byte in-flight request budget is exhausted ({e}); \
+                 closing the connection"
+            ))
+        })
+}
+
 /// Extract the username from the client certificate, with the same checks as HTTP mTLS.
 fn client_username<S>(tls_stream: &SslStream<S>) -> KResult<UserId> {
     let client_certificate = tls_stream.ssl().peer_certificate().ok_or_else(|| {
@@ -592,6 +610,17 @@ fn client_username<S>(tls_stream: &SslStream<S>) -> KResult<UserId> {
         &client_certificate,
         verified_issuers(tls_stream.ssl()).as_deref(),
     )
+}
+
+/// The socket server does not go through `ensure_auth_middleware`: refuse a client certificate
+/// whose CN equals `default_username`, as the HTTP mTLS path does.
+fn reject_default_username_collision(username: &UserId, default_username: &str) -> KResult<()> {
+    if names_reserved_identity(username.as_str(), default_username) {
+        return Err(KmsError::Unauthorized(
+            "socket server: external identity collides with the KMS default_username".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 // Client Certificate Authentication
@@ -637,9 +666,9 @@ mod tests {
     use std::{
         error::Error,
         fs,
-        io::{self, Write},
+        io::{self, ErrorKind, Read, Write},
         net::{TcpListener, TcpStream},
-        sync::Arc,
+        sync::{Arc, mpsc},
         thread,
         time::{Duration, Instant},
     };
@@ -661,9 +690,12 @@ mod tests {
     use super::{
         DeadlineStream, MAX_SOCKET_INFLIGHT_BYTES, MAX_SOCKET_REQUEST_BODY,
         SOCKET_HANDSHAKE_TIMEOUT, SocketServerParams, accept_tls, client_username,
-        create_openssl_acceptor, read_request,
+        create_openssl_acceptor, read_request, reject_default_username_collision,
     };
-    use crate::routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER};
+    use crate::{
+        middlewares::UserId,
+        routes::{aws_xks::AWS_XKS_SERVICE_USER, enrollment::ENROLLMENT_SERVICE_USER},
+    };
 
     type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
@@ -781,6 +813,19 @@ mod tests {
         if user != "alice@example.com" {
             return Err(format!("unexpected username {user}").into());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn client_cn_equal_to_default_username_is_rejected() -> TestResult {
+        let key = PKey::private_key_from_pem(&fs::read(format!(
+            "{CERTS}/user/user.client.acme.com.key"
+        ))?)?;
+        let cn = socket_username("Admin", &key)??;
+        if reject_default_username_collision(&UserId::from(cn.as_str()), "admin").is_ok() {
+            return Err(format!("CN {cn} was accepted as the default username").into());
+        }
+        reject_default_username_collision(&UserId::from("alice@example.com"), "admin")?;
         Ok(())
     }
 
@@ -912,6 +957,76 @@ mod tests {
         drop(held);
         if read_request(&mut io::Cursor::new(message), &budget)?.is_none() {
             return Err("the budget was not released after the response".into());
+        }
+        Ok(())
+    }
+
+    /// Serves `prefix`, then signals `started` and blocks until `release`, like a client that
+    /// announced a large frame and stopped sending.
+    struct StalledClient {
+        prefix: io::Cursor<Vec<u8>>,
+        started: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+    }
+
+    impl Read for StalledClient {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let read = self.prefix.read(buf)?;
+            if read > 0 {
+                return Ok(read);
+            }
+            let _signalled = self.started.send(());
+            let _released = self.release.recv();
+            Err(io::Error::from(ErrorKind::TimedOut))
+        }
+    }
+
+    /// Clients announcing maximum-size frames and sending almost nothing hold only the bytes
+    /// they sent, so they cannot exhaust the in-flight budget for the other clients.
+    #[test]
+    fn slow_frames_cannot_exhaust_the_inflight_budget() -> TestResult {
+        let budget = budget();
+        let (started_tx, started_rx) = mpsc::channel();
+        let clients = MAX_SOCKET_INFLIGHT_BYTES / MAX_SOCKET_REQUEST_BODY;
+        let mut release_txs = Vec::new();
+        let mut threads = Vec::new();
+        for _ in 0..clients {
+            let (release_tx, release_rx) = mpsc::channel();
+            release_txs.push(release_tx);
+            let mut prefix = ttlv_header(u32::try_from(MAX_SOCKET_REQUEST_BODY)?);
+            prefix.extend_from_slice(&[0; 1024]);
+            let mut client = StalledClient {
+                prefix: io::Cursor::new(prefix),
+                started: started_tx.clone(),
+                release: release_rx,
+            };
+            let budget = budget.clone();
+            threads.push(thread::spawn(move || {
+                read_request(&mut client, &budget).is_err()
+            }));
+        }
+        for _ in 0..clients {
+            started_rx.recv_timeout(Duration::from_secs(10))?;
+        }
+
+        let mut message = ttlv_header(8);
+        message.extend_from_slice(&[7; 8]);
+        if read_request(&mut io::Cursor::new(message.clone()), &budget)?.map(|(request, _)| request)
+            != Some(message)
+        {
+            return Err("a request was refused while slow frames held the budget".into());
+        }
+
+        for release in &release_txs {
+            release.send(())?;
+        }
+        for thread in threads {
+            if !thread.join().map_err(|_e| "client thread panicked")? {
+                return Err("the stalled read did not fail".into());
+            }
+        }
+        if budget.available_permits() != MAX_SOCKET_INFLIGHT_BYTES {
+            return Err("the reservation was not released on read failure".into());
         }
         Ok(())
     }

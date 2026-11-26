@@ -184,6 +184,28 @@ impl Database {
     }
 }
 
+impl Database {
+    // ── Web UI session revocation ───────────────────────────────────────────
+
+    /// Revoke the Web UI session `sid` until `expires_at` (Unix seconds) for every KMS
+    /// instance sharing this database; entries already expired at `now` are dropped. A
+    /// session already expired at `now` needs no entry.
+    pub async fn revoke_ui_session(&self, sid: &str, expires_at: i64, now: i64) -> DbResult<()> {
+        if expires_at <= now {
+            return Ok(());
+        }
+        Ok(self
+            .permissions
+            .revoke_ui_session(sid, expires_at, now)
+            .await?)
+    }
+
+    /// Whether the Web UI session `sid` was revoked by any KMS instance.
+    pub async fn is_ui_session_revoked(&self, sid: &str) -> DbResult<bool> {
+        Ok(self.permissions.is_ui_session_revoked(sid).await?)
+    }
+}
+
 /// Private helpers for ceremony record encryption.
 impl Database {
     /// Seal a ceremony payload for a given role.

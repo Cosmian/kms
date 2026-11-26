@@ -9,6 +9,6 @@ pub use open_telemetry_params::OpenTelemetryConfig;
 pub use proxy_params::ProxyParams;
 pub use server_params::{
     AuditBackendParams, EstParams, HsmInstanceParams, OcspParams, ScepParams, ServerParams,
-    UiParams, VaultParams,
+    UiParams, UnauthenticatedBind, VaultParams,
 };
 pub use tls_params::TlsParams;

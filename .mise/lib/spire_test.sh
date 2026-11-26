@@ -9,6 +9,7 @@
 #   spire_reset_state       — wipe SPIRE containers, volumes, temp DB and configs
 #   spire_ensure_certs      — generate test TLS certificates if missing
 #   spire_build_auth_verifier — build auth_verifier binary and return path
+#   spire_write_api_token_conf — create the KMS API-token key, write a token ckms conf
 #
 # Requires:
 #   .mise/lib/common.sh (sourced automatically if needed)
@@ -127,4 +128,30 @@ spire_build_auth_verifier() {
   bin="${target_dir}/debug/auth_verifier"
   [[ -x "${bin}" ]] || print_error "auth-verifier binary not found after build: ${bin}"
   echo "${bin}"
+}
+
+# Key uid of the API token: must equal `api_token_id` in test_data/spire/config/kms.toml.
+SPIRE_API_TOKEN_ID="spire-api-token"
+
+# Create the API-token key (as the admin mTLS identity) and write a ckms conf that
+# authenticates with it. The KMS maps a valid API token to `default_username`
+# (AuthMethod::ApiToken), the only external path that may act as `default_username`;
+# the PKI CA key must be owned by that identity (routes/spire/pki.rs). The server
+# reads `api_token_id` per request, so the key may be created after the KMS started.
+# Usage: spire_write_api_token_conf <kms_url> <admin_ckms_conf>
+# Prints the path of the token conf (written next to the admin conf, removed with it).
+# Like spire_build_auth_verifier, call it as `VAR="$(...)"`: failures exit the subshell.
+spire_write_api_token_conf() {
+  local url="$1" admin_conf="$2" token token_conf
+  token="$(openssl rand -base64 32 | tr -d '\n')"
+  "$(get_ckms_bin)" --conf-path "${admin_conf}" --accept-invalid-certs \
+    sym keys create --bytes-b64 "${token}" "${SPIRE_API_TOKEN_ID}" >&2 ||
+    print_error "cannot create the API-token key '${SPIRE_API_TOKEN_ID}'"
+  token_conf="$(dirname "${admin_conf}")/ckms-api-token.toml"
+  cat >"${token_conf}" <<EOF
+[http_config]
+server_url = "${url}"
+access_token = "${token}"
+EOF
+  echo "${token_conf}"
 }

@@ -4,8 +4,8 @@
 //!
 //! This test is **`#[ignore]`d** — it requires two already-running servers:
 //!
-//! 1. A Cosmian Authentication Verifier with the default seeded credentials
-//!    (`admin` / `change_me`, realm `_`).
+//! 1. A Cosmian Authentication Verifier with a provisioned non-admin user
+//!    (`kms-user` / `change_me`, realm `kms`).
 //! 2. A KMS server with `[auth_verifier]` configured to point at server 1.
 //!
 //! Both servers are started by `.mise/scripts/test/ui/test_ui_auth.sh`, which
@@ -28,9 +28,9 @@
 /// is configured with `[auth_verifier]`:
 ///
 /// 1. `GET /ui/auth_method` → `{ "auth_method": "AUTH_VERIFIER" }`.
-/// 2. `POST /ui/login_as` with `admin`/`change_me` →
+/// 2. `POST /ui/login_as` with `kms-user`/`change_me` →
 ///    `200 OK`, `{ "next_step": "Authenticated" }`, session cookie set.
-/// 3. `GET /ui/whoami` → `{ "user_id": "admin" }`.
+/// 3. `GET /ui/whoami` → `{ "user_id": "kms-user" }`.
 ///
 /// Requires `PLAYWRIGHT_BASE_URL` to be set to the KMS base URL.
 /// Normally invoked by `.mise/scripts/test/ui/test_ui_auth.sh`.
@@ -63,14 +63,11 @@ async fn test_webui_login_via_auth_verifier() {
         "auth_method must be AUTH_VERIFIER"
     );
 
-    // ── 2. POST /ui/login_as (admin / change_me) ──────────────────────────────
-    // The auth-verifier's admin realm has `allow_expired_passwords = true`, so
-    // the seeded `admin`/`change_me` account (change_password=true) is fully
-    // usable and returns `Authenticated`, not `ChangePassword`.
+    // The harness provisions a non-admin user with change_password=false in realm kms.
     let login_resp = client
         .post(format!("{base_url}/ui/login_as"))
         .json(&serde_json::json!({
-            "username": "admin",
+            "username": "kms-user",
             "password": "change_me"
         }))
         .send()
@@ -100,7 +97,7 @@ async fn test_webui_login_via_auth_verifier() {
     let whoami_body: serde_json::Value = whoami_resp.json().await.expect("json body");
     assert_eq!(
         whoami_body.get("user_id").and_then(|v| v.as_str()),
-        Some("admin"),
-        "whoami user_id must be admin"
+        Some("kms-user"),
+        "whoami user_id must be kms-user"
     );
 }

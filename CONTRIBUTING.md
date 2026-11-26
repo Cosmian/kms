@@ -168,9 +168,10 @@ For React/TypeScript/WASM conventions, see
 - **Python test dependencies** — edit the human-authored `.in` file next to the requirements (for example
   `.mise/scripts/test/interop/requirements-jose.in`), then regenerate the hash-pinned lockfile with
   `pip-compile --generate-hashes --output-file=<name>.txt <name>.in` and commit both. Never hand-edit the `.txt`;
-  install sites use `pip install --require-hashes`. The `jose` and `cef` lockfiles are compiled with Python 3.9 because
-  `.mise/scripts/common.sh` puts the macOS Command Line Tools `python3` first in `PATH`; the other lockfiles are
-  compiled with Python 3.12 (the CI `ubuntu-24.04` interpreter) and need Python ≥ 3.10. Check each result with
+  install sites use `pip install --require-hashes` (through `pick_python312`). Compile every lockfile with Python 3.12
+  (the CI `ubuntu-24.04` interpreter), never macOS's default `python3` (3.9): Dependabot rejects a lockfile whose
+  header says `pip-compile with Python 3.9` (`tool_version_not_supported`), and the `pip-lockfile-python-312`
+  hook and the `python-dependency-audit` CI job fail on any other version. Check each result with
   `pip-audit -r <name>.txt`; the `python-dependency-audit` CI job runs it on every lockfile.
 - **Go test dependencies** — `.mise/scripts/kmip-go/go.mod` pins the Go `toolchain`; the `govulncheck` CI job
   (`govulncheck -test ./...`) must report no vulnerabilities.

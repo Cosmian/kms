@@ -74,6 +74,9 @@ pub async fn list_jwt_configurations(
     for url in url_whitelist {
         configurations.push(JwtConfig {
             jwt_issuer_uri: url.clone(),
+            // Namespaced like a secondary provider: a whitelisted KACLS token carrying a verified
+            // `email` never resolves to a bare (primary-provider) identity.
+            issuer_namespace: Some(url.clone()),
             jwks: Arc::new(JwksManager::new(vec![format!("{url}/certs")], proxy_params).await?),
             // KACLS-to-KACLS migration tokens always carry `aud: "kacls-migration"`.
             // Setting the expected audience here ensures `validate_authentication_token`
@@ -109,6 +112,7 @@ fn jwt_authorization_config_application(
 
     Arc::new(JwtConfig {
         jwt_issuer_uri,
+        issuer_namespace: None,
         jwks: jwks_manager,
         jwt_audience,
         accept_spiffe_subject: false,
@@ -637,6 +641,7 @@ mod tests {
 
         let jwt_config = Arc::new(JwtConfig {
             jwt_issuer_uri: issuer.to_owned(),
+            issuer_namespace: None,
             jwks: jwks_manager,
             jwt_audience: Some(vec!["cse-authorization".to_owned()]),
             accept_spiffe_subject: false,
@@ -703,6 +708,7 @@ mod tests {
 
         let jwt_config = Arc::new(JwtConfig {
             jwt_issuer_uri: issuer.to_owned(),
+            issuer_namespace: None,
             jwks: jwks_manager,
             jwt_audience: Some(vec!["cse-authorization".to_owned()]),
             accept_spiffe_subject: false,
@@ -740,6 +746,7 @@ mod tests {
 
         let jwt_config = Arc::new(JwtConfig {
             jwt_issuer_uri: issuer.to_owned(),
+            issuer_namespace: None,
             jwks: jwks_manager,
             jwt_audience: None,
             accept_spiffe_subject: false,
@@ -778,6 +785,7 @@ mod tests {
 
         let jwt_config = Arc::new(JwtConfig {
             jwt_issuer_uri: expected_issuer.to_owned(),
+            issuer_namespace: None,
             jwks: jwks_manager,
             jwt_audience: Some(vec!["cse-authorization".to_owned()]),
             accept_spiffe_subject: false,
@@ -807,6 +815,7 @@ mod tests {
         let rsa = Rsa::generate(2048).unwrap();
         let jwt_config = Arc::new(JwtConfig {
             jwt_issuer_uri: issuer.to_owned(),
+            issuer_namespace: None,
             jwks: build_jwks_manager_with_key(kid, &rsa),
             jwt_audience: Some(vec!["cse-authorization".to_owned()]),
             accept_spiffe_subject: false,
@@ -971,6 +980,7 @@ mod tests {
         // Build the whitelist JwtConfig as list_jwt_configurations would
         let whitelist_config = JwtConfig {
             jwt_issuer_uri: kms_a_url.to_owned(),
+            issuer_namespace: None,
             jwks: jwks_manager.clone(),
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             accept_spiffe_subject: false,
@@ -1026,6 +1036,7 @@ mod tests {
 
         let whitelist_config = JwtConfig {
             jwt_issuer_uri: kms_a_url.to_owned(),
+            issuer_namespace: None,
             jwks: jwks_manager.clone(),
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
             accept_spiffe_subject: false,
@@ -1110,6 +1121,7 @@ mod tests {
             .unwrap();
         let jwt_authentication_config = JwtConfig {
             jwt_issuer_uri: idp_configs[0].jwt_issuer_uri.clone(),
+            issuer_namespace: None,
             jwks: jwks_manager.clone(),
             jwt_audience: idp_configs[0].jwt_audience.clone(),
             accept_spiffe_subject: false,
@@ -1326,6 +1338,7 @@ mod tests {
         let cse_config = super::GoogleCseConfig {
             authentication: vec![JwtConfig {
                 jwt_issuer_uri: "https://idp".to_owned(),
+                issuer_namespace: None,
                 jwks,
                 jwt_audience: None,
                 accept_spiffe_subject: false,
@@ -1397,6 +1410,7 @@ mod tests {
                 "drive".to_owned(),
                 Arc::new(JwtConfig {
                     jwt_issuer_uri: issuer.to_owned(),
+                    issuer_namespace: None,
                     jwks,
                     jwt_audience: Some(vec!["cse-authorization".to_owned()]),
                     accept_spiffe_subject: false,

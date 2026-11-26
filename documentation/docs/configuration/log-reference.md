@@ -179,7 +179,6 @@ Crate path: `crate/server`
 | `debug` | `Imported object with uid: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing leaf certificate with attributes: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}` | `src/core/operations/import.rs` | - | - |
-| `debug` | `JWT Access granted to {email}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `email`: user email address | - |
 | `debug` | `JWT authentication failed: {e:?}` | `src/middlewares/jwt/jwt_middleware.rs` | `e`: caught error | - |
 | `debug` | `Key successfully unwrapped with wrapping key: {}` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Key wrap type: {:?}` | `src/core/operations/export_get.rs` | - | - |
@@ -424,7 +423,6 @@ Crate path: `crate/server`
 | `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
 | `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
 | `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
-| `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | Emitted at session-key derivation time when `ui_session_salt` is absent. The ephemeral key means all browser sessions are lost on restart. Set `ui_session_salt` (or env `KMS_UI_SESSION_SALT`) to a stable 32-byte+ secret for production. |
 | `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
 | `trace` | `` Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `e`, `v` | - |
 | `trace` | `` PKCS#11 `C_Finalize` failed: {e} `` | `src/core/operations/pkcs11.rs` | `e` | - |
@@ -576,7 +574,6 @@ Crate path: `crate/server`
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
 | `warn` | `` AWS XKS: skipping migration for key `{uid}` because its owner could not be                      determined (object missing) `` | `src/start_kms_server.rs` | `uid` | - |
-| `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is              configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers              these operations on your behalf — configure a Crypto Officer identity backed by a              real credential (TLS certificate CN / OIDC subject matching `default_username`) so              XKS keys remain manageable. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
 | `error` | `AWS XKS: failed to spawn key access migration thread: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: failed to start key access migration runtime: {error}` | `src/start_kms_server.rs` | `error` | - |
 | `error` | `AWS XKS: pre-existing key access migration failed: {error}` | `src/start_kms_server.rs` | `error` | - |
@@ -797,6 +794,8 @@ Crate path: `crate/server`
 | `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}' ({refresh_reason})` | `src/cron.rs` | `issuer_id` (CA certificate UID), `refresh_reason` (`expires within <N>h` or `revoked certificates changed`) | Leader region only. |
 | `debug` | `Session: authenticated user '{username}'` | `src/middlewares/session_auth.rs` | `username` | - |
 | `debug` | `UI session cookie rejected: {reason}` | `src/middlewares/ui_session.rs` | `reason` | - |
+| `warn` | `` AWS XKS is enabled but `crypto_officer.users` is empty: no Crypto Officer is configured to monitor, rotate, revoke, or destroy XKS keys. AWS never triggers these operations on your behalf — configure a Crypto Officer and use the API token to manage XKS keys as `default_username`. External TLS/JWT identities must differ from `default_username`. See crate/server/src/routes/aws_xks/README.md. `` | `src/start_kms_server.rs` | - | - |
+| `warn` | `External identity collides with the KMS default_username` | `src/middlewares/ensure_auth.rs` | - | - |
 | `debug` | `vault transit: created {AES256_GCM96} key '{name}' version {version}` | `src/routes/spire/transit_encryption.rs` | `AES256_GCM96`, `name`, `version` | - |
 | `debug` | `vault transit: decryption failed: {reason}` | `src/routes/spire/transit_encryption.rs` | `reason` | - |
 | `trace` | `{} vault transit decrypt/{name}` | `src/routes/spire/transit_encryption.rs` | `name` | - |
@@ -805,6 +804,12 @@ Crate path: `crate/server`
 | `warn` | `[metrics] Failed to sync kms.keys.active.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
 | `warn` | `[metrics] Failed to sync kms.keys.expiring_soon.count: {e}` | `src/core/otel_metrics.rs` | `e` | - |
 | `debug` | `[metrics] kms.keys.active.count synced: {} bucket(s)` | `src/core/otel_metrics.rs` | - | - |
+| `warn` | `login_as: too many attempts from {client_ip}` | `src/routes/ui_auth.rs` | `client_ip` (peer, or the client reported by a trusted proxy) | The per-IP or per-username `login_as` quota is exhausted; the request is answered `429` and not relayed. |
+| `warn` | `UI session cookie refresh failed: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | The refreshed cookie could not be sealed; the previous cookie stays valid until it expires. |
+| `warn` | `UI session revocation failed: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | Logout could not record the revocation in the database; the browser cookie is dropped, but a copy of it stays valid until it expires. |
+| `warn` | `UI session revocation lookup failed, refusing the session: {e}` | `src/middlewares/ui_session.rs` | `e` (error) | The database could not be read; the logged-in session is refused (fail closed). |
+| `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral session key. Sessions will be invalidated on server restart and are not portable across instances. For persistent sessions and load-balanced deployments, set `ui_session_salt` (or KMS_SESSION_SALT) to a strong random secret value. `` | `src/start_kms_server.rs` | - | Each instance seals its cookies with its own random key, so behind a load balancer users are logged out whenever a request reaches another instance. |
+| `debug` | `UI session cookie rejected: revoked` | `src/middlewares/ui_session.rs` | - | The session id was revoked by a logout on this or another instance. |
 
 ### `cosmian_kms_server_database`
 
@@ -869,6 +874,8 @@ Crate path: `crate/server_database`
 | `info` | `Unversioned database with data; assuming the migration baseline` | `src/stores/migrate.rs` | - | - |
 | `error` | `ceremony record verification failed (tampered record, or ceremony_keys mismatch across regions); treating as inactive` | `src/core/database_permissions.rs` | `role`, `user`, `error` | Security: audit event on every check of the user. Tampered record, or `ceremony_secret`/`ceremony_key_id` differing between regions. |
 | `debug` | `[metrics] skipping unparsable DeactivationDate {json}: {e}` | `src/stores/sql/mod.rs` | `json`, `e` | - |
+| `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/mysql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
+| `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/pgsql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
 
 ### `cosmian_kms_crypto`
 

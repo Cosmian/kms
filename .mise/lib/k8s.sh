@@ -171,6 +171,7 @@ YAML
   helm upgrade --install "$release" "${MISE_CONFIG_ROOT}/charts/cosmian-kms" \
     --namespace "$namespace" \
     --set kms.database.type=sqlite \
+    --set kms.insecureAllowUnauthenticated=true \
     --set image.tag="${KMS_IMAGE_TAG:-latest}" \
     -f "$tmp_values" \
     "$@" \

@@ -77,7 +77,7 @@ hsm_password = ["changeme"]
 
 [http]
 port = 9998
-hostname = "0.0.0.0"
+hostname = "127.0.0.1"   # no authentication configured: stay on loopback (or add an authentication method)
 
 [db]
 database_type = "sqlite"

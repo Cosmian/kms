@@ -27,6 +27,10 @@ Basic HTTP server configuration with default settings.
 port = 9998
 hostname = "0.0.0.0"
 cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
+# Required because no authentication method is configured and the server binds a
+# non-loopback address (development only; otherwise the server refuses to start).
+# Alternatively, bind hostname = "127.0.0.1" or configure authentication.
+insecure_allow_unauthenticated = true
 ```
 
 **Use case:** Development, testing, or internal networks where TLS is not required.
@@ -366,7 +370,8 @@ ui_index_html_folder = "./ui/dist"
 # Session salt used to derive the UI session cookie encryption key.
 # This value MUST be identical across all KMS instances behind the
 # same load balancer so any instance can decrypt the UI session cookie.
-ui_session_salt = "change-me-and-keep-secret"
+# It must be random: >= 32 bytes encoded as hex or base64.
+ui_session_salt = "<output of openssl rand -hex 32>"
 
 [logging]
 rust_log = "info,cosmian_kms_server=info"

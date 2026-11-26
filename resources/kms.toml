@@ -62,6 +62,8 @@ default_username = "admin"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+# Development only: allow a non-loopback bind without authentication.
+# insecure_allow_unauthenticated = false
 # http_workers = 8  # leave unset to use all logical CPUs
 
 # ── JWKS Endpoint ────────────────────────────────────────────────────────────

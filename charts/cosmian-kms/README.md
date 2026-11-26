@@ -24,6 +24,8 @@ helm install my-kms ./charts/cosmian-kms \
   --set image.repository=ghcr.io/cosmian/kms
 ```
 
+The chart defaults to `kms.insecureAllowUnauthenticated=false` and refuses to start on its non-loopback bind without authentication. Configure authentication for production; only for development, pass `--set kms.insecureAllowUnauthenticated=true` to the examples above.
+
 HSM: for Thales Luna (Luna Client from an init container, configuration from Secrets), see the
 [Luna HSM documentation](../../documentation/docs/hsm_support/luna.md#kubernetes-helm-chart).
 

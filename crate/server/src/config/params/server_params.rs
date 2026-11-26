@@ -226,6 +226,16 @@ impl fmt::Debug for ScepParams {
     }
 }
 
+/// Where a server with no authentication method may bind.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum UnauthenticatedBind {
+    /// Refuse to start on a non-loopback address (default).
+    #[default]
+    LoopbackOnly,
+    /// Development opt-in (`insecure_allow_unauthenticated`): any address.
+    AllowAny,
+}
+
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
@@ -366,6 +376,9 @@ pub struct ServerParams {
     /// Burst is set to 3× this value. `None` disables rate limiting (default for tests and
     /// embedded deployments; production should set this to a positive value such as 100).
     pub rate_limit_per_second: Option<u32>,
+
+    /// Whether the server may run without authentication on a non-loopback address.
+    pub unauthenticated_bind: UnauthenticatedBind,
 
     /// Number of actix-web HTTP worker threads. `None` means actix-web default
     /// (uses `std::thread::available_parallelism`).
@@ -1033,6 +1046,11 @@ impl ServerParams {
             // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
             // to enable rate limiting in production deployments.
             rate_limit_per_second: conf.http.rate_limit_per_second,
+            unauthenticated_bind: if conf.http.insecure_allow_unauthenticated {
+                UnauthenticatedBind::AllowAny
+            } else {
+                UnauthenticatedBind::LoopbackOnly
+            },
             http_workers: conf.http.http_workers,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_else(|| {
                 let mut origins = crate::config::default_cors_origins(cors_scheme, conf.http.port);
@@ -1577,6 +1595,7 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("ui_index_html_folder", &self.ui.index_html_folder);
         debug_struct.field("ui_enable", &self.ui.enable);
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
+        debug_struct.field("unauthenticated_bind", &self.unauthenticated_bind);
         debug_struct.field("http_workers", &self.http_workers);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);

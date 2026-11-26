@@ -280,10 +280,14 @@ KMS_CONFIG_FILE="${TEST_DATA}/config/kms.toml"
 start_kms "${KMS_CONFIG_FILE}" "${KMS_LOG_FILE}"
 wait_kms_ready "${KMS_LOG_FILE}" "bootstrap"
 
-# Not in a command substitution: kms_write_ckms_conf records its temp dir in a global that
-# kms_stop (called from cleanup) removes.
+# The CA key must be owned by default_username (routes/spire/pki.rs), reachable only through
+# the API token: the admin mTLS identity (CN admin) just creates the token key. CKMS_CONF
+# (token) is used for every later step that touches the CA key.
+# kms_write_ckms_conf is not in a command substitution: it records its temp dir in a global
+# that kms_stop (called from cleanup) removes.
 kms_write_ckms_conf "${KMS_URL_LOCAL}" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key" >/dev/null
-CKMS_CONF="${KMS_CKMS_CONF}"
+ADMIN_CKMS_CONF="${KMS_CKMS_CONF}"
+CKMS_CONF="$(spire_write_api_token_conf "${KMS_URL_LOCAL}" "${ADMIN_CKMS_CONF}")"
 _VAULT_EXT_FILE="${WORK_DIR}/vault_pki_ca_ext"
 cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'
 [ v3_ca ]

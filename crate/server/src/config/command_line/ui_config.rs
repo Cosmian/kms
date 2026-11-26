@@ -57,6 +57,8 @@ pub struct UiConfig {
     pub index_html_folder: Option<String>,
 
     /// A secret salt used to derive the session cookie encryption key.
+    /// It must be random: at least 32 bytes encoded as hex or base64
+    /// (generate one with `openssl rand -hex 32`); passphrases are rejected at startup.
     /// This MUST be identical across all KMS instances behind the same load balancer.
     /// This should only be provided when `ui_index_html_folder` is explicitly defined.
     #[clap(
@@ -162,6 +164,9 @@ pub struct OidcRuntimeConfig {
     pub config: OidcConfig,
     /// Populated when `ui_oidc_issuer_url` is configured; `None` otherwise.
     pub discovered: Option<OidcDiscoveredEndpoints>,
+    /// Issuer of the first JWT identity provider; UI identities from any other issuer are
+    /// namespaced `email#issuer`. `None` when no JWT provider is configured.
+    pub primary_jwt_issuer: Option<String>,
 }
 
 /// Runtime configuration for the Web UI's Auth Verifier server (BFF) login.

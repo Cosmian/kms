@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::{
-    KmsClient, kmip_2_1::requests::decrypt_request, read_bytes_from_file, write_bytes_to_file,
+    KmsClient, kmip_2_1::requests::decrypt_request, read_bytes_from_file,
+    write_private_bytes_to_file,
 };
 
 use crate::{
@@ -62,7 +63,7 @@ impl DecryptAction {
             .clone()
             .unwrap_or_else(|| self.input_file.with_extension("plain"));
 
-        write_bytes_to_file(&plaintext, &out)?;
+        write_private_bytes_to_file(&plaintext, &out)?;
 
         Ok(())
     }

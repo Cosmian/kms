@@ -36,5 +36,6 @@ services:
     environment:
       RUST_LOG: cosmian_kms_server=trace
       COSMIAN_PKCS11_LOGGING_LEVEL: trace
+      KMS_INSECURE_ALLOW_UNAUTHENTICATED: 'true'  # demo only: no authentication method configured
     volumes:
       - ./oracle/cosmian-kms:/cosmian-kms

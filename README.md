@@ -43,8 +43,10 @@ Pre-built binaries [are available](https://package.cosmian.com/kms/5.29.0/) for 
 Using Docker to quick-start an Eviden KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
+docker run -p 9998:9998 -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true --name kms ghcr.io/cosmian/kms:latest
 ```
+
+This unauthenticated opt-in is for development only; configure authentication for production.
 
 Then, use the CLI to issue commands to the KMS. The CLI, called `cosmian`, can be either:
 

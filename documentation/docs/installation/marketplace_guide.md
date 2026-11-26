@@ -52,6 +52,7 @@ default_username = "admin"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+insecure_allow_unauthenticated = true   # development only; configure an authentication method for production
 
 [db]
 database_type = "redis-findex"
@@ -68,6 +69,7 @@ default_username = "admin"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+insecure_allow_unauthenticated = true   # development only; configure an authentication method for production
 ```
 
 !!! important Protect your secrets
@@ -115,6 +117,7 @@ default_username = "admin"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+insecure_allow_unauthenticated = true   # development only; configure an authentication method for production
 
 [db]
 database_type = "redis-findex"

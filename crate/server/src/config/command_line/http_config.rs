@@ -34,6 +34,15 @@ pub struct HttpConfig {
     #[clap(long, env = "KMS_RATE_LIMIT_PER_SECOND", verbatim_doc_comment)]
     pub rate_limit_per_second: Option<u32>,
 
+    /// Allow starting without any authentication method on a non-loopback address. Development only.
+    #[clap(
+        long,
+        env = "KMS_INSECURE_ALLOW_UNAUTHENTICATED",
+        default_value_t = false,
+        verbatim_doc_comment
+    )]
+    pub insecure_allow_unauthenticated: bool,
+
     /// Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
     /// Required for any Web UI deployment: the browser Fetch API sends an `Origin` header on
     /// every POST request — even when the page is served by the KMS itself — and actix-cors
@@ -120,6 +129,7 @@ impl Default for HttpConfig {
             hostname: DEFAULT_HOSTNAME.to_owned(),
             api_token_id: None,
             rate_limit_per_second: None,
+            insecure_allow_unauthenticated: false,
             cors_allowed_origins: None,
             http_workers: None,
             jwks_enabled: false,

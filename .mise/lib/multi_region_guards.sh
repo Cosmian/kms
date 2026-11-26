@@ -25,6 +25,7 @@
 #   mr_guard_primary_keys                  — real PRIMARY KEYs / REPLICA IDENTITY on replicated tables
 #   mr_guard_state_event_triggers          — lifecycle event-log triggers installed ENABLE ALWAYS and replicated
 #   mr_guard_cluster_tables                — cluster_nodes not replicated, gcm_invocations counter uses delta-apply
+#   mr_guard_replication_set_complete      — every public table except cluster_nodes is in a Spock replication set
 #   mr_guard_spock_wiring                  — Spock extension, node, and subscription present
 #   mr_guard_db_state_and_grants           — behavioral proof: state conflict merge + grants LWW
 #   mr_guard_crl_gating                    — behavioral proof: CRL issuance gating
@@ -554,14 +555,14 @@ mr_guard_pg_container_ready() {
 # Usage: mr_guard_primary_keys <container>
 mr_guard_primary_keys() {
   local container="$1" pks ident
-  pks="$(_mr_psql "${container}" "SELECT count(*) FROM pg_constraint WHERE contype='p' AND conname IN ('tags_pkey','read_access_pkey','crypto_officer_activations_pkey','object_state_events_pkey','object_state_event_tombstones_pkey');")"
-  if [ "${pks//[^0-9]/}" != "5" ]; then
-    print_warning "primary keys: ${container} has ${pks:-0}/5 expected PRIMARY KEYs (tags_pkey, read_access_pkey, crypto_officer_activations_pkey, object_state_events_pkey, object_state_event_tombstones_pkey)"
+  pks="$(_mr_psql "${container}" "SELECT count(*) FROM pg_constraint WHERE contype='p' AND conname IN ('tags_pkey','read_access_pkey','crypto_officer_activations_pkey','object_state_events_pkey','object_state_event_tombstones_pkey','ui_session_revocations_pkey');")"
+  if [ "${pks//[^0-9]/}" != "6" ]; then
+    print_warning "primary keys: ${container} has ${pks:-0}/6 expected PRIMARY KEYs (tags_pkey, read_access_pkey, crypto_officer_activations_pkey, object_state_events_pkey, object_state_event_tombstones_pkey, ui_session_revocations_pkey)"
     return 1
   fi
 
-  ident="$(_mr_psql "${container}" "SELECT string_agg(relname || '=' || relreplident::text, ',' ORDER BY relname) FROM pg_class WHERE relname IN ('tags','read_access','crypto_officer_activations','object_state_events','object_state_event_tombstones');")"
-  if [ "$ident" != "crypto_officer_activations=d,object_state_event_tombstones=d,object_state_events=d,read_access=d,tags=d" ]; then
+  ident="$(_mr_psql "${container}" "SELECT string_agg(relname || '=' || relreplident::text, ',' ORDER BY relname) FROM pg_class WHERE relname IN ('tags','read_access','crypto_officer_activations','object_state_events','object_state_event_tombstones','ui_session_revocations');")"
+  if [ "$ident" != "crypto_officer_activations=d,object_state_event_tombstones=d,object_state_events=d,read_access=d,tags=d,ui_session_revocations=d" ]; then
     print_warning "primary keys: ${container} REPLICA IDENTITY not default for all replicated tables: ${ident:-<none>}"
     return 1
   fi
@@ -618,6 +619,21 @@ mr_guard_cluster_tables() {
     return 1
   fi
   print_success "cluster tables: ${container} keeps cluster_nodes local and merges gcm_invocations by delta-apply"
+  return 0
+}
+
+# Every `public` table must be in a Spock replication set, except the node-local `cluster_nodes`.
+# `repset_add_all_tables` only adds the tables that exist when it runs, so a table created later
+# by an upgrade does not replicate until the operator adds it.
+# Usage: mr_guard_replication_set_complete <container>
+mr_guard_replication_set_complete() {
+  local container="$1" missing
+  missing="$(_mr_psql "${container}" "SELECT string_agg(t.tablename, ' ' ORDER BY t.tablename) FROM pg_tables t WHERE t.schemaname='public' AND t.tablename <> 'cluster_nodes' AND NOT EXISTS (SELECT 1 FROM spock.replication_set_table r WHERE r.set_reloid = format('public.%I', t.tablename)::regclass);")"
+  if [ -n "${missing//[[:space:]]/}" ]; then
+    print_warning "replication set: ${container} does not replicate: ${missing} — run SELECT spock.repset_add_table('default', '<table>') for each"
+    return 1
+  fi
+  print_success "replication set: ${container} replicates every public table except cluster_nodes"
   return 0
 }
 

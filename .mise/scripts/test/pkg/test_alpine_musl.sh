@@ -97,7 +97,8 @@ docker run --rm --user nobody --entrypoint /usr/bin/ckms "${IMAGE_TAG}" --versio
 
 echo "=== Starting server (variant=${VARIANT}) ==="
 # Let Docker pick a free ephemeral host port (loopback only): no pick-then-bind race.
-docker run -d --name "${CONTAINER_NAME}" -p 127.0.0.1::9998 "${IMAGE_TAG}" \
+docker run -d --name "${CONTAINER_NAME}" -p 127.0.0.1::9998 \
+  -e KMS_INSECURE_ALLOW_UNAUTHENTICATED=true "${IMAGE_TAG}" \
   --database-type sqlite --sqlite-path /tmp/data
 HOST_PORT="$(docker port "${CONTAINER_NAME}" 9998/tcp | head -n1 | sed 's/.*://')"
 echo "Server mapped to 127.0.0.1:${HOST_PORT}"
@@ -152,13 +153,19 @@ run_ckms() {
     "${IMAGE_TAG}" "$@"
 }
 
+# ckms runs as root in the container and writes its outputs root-owned/0600,
+# which the runner user cannot read: compare inside the container instead.
+diff_data() {
+  docker run --rm -v "${WORK_DIR}:/data:ro" --entrypoint diff "${IMAGE_TAG}" "/data/$1" "/data/$2"
+}
+
 echo "=== AES round-trip ==="
 AES_OUT="$(run_ckms sym keys create --number-of-bits 256 --algorithm aes)"
 AES_KEY="$(echo "${AES_OUT}" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')"
 echo "Alpine musl smoke test" >"${WORK_DIR}/plain.txt"
 run_ckms sym encrypt -k "${AES_KEY}" -o /data/cipher.bin /data/plain.txt
 run_ckms sym decrypt -k "${AES_KEY}" -o /data/decrypted.txt /data/cipher.bin
-diff "${WORK_DIR}/plain.txt" "${WORK_DIR}/decrypted.txt"
+diff_data plain.txt decrypted.txt
 echo "AES round-trip OK"
 
 echo "=== RSA round-trip ==="
@@ -166,7 +173,7 @@ RSA_OUT="$(run_ckms rsa keys create --size_in_bits 2048)"
 RSA_PRIV="$(echo "${RSA_OUT}" | grep "Private key" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')"
 run_ckms rsa encrypt -k "${RSA_PRIV}_pk" -o /data/rsa.bin /data/plain.txt
 run_ckms rsa decrypt -k "${RSA_PRIV}" -o /data/rsa_dec.txt /data/rsa.bin
-diff "${WORK_DIR}/plain.txt" "${WORK_DIR}/rsa_dec.txt"
+diff_data plain.txt rsa_dec.txt
 echo "RSA round-trip OK"
 
 echo "=== EC key generation ==="

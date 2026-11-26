@@ -8,7 +8,8 @@
  *
  * Prerequisites (see `.mise/scripts/test/ui/test_ui_auth.sh`):
  *   - Auth Verifier server running on https://localhost:8443 with the bundled
- *     dev seed (realm "_", super-admin `admin` / `change_me`).
+ *     dev seed (admin `admin` / `change_me` in realm "_"); the script provisions
+ *     realm "kms" and user `kms-user` / `change_me` (admin-realm tokens are rejected by the KMS).
  *   - KMS server running on http://localhost:9998, serving the UI itself
  *     (same-origin — required for the session cookie to work), built WITHOUT
  *     VITE_DEV_MODE so the login form actually renders.
@@ -20,7 +21,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-const VALID_USERNAME = "admin";
+const VALID_USERNAME = "kms-user";
 const VALID_PASSWORD = "change_me";
 
 test.describe("Auth Verifier server — Web UI login", () => {

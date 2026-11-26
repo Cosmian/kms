@@ -238,6 +238,7 @@ rm -f "${TMP_DIR}/Dockerfile"
 print_status "Installing the chart with the documented values"
 helm install "$RELEASE" "$CHART_DIR" -n "$NS" -f "${TMP_DIR}/values.yaml" \
   --set image.repository="$IMAGE_REPOSITORY" --set image.tag="$IMAGE_TAG" \
+  --set kms.insecureAllowUnauthenticated=true \
   --set image.pullPolicy="$IMAGE_PULL_POLICY" --wait --timeout 5m >/dev/null
 print_success "KMS pod ready"
 

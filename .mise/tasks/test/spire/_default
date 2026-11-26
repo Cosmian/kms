@@ -174,7 +174,11 @@ print_success "KMS server ready on port 9998."
 # Both the root CA and any signed intermediate must have basicConstraints=CA:TRUE
 # so that Go's x509 path validation accepts them as signers.
 print_status "Creating self-signed PKI CA key and certificate in KMS (tag: vault_pki_ca)..."
-CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key")"
+# The CA key must be owned by default_username (routes/spire/pki.rs), reachable only through
+# the API token: the admin mTLS identity (CN admin) just creates the token key. CKMS_CONF
+# (token) is used for every later step that touches the CA key.
+ADMIN_CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998" "${TEST_DATA}/certs/admin.crt" "${TEST_DATA}/certs/admin.key")"
+CKMS_CONF="$(spire_write_api_token_conf "https://localhost:9998" "${ADMIN_CKMS_CONF}")"
 
 # Write a temp extensions file for the root CA
 _VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)

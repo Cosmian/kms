@@ -22,6 +22,17 @@
     The provider crate's compiled shared library can be benchmarked via
     `ckms pkcs11 bench --help` (driven through `mise bench:pkcs11`).
 
+## Protected key material
+
+`CKA_SENSITIVE`, `CKA_EXTRACTABLE`, `CKA_NEVER_EXTRACTABLE` and `CKA_ALWAYS_SENSITIVE` of secret
+and private keys mirror the `Sensitive`, `Extractable`, `NeverExtractable` and `AlwaysSensitive`
+attributes stored in the KMS (an unset `Sensitive` is false and an unset `Extractable` is true,
+the KMS defaults). `CKA_VALUE` of a secret or private key is returned only when the key is not
+sensitive, is extractable and is not never-extractable. Otherwise `C_GetAttributeValue` sets the
+attribute's `ulValueLen` to `CK_UNAVAILABLE_INFORMATION`, still fills the other attributes of the
+template, and returns `CKR_ATTRIBUTE_SENSITIVE` (PKCS#11 v2.40 §5.7). Public keys and `CKO_DATA`
+objects keep returning `CKA_VALUE`.
+
 ## External battle tests
 
 The `mise run test:pkcs11:tool` task runs the HSM-KEK `pkcs11-tool` regression suite, then

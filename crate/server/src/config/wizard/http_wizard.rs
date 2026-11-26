@@ -68,6 +68,7 @@ pub(crate) fn configure_http(listen_on_all: bool) -> KResult<HttpConfig> {
         hostname,
         api_token_id: None,
         rate_limit_per_second,
+        insecure_allow_unauthenticated: false,
         cors_allowed_origins: None,
         http_workers: None,
         jwks_enabled,

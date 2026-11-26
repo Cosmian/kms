@@ -352,8 +352,8 @@ async fn operator_retains_administrative_control() -> KResult<()> {
     // them, no operator could monitor, revoke, destroy, or export XKS keys, because the
     // authorization model grants nothing to non-owners without an explicit grant.
     //
-    // This is the identity that a designated Crypto Officer must hold a real credential
-    // for (TLS certificate CN / OIDC subject matching `default_username`) in order to
+    // This is the identity (the API token acting as `default_username`; a TLS certificate CN
+    // or JWT subject equal to it is refused) that a designated Crypto Officer must hold in order to
     // monitor and manage the lifecycle of XKS keys — AWS never triggers any of this itself
     // (the XKS proxy spec has no list/rotate/delete endpoint), so it must be reachable
     // through the normal `ckms`/Web UI surface. See `README.md` and

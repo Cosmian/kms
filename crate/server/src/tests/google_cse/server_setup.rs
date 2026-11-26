@@ -154,6 +154,7 @@ async fn certs_signature_verifies_with_signed_validation() {
 
     let config = JwtConfig {
         jwt_issuer_uri: LOCAL_KACLS_URL.to_owned(),
+        issuer_namespace: None,
         jwt_audience: Some(vec!["kacls-migration".to_owned()]),
         jwks: Arc::new(JwksManager {
             uris: vec![LOCAL_KACLS_URL.to_owned()],

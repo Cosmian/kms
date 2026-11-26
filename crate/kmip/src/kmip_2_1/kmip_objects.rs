@@ -53,11 +53,24 @@ pub struct CertificateRequest {
 /// Cryptographic Object depending on the client context of usage and as
 /// such is treated in the same manner as a Managed Cryptographic Object
 /// for handling of attributes.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct OpaqueObject {
     pub opaque_data_type: OpaqueDataType,
     pub opaque_data_value: Vec<u8>,
+}
+
+/// The opaque value may be any secret: `Debug` shows its length only.
+impl fmt::Debug for OpaqueObject {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OpaqueObject")
+            .field("opaque_data_type", &self.opaque_data_type)
+            .field(
+                "opaque_data_value",
+                &format_args!("{}", self.opaque_data_value.len_display()),
+            )
+            .finish()
+    }
 }
 
 /// A Managed Cryptographic Object that is a text-based representation of a

@@ -113,40 +113,44 @@ where
             });
         }
 
-        // No codec registered (bare test apps): no session, nothing is authenticated.
-        let codec = req.app_data::<web::Data<UiSessionCookie>>().cloned();
-        let mut purge = None;
-        if let Some(username) = codec
-            .as_ref()
-            .and_then(|codec| codec.read(req.headers()))
-            .and_then(|session| session.user_id)
-        {
-            debug!("Session: authenticated user '{username}'");
-            match reject_reserved_service_identity(&username) {
-                Ok(()) => {
-                    req.extensions_mut().insert(AuthenticatedUser {
-                        username,
-                        auth_method: AuthMethod::Session,
-                    });
-                }
-                Err(error) => {
-                    warn!(
-                        "Session: rejecting reserved service identity from stored \
-                         session user_id: {error}"
-                    );
-                    purge = codec.map(|codec| codec.removal_cookie());
-                }
-            }
-        } else {
-            trace!("Session: no user_id in session, passing through");
-        }
-
         Box::pin(async move {
+            // No codec registered (bare test apps): no session, nothing is authenticated.
+            let codec = req.app_data::<web::Data<UiSessionCookie>>().cloned();
+            // The cookie to send back: a removal, or the refreshed cookie of a session in use.
+            let mut set_cookie = None;
+            let session = match &codec {
+                Some(codec) => codec.read_with_refresh(req.headers()).await,
+                None => None,
+            };
+            if let Some((username, refreshed)) =
+                session.and_then(|(session, refreshed)| Some((session.user_id?, refreshed)))
+            {
+                debug!("Session: authenticated user '{username}'");
+                match reject_reserved_service_identity(&username) {
+                    Ok(()) => {
+                        req.extensions_mut().insert(AuthenticatedUser {
+                            username,
+                            auth_method: AuthMethod::Session,
+                        });
+                        set_cookie = refreshed;
+                    }
+                    Err(error) => {
+                        warn!(
+                            "Session: rejecting reserved service identity from stored \
+                             session user_id: {error}"
+                        );
+                        set_cookie = codec.map(|codec| codec.removal_cookie());
+                    }
+                }
+            } else {
+                trace!("Session: no user_id in session, passing through");
+            }
+
             let mut res = service.call(req).await?;
-            if let Some(removal) = purge {
+            if let Some(cookie) = set_cookie {
                 res.headers_mut().append(
                     SET_COOKIE,
-                    HeaderValue::from_str(&removal)
+                    HeaderValue::from_str(&cookie)
                         .map_err(actix_web::error::ErrorInternalServerError)?,
                 );
             }
@@ -166,7 +170,8 @@ mod tests {
     use super::SessionAuth;
     use crate::{
         middlewares::{
-            AuthenticatedUser, UiSession, UiSessionCookie, UserId, test_ui_session_cookie,
+            AuthenticatedUser, MemoryRevocations, UiSession, UiSessionCookie, UserId,
+            test_session_cookie_pair, test_ui_session_cookie,
         },
         routes::aws_xks::AWS_XKS_SERVICE_USER,
     };
@@ -237,7 +242,11 @@ mod tests {
 
     #[actix_web::test]
     async fn cookie_sealed_under_another_key_does_not_authenticate() {
-        let other = UiSessionCookie::new(zeroize::Zeroizing::new([0x24; 32]), false);
+        let other = UiSessionCookie::new(
+            zeroize::Zeroizing::new([0x24; 32]),
+            false,
+            std::sync::Arc::new(MemoryRevocations::default()),
+        );
         let (user, _) = call(Some("alice@example.com"), Some(other)).await;
         assert_eq!(user, "anonymous");
     }
@@ -246,5 +255,37 @@ mod tests {
     async fn without_a_registered_codec_nothing_is_authenticated() {
         let (user, _) = call(Some("alice@example.com"), None).await;
         assert_eq!(user, "anonymous");
+    }
+
+    #[actix_web::test]
+    async fn revoked_session_cookie_no_longer_authenticates() {
+        let codec = web::Data::new(test_ui_session_cookie());
+        let cookie = test_session_cookie_pair(&codec, "alice@example.com");
+        let app = test::init_service(
+            App::new()
+                .app_data(codec.clone())
+                .wrap(SessionAuth)
+                .route("/", web::get().to(who)),
+        )
+        .await;
+        let request = || {
+            test::TestRequest::get()
+                .uri("/")
+                .insert_header((header::COOKIE, cookie.clone()))
+                .to_request()
+        };
+
+        let body = test::call_and_read_body(&app, request()).await;
+        assert_eq!(body, "alice@example.com");
+
+        let mut headers = header::HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            header::HeaderValue::from_str(&cookie).expect("header"),
+        );
+        codec.revoke(&headers).await;
+
+        let body = test::call_and_read_body(&app, request()).await;
+        assert_eq!(body, "anonymous");
     }
 }

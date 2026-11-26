@@ -114,7 +114,6 @@ XKS = leg(
     'non-fips',
     timeout=30,
     lock='xks-remote',
-    environment='xks-remote-approval',
 )
 NO_NIX = [  # runner-major, then variant
     g
@@ -129,7 +128,6 @@ FULL_SUITES = [
     *leg('forward-proxy', 'non-fips', setup='plain'),
     *leg('build-documentation', setup='plain'),
     *leg('cargo-publish-dry-run', setup='plain'),
-    *XKS,
     *leg('db:sqlite', *BOTH),
     *leg('db:psql', *BOTH),
     *leg('db:mysql', *BOTH),
@@ -564,7 +562,7 @@ class Matrices(unittest.TestCase):
     def test_everything_runs_every_leg_in_toml_order(self) -> None:
         for legs in (self.legs([]), self.everything('pull_request')):
             self.assertEqual(legs, FULL_SUITES)
-            self.assertEqual(len(legs), 67)
+            self.assertEqual(len(legs), 66)
 
     def test_no_nix_legs_come_runner_major(self) -> None:
         legs = [g for g in FULL_SUITES if g['suite'] == 'no-nix']
@@ -637,11 +635,11 @@ class Matrices(unittest.TestCase):
         out = ci_changes.outputs(CFG, ci_changes.classify(CFG, ['README.md'])[0])
         self.assertEqual(out['suites-matrix'], '[]')
 
-    def test_nightly_runs_every_unit_but_xks(self) -> None:
+    def test_nightly_runs_every_unit(self) -> None:
         legs = self.everything('schedule')
         suites = {g['suite'] for g in legs}
-        self.assertEqual(len(legs), 68)
-        self.assertEqual(suites, set(EVERYTHING) - {'xks-remote'})
+        self.assertEqual(len(legs), 69)
+        self.assertEqual(suites, set(EVERYTHING))
         self.assertEqual(
             [g['lock'] for g in legs if g['suite'].startswith('hsm:')],
             ['hsm-crypt2pay', 'hsm-proteccio'],
@@ -1260,9 +1258,9 @@ class Main(unittest.TestCase):
         self.assertIn('Changed files (0):', text)
         self.assertIn('empty diff: run everything', text)
         self.assertEqual(written_legs(self.output), FULL_SUITES)
-        # only the real HSMs have no pull-request leg
+        # only the real HSMs and the remote XKS server have no pull-request leg
         skipped = {l[5:] for l in text.splitlines() if l.startswith('SKIP')}
-        self.assertEqual(skipped, {'hsm:crypt2pay', 'hsm:proteccio'})
+        self.assertEqual(skipped, {'hsm:crypt2pay', 'hsm:proteccio', 'xks-remote'})
 
     def test_full_match_runs_every_non_strict_unit(self) -> None:
         text, _ = self.run_main(['mise.toml', 'README.md'], output=self.output)
@@ -1280,13 +1278,13 @@ class Main(unittest.TestCase):
             {g['suite'] for g in FULL_SUITES} - STRICT,
         )
 
-    def test_nightly_never_reads_the_diff_and_skips_xks(self) -> None:
+    def test_nightly_never_reads_the_diff_and_runs_xks(self) -> None:
         text, legs = self.run_all('--event', 'schedule')
         self.assertIn('not a pull request: run everything', text)
-        self.assertEqual(len(legs), 68)
-        self.assertNotIn('xks-remote', {g['suite'] for g in legs})
+        self.assertEqual(len(legs), 69)
+        self.assertIn('xks-remote', {g['suite'] for g in legs})
         self.assertIn('RUN  hsm:proteccio', text)
-        self.assertIn('SKIP xks-remote', text)
+        self.assertIn('RUN  xks-remote', text)
 
     def test_nightly_without_secrets_keeps_windows_but_not_upstream_units(self) -> None:
         _, legs = self.run_all('--event', 'schedule', '--no-secrets')

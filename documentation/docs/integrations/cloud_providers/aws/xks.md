@@ -93,12 +93,15 @@ side; it never reaches this KMS. **Lifecycle management of the external key mate
 therefore entirely your operational responsibility.**
 
 **A Crypto Officer must be designated to handle this.** Configure a real, credentialed
-identity (a TLS certificate CN or OIDC subject matching `default_username`) as a Crypto
-Officer (`crypto_officer.users` / `privileged_users`) so that a human operator can, through
-the normal `ckms` CLI or Web UI:
+identity as a Crypto Officer (`crypto_officer.users` / `privileged_users`) so that a human
+operator can, through the normal `ckms` CLI or Web UI (authenticated with the API token,
+which acts as `default_username`, the owner of every XKS key):
 
 - **List/monitor** XKS keys — `Locate` by the `aws-xks` tag, `GetAttributes`.
 - **Revoke** or **destroy** XKS keys that are no longer needed.
+
+> A TLS certificate CN, JWT subject or email equal to `default_username` is refused with
+> `401`: external identities must differ from `default_username`.
 
 **XKS keys cannot be rotated in place.** The KMS `ReKey` operation always assigns a new
 internal unique identifier, but AWS KMS always calls the XKS proxy back with the *original*

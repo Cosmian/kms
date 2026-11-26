@@ -71,7 +71,7 @@ Lockfiles: `.mise/scripts/test/<group>/requirements-*.{in,txt}` and `.mise/scrip
 
 - [ ] Prefer the standard library (`python.instructions.md`).
 - [ ] Edit only the human-written `.in` file: `==` pin or bounded range (`>=X,<Y`), with a comment for any CVE-driven floor (pattern: `.mise/scripts/test/interop/requirements-jose.in`).
-- [ ] Regenerate the `.txt` with the exact `pip-compile --generate-hashes …` command recorded in its header, from the repository root, under the Python version that header names; commit both files.
+- [ ] Regenerate the `.txt` with the exact `pip-compile --generate-hashes …` command recorded in its header, from the repository root, under **Python 3.12** (never macOS's default 3.9: Dependabot rejects a `pip-compile with Python 3.9` header, and the `pip-lockfile-python-312` hook and `python-dependency-audit` job fail on it); commit both files.
 - [ ] `pip-audit -r <file>.txt` reports no known vulnerability.
 - [ ] Test and docs scripts install with `pip install --require-hashes -r <file>.txt`, never `pip install <pkg>`.
 - [ ] A new lockfile: add it to the `for f in` list of the `python-dependency-audit` job and to `[files] extend-exclude` of `_typos.toml` (unless an existing entry already matches it). Outside the `pip` directories already listed in `.github/dependabot.yml`, also add its directory to the `pip` entry of `.github/dependabot.yml` and widen the `files:` regex of the `pip-audit-lockfiles` hook and the `exclude:` regex of the `requirements-txt-fixer` hook in `.pre-commit-config.yaml`.

@@ -28,9 +28,9 @@ use crate::{
     kms_object::{
         get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
         get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
-        kms_decrypt, kms_destroy_object, kms_encrypt, kms_encrypt_message, kms_generate_random,
-        kms_import_object, kms_import_symmetric_key, kms_mac, kms_mac_verify, kms_revoke_object,
-        kms_sign, kms_verify, locate_kms_objects,
+        key_protection_from_attributes, kms_decrypt, kms_destroy_object, kms_encrypt,
+        kms_encrypt_message, kms_generate_random, kms_import_object, kms_import_symmetric_key,
+        kms_mac, kms_mac_verify, kms_revoke_object, kms_sign, kms_verify, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
     pkcs11_data_object::Pkcs11DataObject,
@@ -104,6 +104,7 @@ impl CliBackend {
             id.to_owned(),
             algorithm,
             key_size,
+            key_protection_from_attributes(&attributes),
         )))
     }
 
@@ -153,6 +154,7 @@ impl CliBackend {
             algorithm,
             key_size,
             attributes.cryptographic_usage_mask,
+            key_protection_from_attributes(&attributes),
         )))
     }
 
@@ -193,6 +195,7 @@ impl CliBackend {
             key_algorithm,
             key_size,
             attributes.cryptographic_usage_mask,
+            key_protection_from_attributes(attributes),
         ))))
     }
 
@@ -212,6 +215,7 @@ impl CliBackend {
             id.to_owned(),
             key_algorithm,
             key_size,
+            key_protection_from_attributes(attributes),
         ))))
     }
 

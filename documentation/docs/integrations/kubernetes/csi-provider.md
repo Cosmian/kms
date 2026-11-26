@@ -70,7 +70,8 @@ in the KMS.
 
     helm install cosmian-kms cosmian/kms \
       --namespace cosmian-kms --create-namespace \
-      --set csiProvider.enabled=true
+      --set csiProvider.enabled=true \
+      --set kms.insecureAllowUnauthenticated=true   # development only: configure authentication in production
     ```
 
     To install **only** the provider (KMS server is deployed elsewhere):

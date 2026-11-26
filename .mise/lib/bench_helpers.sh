@@ -242,6 +242,9 @@ database_type = "sqlite"
 sqlite_path = "${sqlite_path}"
 
 [http]
+# Benchmark servers are unauthenticated by design: development-only opt-in (a config file
+# ignores env variables, so it lives here).
+insecure_allow_unauthenticated = true
 hostname = "0.0.0.0"
 port = ${port}
 EOF
@@ -541,6 +544,7 @@ database_type = "sqlite"
 sqlite_path   = "${sqlite_path}"
 
 [http]
+insecure_allow_unauthenticated = true
 hostname = "0.0.0.0"
 port     = ${port}
 EOF
@@ -698,6 +702,7 @@ database_type = "sqlite"
 sqlite_path   = "${sqlite_path}"
 
 [http]
+insecure_allow_unauthenticated = true
 hostname = "0.0.0.0"
 port     = ${port}
 EOF

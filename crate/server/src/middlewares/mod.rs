@@ -19,7 +19,8 @@ mod auth_verifier;
 pub(crate) use auth_verifier::test_helpers as auth_verifier_test_helpers;
 pub(crate) use auth_verifier::{
     AUTH_VERIFIER_SESSION_COOKIE, AuthVerifier, AuthVerifierValidator,
-    authenticate_auth_verifier_session_cookie, verify_auth_verifier_jwt_subject,
+    authenticate_auth_verifier_session_cookie, hardened_client_builder, read_body_capped,
+    require_https_or_loopback, verify_auth_verifier_jwt_subject,
 };
 
 mod ensure_auth;
@@ -32,7 +33,7 @@ pub(crate) use jwt::{
 };
 
 mod rate_limiter;
-pub(crate) use rate_limiter::{RateLimiterConfig, RateLimiterMiddleware};
+pub(crate) use rate_limiter::{LoginAsLimiter, RateLimiterConfig, RateLimiterMiddleware};
 
 mod otel_http_middleware;
 pub(crate) use otel_http_middleware::otel_http_metrics_middleware;
@@ -51,7 +52,7 @@ use actix_web::{
 };
 pub(crate) use session_auth::{SessionAuth, reject_forgeable_session_mutation};
 #[cfg(test)]
-pub(crate) use ui_session::test_ui_session_cookie;
+pub(crate) use ui_session::{MemoryRevocations, test_session_cookie_pair, test_ui_session_cookie};
 pub(crate) use ui_session::{UiSession, UiSessionCookie, request_cookie};
 
 use crate::{
@@ -156,7 +157,9 @@ const RESERVED_SERVICE_IDENTITIES: [&str; 3] = [
 
 /// Whether `name` would resolve to the `reserved` identity in the database: `MySQL` / `MariaDB`
 /// compare the `userid` / `owner` columns with their default `_ci` collation (case-insensitive),
-/// and the default `MariaDB` `PAD SPACE` collation also ignores trailing spaces.
+/// and the default `MariaDB` `PAD SPACE` collation also ignores trailing spaces. Only ASCII
+/// case is folded: accent-insensitive collations (for example `utf8mb4_0900_ai_ci`) may also
+/// equate non-ASCII variants such as `admín` with `admin`, which this check does not detect.
 pub(crate) fn names_reserved_identity(name: &str, reserved: &str) -> bool {
     name.trim_end_matches(' ').eq_ignore_ascii_case(reserved)
 }

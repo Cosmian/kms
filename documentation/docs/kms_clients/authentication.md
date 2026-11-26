@@ -259,6 +259,14 @@ When running `ckms login`:
 3. The browser redirects to a local endpoint (<http://localhost:17899/authorization>)
 4. The CLI captures the token and saves it in your configuration file
 
+`ckms login` and `ckms logout` save only the obtained tokens (`access_token`, `vault_token` and the
+OAuth `refresh_token`). One-off `--url`, `--accept-invalid-certs`, `--header` and `--proxy-*` flags
+apply to that command only; use `ckms configure` to persist transport settings. `ckms` prints a
+warning whenever certificate verification is disabled.
+
+`ckms.toml`, exported keys and decrypted files are written readable by their owner only (mode 0600
+on Linux/macOS; an existing file is reset to 0600).
+
 ## Corporate Network / Forward Proxy
 
 When the KMS CLI is used inside a corporate network, the system HTTP proxy may intercept

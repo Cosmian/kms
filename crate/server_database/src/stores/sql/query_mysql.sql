@@ -397,6 +397,27 @@ SELECT crl_der, generated_at FROM crls WHERE issuer_id = ?;
 -- name: list-crl-issuers
 SELECT issuer_id, next_update FROM crls ORDER BY issuer_id;
 
+-- Web UI sessions revoked by logout, shared by every KMS instance on this database.
+
+-- name: create-table-ui_session_revocations
+CREATE TABLE IF NOT EXISTS ui_session_revocations (
+    sid        VARCHAR(64) NOT NULL PRIMARY KEY,
+    expires_at BIGINT      NOT NULL
+);
+
+-- name: purge-ui-session-revocations
+DELETE FROM ui_session_revocations WHERE expires_at <= ?;
+
+-- name: insert-ui-session-revocation
+INSERT INTO ui_session_revocations (sid, expires_at) VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE sid = sid;
+
+-- name: select-ui-session-revocation
+SELECT 1 FROM ui_session_revocations WHERE sid = ?;
+
+-- name: clean-table-ui_session_revocations
+DELETE FROM ui_session_revocations;
+
 -- name: health-check
 SELECT 1;
 

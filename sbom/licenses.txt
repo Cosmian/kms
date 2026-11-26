@@ -280,11 +280,11 @@ k8s-openapi@0.28.0 (1): Apache-2.0
 keyed_priority_queue@0.4.2 (1): MIT
 kmip-derive@5.29.0 (1): BUSL-1.1
 kryoptic_pkcs11_loader@5.29.0 (1): BUSL-1.1
-kube@4.2.0 (1): Apache-2.0
-kube-client@4.2.0 (1): Apache-2.0
-kube-core@4.2.0 (1): Apache-2.0
-kube-derive@4.2.0 (1): Apache-2.0
-kube-runtime@4.2.0 (1): Apache-2.0
+kube@4.2.1 (1): Apache-2.0
+kube-client@4.2.1 (1): Apache-2.0
+kube-core@4.2.1 (1): Apache-2.0
+kube-derive@4.2.1 (1): Apache-2.0
+kube-runtime@4.2.1 (1): Apache-2.0
 language-tags@0.3.2 (2): MIT, Apache-2.0
 lazy_static@1.5.1 (2): MIT, Apache-2.0
 leb128@0.2.7 (2): MIT, Apache-2.0
