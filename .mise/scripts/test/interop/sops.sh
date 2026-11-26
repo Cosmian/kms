@@ -21,6 +21,7 @@ TEST_DATA="${REPO_ROOT}/test_data/spire"
 WORK_DIR="$(mktemp -d /tmp/kms-sops-XXXXXX)"
 AUTH_PID=""
 KMS_PID=""
+CURRENT_TEST_STEP="setup"
 GNUPGHOME="${WORK_DIR}/gnupg"
 export GNUPGHOME
 mkdir -m 700 "${GNUPGHOME}"
@@ -28,6 +29,7 @@ mkdir -m 700 "${GNUPGHOME}"
 cleanup() {
   local rc=$?
   if [ "${rc}" -ne 0 ]; then
+    print_warning "Test failed during: ${CURRENT_TEST_STEP}"
     [ -s "${WORK_DIR}/auth.log" ] && tail -n 40 "${WORK_DIR}/auth.log" >&2 || true
     [ -s "${WORK_DIR}/kms.log" ] && tail -n 40 "${WORK_DIR}/kms.log" >&2 || true
   fi
@@ -99,19 +101,27 @@ creation_rules:
     hc_vault_transit_uri: https://localhost:9998/v1/transit/keys/sops-v1
 EOF
 printf 'database:\n  password: transit-secret\n' >"${WORK_DIR}/transit/secrets.yaml"
-(
-  cd "${WORK_DIR}/transit"
-  SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
-  grep -q 'sops:' secrets.yaml
-  test "$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')" = '  password: transit-secret'
-  cat >.sops.yaml <<EOF2
+pushd "${WORK_DIR}/transit" >/dev/null
+CURRENT_TEST_STEP="Transit SOPS encryption"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
+CURRENT_TEST_STEP="Transit encrypted metadata check"
+grep -q 'sops:' secrets.yaml
+CURRENT_TEST_STEP="Transit SOPS decryption"
+TRANSIT_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
+CURRENT_TEST_STEP="Transit plaintext verification"
+test "${TRANSIT_PLAINTEXT}" = '  password: transit-secret'
+cat >.sops.yaml <<EOF2
 creation_rules:
   - path_regex: \\.yaml$
     hc_vault_transit_uri: https://localhost:9998/v1/transit/keys/sops-v2
 EOF2
-  SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
-  test "$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')" = '  password: transit-secret'
-)
+CURRENT_TEST_STEP="Transit key rotation"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
+CURRENT_TEST_STEP="Transit post-rotation decryption"
+TRANSIT_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
+CURRENT_TEST_STEP="Transit post-rotation plaintext verification"
+test "${TRANSIT_PLAINTEXT}" = '  password: transit-secret'
+popd >/dev/null
 
 print_header "SOPS OpenPGP source"
 mkdir -p "${WORK_DIR}/pgp"
@@ -149,13 +159,21 @@ creation_rules:
     pgp: ${PGP_MASTER_FINGERPRINT}
 EOF
 printf 'database:\n  password: pgp-secret\n' >"${WORK_DIR}/pgp/secrets.yaml"
-(
-  cd "${WORK_DIR}/pgp"
-  SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
-  grep -q 'sops:' secrets.yaml
-  test "$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')" = '  password: pgp-secret'
-  SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
-  test "$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')" = '  password: pgp-secret'
-)
+pushd "${WORK_DIR}/pgp" >/dev/null
+CURRENT_TEST_STEP="OpenPGP SOPS encryption"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
+CURRENT_TEST_STEP="OpenPGP encrypted metadata check"
+grep -q 'sops:' secrets.yaml
+CURRENT_TEST_STEP="OpenPGP SOPS decryption"
+PGP_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
+CURRENT_TEST_STEP="OpenPGP plaintext verification"
+test "${PGP_PLAINTEXT}" = '  password: pgp-secret'
+CURRENT_TEST_STEP="OpenPGP key rotation"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
+CURRENT_TEST_STEP="OpenPGP post-rotation decryption"
+PGP_PLAINTEXT="$(SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep 'password:' | tr -d '\r')"
+CURRENT_TEST_STEP="OpenPGP post-rotation plaintext verification"
+test "${PGP_PLAINTEXT}" = '  password: pgp-secret'
+popd >/dev/null
 
 print_success "SOPS Vault Transit and OpenPGP round-trips passed"

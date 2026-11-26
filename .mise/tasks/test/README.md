@@ -923,7 +923,8 @@ Vault-compatible Transit API. The non-FIPS-only task starts the Auth Verifier an
 complete SPIRE fixtures, creates an AppRole token, and verifies SOPS encryption, decryption, and
 `updatekeys` rotation for both `hc_vault_transit` and `pgp`. The Transit client trusts the fixture
 CA via `VAULT_CACERT`. SOPS, GnuPG, and `gnupg-pkcs11-scd` come from the pinned Nix shell
-(`WITH_SOPS=1`); the OpenPGP scenario uses the KMS PKCS#11 smartcard provider.
+(`WITH_SOPS=1`); the OpenPGP scenario uses the KMS PKCS#11 smartcard provider. On failure, the
+script identifies the active encryption, decryption, metadata, or rotation check in the CI log.
 
 ```mermaid
 sequenceDiagram
