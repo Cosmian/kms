@@ -309,6 +309,7 @@ async fn check_chain(
         certificates,
         kms.params.proxy_params.as_ref(),
         kms.params.kms_public_url.as_deref(),
+        false,
     )
     .await
     .map_err(|crl_err| KmsError::Certificate(format!("CRL validation failed: {crl_err}")))?
@@ -724,7 +725,10 @@ async fn fetch_crl_http(
     );
 
     if !response.status().is_success() {
-        return Err(KmsError::Certificate(format!(
+        // ServerError (not Certificate): a CRL that cannot be obtained (404 before the
+        // first revocation, 5xx) is no evidence of revocation. `verify_crls` skips it
+        // for `Import` (`skip_unobtainable_crls`) and fails closed for `Validate`.
+        return Err(KmsError::ServerError(format!(
             "CRL at '{uri}' returned non-success status: {}",
             response.status()
         )));
@@ -790,8 +794,11 @@ async fn fetch_crl_http(
 /// - A URI uses a non-HTTP(S) scheme or is a bare filesystem path (production).
 /// - The URL targets a private, loopback, link-local, or internal hostname
 ///   (and is not the server's own URL).
-/// - The HTTP request fails, times out, or returns a non-2xx status.
+/// - The HTTP request fails or times out.
 /// - The response body exceeds [`CRL_MAX_RESPONSE_BYTES`].
+///
+/// Returns [`KmsError::ServerError`] if the server answers with a non-2xx status or the body
+/// cannot be read: no CRL could be obtained, which is not evidence of revocation.
 async fn get_crl_bytes(
     uri_list: Vec<String>,
     proxy_params: Option<&ProxyParams>,
@@ -919,6 +926,10 @@ async fn get_crl_bytes(
 ///
 /// * `certificates` - A vector of `X509` certificates to be verified.
 /// * `proxy_params` / `kms_public_url` - outbound proxy and the server's own public URL.
+/// * `skip_unobtainable_crls` - When `true`, a CRL that the distribution point cannot serve
+///   (HTTP non-2xx, unreadable body) is skipped with a warning, like an unreachable one, so
+///   that the remaining certificates of the chain are still checked (used by `Import`).
+///   When `false` it is an error (used by `Validate`: fail closed).
 ///
 /// # Returns
 ///
@@ -934,6 +945,7 @@ pub(crate) async fn verify_crls(
     certificates: Vec<X509>,
     proxy_params: Option<&ProxyParams>,
     kms_public_url: Option<&str>,
+    skip_unobtainable_crls: bool,
 ) -> KResult<CrlVerdict> {
     let mut current_crls: HashMap<String, Vec<u8>> = HashMap::new();
 
@@ -1002,6 +1014,14 @@ pub(crate) async fn verify_crls(
                     warn!(
                         "[{idx}] CRL distribution point unreachable for '{:?}', skipping \
                          revocation check: {e}",
+                        certificate.subject_name()
+                    );
+                    current_crls = HashMap::new();
+                    continue;
+                }
+                Err(KmsError::ServerError(ref e)) if skip_unobtainable_crls => {
+                    warn!(
+                        "[{idx}] CRL not obtainable for '{:?}', skipping revocation check: {e}",
                         certificate.subject_name()
                     );
                     current_crls = HashMap::new();
