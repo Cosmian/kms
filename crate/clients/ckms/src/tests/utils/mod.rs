@@ -1,4 +1,5 @@
 pub(crate) use cmd_logs::recover_cmd_logs;
+#[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
 pub(crate) use config::force_save_kms_cli_config;
 pub(crate) use config::{load_client_config, owner_config, user_config};
