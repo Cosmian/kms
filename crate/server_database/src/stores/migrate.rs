@@ -61,7 +61,7 @@ impl MigrationStep {
             Self::AttributesJsonb => "5.15.0",
             Self::WrappingKeyIdBackfill => "5.25.0",
             Self::CertificateSerialTagBackfill => "5.29.0",
-            Self::StoredStateSync => "6.0.0",
+            Self::StoredStateSync => "5.30.0",
         }
     }
 

@@ -460,7 +460,7 @@ async fn typed_records(
 /// `StoredStateSync` on a database recorded at 5.29.0: exactly that step runs, only `State`
 /// values change, and a reopen rewrites nothing.
 async fn stored_state_sync(fixture: &RedisFixture) -> DbResult<()> {
-    const SYNC_TARGET: &str = "6.0.0";
+    const SYNC_TARGET: &str = "5.30.0";
     fixture.restore("5.28.0").await?;
     let (pool, applied) = fixture.open(false, TARGET).await?;
     expect_steps(&applied, &[CertificateSerialTagBackfill])?;

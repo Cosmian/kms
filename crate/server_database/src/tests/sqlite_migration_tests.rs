@@ -629,7 +629,7 @@ async fn test_sqlite_migration_lock_serializes_instances() -> DbResult<()> {
     assert_fixture_preserved(&second, &path, &original).await
 }
 
-const SYNC_TARGET: &str = "6.0.0";
+const SYNC_TARGET: &str = "5.30.0";
 
 fn state_rows(path: &Path) -> DbResult<Vec<[String; 4]>> {
     let connection = Connection::open(path)?;
@@ -670,7 +670,7 @@ fn remove_states(object: &mut serde_json::Value, attributes: &mut serde_json::Va
     }
 }
 
-/// The 6.0.0 `StoredStateSync` contract for one `(object, attributes)` row: the attributes carry the
+/// The 5.30.0 `StoredStateSync` contract for one `(object, attributes)` row: the attributes carry the
 /// state the read path reports, the embedded attributes too (except a destroyed object's payload),
 /// and nothing but `State` values differs. A row whose JSON does not parse is left untouched.
 pub(super) fn assert_state_synced(

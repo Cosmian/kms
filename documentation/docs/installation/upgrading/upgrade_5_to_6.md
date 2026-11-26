@@ -14,7 +14,7 @@ This guide is for operators moving a running KMS from a 5.x release to 6.0. 6.0 
 
 ## Migration matrix by database backend
 
-Result of `mise run test:db:upgrade-all`: a database filled by a published 5.x image (every object kind and KMIP operation reachable through `ckms`), opened by the 6.0 server, then checked after the upgrade, after a restart, and after restoring the pre-upgrade backup with the old image.
+Result of `mise run test:db:upgrade-all`: a database filled by a published 5.x image (every object kind and KMIP operation reachable through `ckms`), opened by the 5.30 server, then checked after the upgrade, after a restart, and after restoring the pre-upgrade backup with the old image.
 
 | Source release | SQLite | PostgreSQL | MySQL | Redis-with-Findex (non-FIPS) |
 |---|---|---|---|---|

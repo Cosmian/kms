@@ -560,7 +560,7 @@ fn cell(row: &[Option<String>], index: usize) -> DbResult<&str> {
 /// `StoredStateSync` on a database recorded at 5.29.0: exactly that step runs, only `State`
 /// values change, and a reopen applies nothing.
 async fn stored_state_sync<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
-    const SYNC_TARGET: &str = "6.0.0";
+    const SYNC_TARGET: &str = "5.30.0";
     let select = format!(
         "SELECT id, state, object, {} FROM objects ORDER BY id",
         F::ATTRIBUTES_TEXT
