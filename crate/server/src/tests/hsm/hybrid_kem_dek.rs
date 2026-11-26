@@ -57,6 +57,7 @@ use crate::{
         hsm::{
             create_kek, delete_key, export_object, hsm_clap_config, import_object, locate_keys,
             send_message,
+            test_helpers::{assert_gcm_encrypt_refused, hsm_cannot_generate_gcm_iv},
         },
         test_utils::{get_tmp_sqlite_path, test_kms_with_config},
     },
@@ -704,7 +705,14 @@ pub(super) async fn test_client_wrapped_kem_import() -> KResult<()> {
                     &kek_uid, None, plaintext, None, None, None,
                 )?))],
             )
-            .await?;
+            .await;
+            // The client-side wrapping is AES-GCM: a FIPS token that cannot generate the IV
+            // refuses it, and a client-wrapped import is then not possible at all.
+            if hsm_cannot_generate_gcm_iv() {
+                assert_gcm_encrypt_refused(response.map(|_| Vec::new()));
+                return Ok(());
+            }
+            let response = response?;
             let Operation::EncryptResponse(response) = &response[0] else {
                 return Err(KmsError::ServerError("invalid response".to_owned()));
             };

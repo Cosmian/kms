@@ -126,8 +126,6 @@ async fn test_hsm_all() {
     Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
         .await
         .unwrap();
-    info!("HSM: sub_ca_ed25519 (CSR, certify and CRL with an Ed25519 HSM key)");
-    Box::pin(sub_ca::test_hsm_sub_ca_ed25519()).await.unwrap();
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");
     Box::pin(issues::test_non_admin_kek_wrapping())
@@ -153,7 +151,7 @@ async fn test_hsm_all() {
     // hash-and-sign `CKM_ECDSA_SHA*` / `CKM_SHA*_RSA_PKCS` forms).
     if hsm_rejects_raw_signing_mechanisms() {
         info!(
-            "HSM: sub_ca and sub_ca_ec skipped (the token rejects raw CKM_RSA_PKCS and CKM_ECDSA in FIPS mode)"
+            "HSM: sub_ca, sub_ca_ec and sub_ca_ed25519 skipped (the token rejects raw CKM_RSA_PKCS and CKM_ECDSA in FIPS mode)"
         );
     } else {
         info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
@@ -161,6 +159,10 @@ async fn test_hsm_all() {
 
         info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
         Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+
+        // The Ed25519 sub-CA is certified by the same RSA HSM root.
+        info!("HSM: sub_ca_ed25519 (CSR, certify and CRL with an Ed25519 HSM key)");
+        Box::pin(sub_ca::test_hsm_sub_ca_ed25519()).await.unwrap();
     }
 
     // Windows has no OpenSSH `sshd` (the test authenticates against a real `sshd -i`): a
