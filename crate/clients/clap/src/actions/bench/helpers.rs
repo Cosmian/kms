@@ -3,8 +3,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_0::kmip_types::{
@@ -21,8 +19,8 @@ use cosmian_kms_client::{
             RecommendedCurve, UniqueIdentifier,
         },
         requests::{
-            build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
-            symmetric_key_create_request,
+            build_revoke_key_request, create_ec_key_pair_request, create_pqc_key_pair_request,
+            create_rsa_key_pair_request, symmetric_key_create_request,
         },
     },
 };
@@ -521,7 +519,6 @@ pub(super) fn try_create_ec_kp_no_fips(
     })
 }
 
-#[cfg(feature = "non-fips")]
 pub(super) fn try_create_pqc_kp(
     rt: &Runtime,
     client: &KmsClient,
@@ -659,10 +656,10 @@ pub(super) fn try_create_hsm_rsa_kp(
 
 /// Create an HSM-resident EC/EdDSA key pair for the given curve. Key
 /// generation happens on the HSM itself via `HsmKeypairAlgorithm::EC` (NIST
-/// curves) or `HsmKeypairAlgorithm::Ed25519`/`Ed448` (non-FIPS only).
+/// curves) or `HsmKeypairAlgorithm::Ed25519`/`Ed448`.
 ///
-/// Curve support on the HSM oracle: P-224/256/384/521 (FIPS), Ed25519/Ed448
-/// (non-FIPS). Note: as of this writing, Ed25519/Ed448 keys can be created on
+/// Curve support on the HSM oracle: P-224/256/384/521 , Ed25519/Ed448
+/// (all FIPS). Note: as of this writing, Ed25519/Ed448 keys can be created on
 /// the HSM but `Sign` against them fails on `SoftHSM2` (`CKR_MECHANISM_INVALID`)
 /// — this helper is still useful for HSM key-*creation* timing, but callers
 /// must not use its output for HSM sign benchmarks.

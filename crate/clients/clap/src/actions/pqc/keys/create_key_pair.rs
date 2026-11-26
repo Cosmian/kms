@@ -1,12 +1,14 @@
 use clap::{Parser, ValueEnum};
+#[cfg(feature = "non-fips")]
+use cosmian_kms_client::reexport::cosmian_kms_client_utils::configurable_kem_utils::{
+    KemAlgorithm, build_create_configurable_kem_keypair_request,
+};
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{
+        kmip_operations::CreateKeyPair,
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
         requests::create_pqc_key_pair_request,
-    },
-    reexport::cosmian_kms_client_utils::configurable_kem_utils::{
-        KemAlgorithm, build_create_configurable_kem_keypair_request,
     },
 };
 
@@ -39,7 +41,8 @@ pub(crate) enum PqcAlgorithm {
     /// X25519MLKEM768 (hybrid KEM)
     #[value(name = "x25519-ml-kem-768")]
     X25519MlKem768,
-    /// X448MLKEM1024 (hybrid KEM)
+    /// X448MLKEM1024 (hybrid KEM; not served by the FIPS provider)
+    #[cfg(feature = "non-fips")]
     #[value(name = "x448-ml-kem-1024")]
     X448MlKem1024,
     /// SLH-DSA-SHA2-128s (stateless hash-based signature)
@@ -79,15 +82,19 @@ pub(crate) enum PqcAlgorithm {
     #[value(name = "slh-dsa-shake-256f")]
     SlhDsaShake256f,
     /// ML-KEM-512 hybridized with P-256 (`ConfigurableKEM`)
+    #[cfg(feature = "non-fips")]
     #[value(name = "ml-kem-512-p256")]
     MlKem512P256,
     /// ML-KEM-768 hybridized with P-256 (`ConfigurableKEM`)
+    #[cfg(feature = "non-fips")]
     #[value(name = "ml-kem-768-p256")]
     MlKem768P256,
     /// ML-KEM-512 hybridized with Curve25519 (`ConfigurableKEM`)
+    #[cfg(feature = "non-fips")]
     #[value(name = "ml-kem-512-curve25519")]
     MlKem512Curve25519,
     /// ML-KEM-768 hybridized with Curve25519 (`ConfigurableKEM`)
+    #[cfg(feature = "non-fips")]
     #[value(name = "ml-kem-768-curve25519")]
     MlKem768Curve25519,
 }
@@ -103,6 +110,7 @@ impl PqcAlgorithm {
             Self::MlDsa65 => CryptographicAlgorithm::MLDSA_65,
             Self::MlDsa87 => CryptographicAlgorithm::MLDSA_87,
             Self::X25519MlKem768 => CryptographicAlgorithm::X25519MLKEM768,
+            #[cfg(feature = "non-fips")]
             Self::X448MlKem1024 => CryptographicAlgorithm::X448MLKEM1024,
             Self::SlhDsaSha2_128s => CryptographicAlgorithm::SLHDSA_SHA2_128s,
             Self::SlhDsaSha2_128f => CryptographicAlgorithm::SLHDSA_SHA2_128f,
@@ -116,6 +124,7 @@ impl PqcAlgorithm {
             Self::SlhDsaShake192f => CryptographicAlgorithm::SLHDSA_SHAKE_192f,
             Self::SlhDsaShake256s => CryptographicAlgorithm::SLHDSA_SHAKE_256s,
             Self::SlhDsaShake256f => CryptographicAlgorithm::SLHDSA_SHAKE_256f,
+            #[cfg(feature = "non-fips")]
             Self::MlKem512P256
             | Self::MlKem768P256
             | Self::MlKem512Curve25519
@@ -123,6 +132,7 @@ impl PqcAlgorithm {
         }
     }
 
+    #[cfg(feature = "non-fips")]
     /// Convert to `KemAlgorithm` for `ConfigurableKEM` variants.
     /// Returns `None` for standard PQC algorithms.
     pub(crate) const fn to_kem_algorithm(self) -> Option<KemAlgorithm> {
@@ -159,29 +169,48 @@ pub struct CreatePqcKeyPairAction {
 }
 
 impl CreatePqcKeyPairAction {
+    /// Build the request; `ConfigurableKEM` algorithms exist only in non-FIPS builds.
+    #[cfg(feature = "non-fips")]
+    fn build_request(&self, vendor_id: &str) -> KmsCliResult<CreateKeyPair> {
+        Ok(
+            if let Some(kem_algorithm) = self.algorithm.to_kem_algorithm() {
+                build_create_configurable_kem_keypair_request(
+                    vendor_id,
+                    None,
+                    &self.tags,
+                    kem_algorithm,
+                    self.sensitive,
+                    None,
+                )?
+            } else {
+                create_pqc_key_pair_request(
+                    vendor_id,
+                    &self.tags,
+                    self.algorithm.to_cryptographic_algorithm(),
+                    self.sensitive,
+                )?
+            },
+        )
+    }
+
+    /// Build the request (FIPS build: standard PQC algorithms only).
+    #[cfg(not(feature = "non-fips"))]
+    fn build_request(&self, vendor_id: &str) -> KmsCliResult<CreateKeyPair> {
+        Ok(create_pqc_key_pair_request(
+            vendor_id,
+            &self.tags,
+            self.algorithm.to_cryptographic_algorithm(),
+            self.sensitive,
+        )?)
+    }
+
     pub async fn run(
         &self,
         kms_rest_client: KmsClient,
     ) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
         let vendor_id = kms_rest_client.config.vendor_id.as_str();
 
-        let request = if let Some(kem_algorithm) = self.algorithm.to_kem_algorithm() {
-            build_create_configurable_kem_keypair_request(
-                vendor_id,
-                None,
-                &self.tags,
-                kem_algorithm,
-                self.sensitive,
-                None,
-            )?
-        } else {
-            create_pqc_key_pair_request(
-                vendor_id,
-                &self.tags,
-                self.algorithm.to_cryptographic_algorithm(),
-                self.sensitive,
-            )?
-        };
+        let request = self.build_request(vendor_id)?;
 
         let response = kms_rest_client
             .create_key_pair(request)

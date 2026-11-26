@@ -59,11 +59,11 @@ pub enum BenchMode {
     /// Run ALL benchmark categories in order
     #[default]
     All,
-    /// Encrypt/decrypt: AES-GCM, AES-XTS, `AES-GCM-SIV`/`ChaCha20`/ECIES/Salsa/Covercrypt/KEM/PQC-KEM (non-FIPS), RSA-OAEP, RSA-AES-KWP, RSA-PKCS1v15 (non-FIPS)
+    /// Encrypt/decrypt: AES-GCM, AES-XTS, `AES-GCM-SIV`/`ChaCha20`/ECIES/Salsa/Covercrypt/KEM (non-FIPS)/PQC-KEM (X448MLKEM1024 non-FIPS), RSA-OAEP, RSA-AES-KWP, RSA-PKCS1v15 (non-FIPS)
     Encrypt,
-    /// Key creation: symmetric (AES, `ChaCha20` non-FIPS), RSA (2048, 4096), EC (P-256, P-384, P-521, secp256k1/Ed25519/Ed448 non-FIPS), ML-KEM/PQC-KEM (non-FIPS)
+    /// Key creation: symmetric (AES, `ChaCha20` non-FIPS), RSA (2048, 4096), EC (P-256, P-384, P-521, Ed25519/Ed448, secp256k1 non-FIPS), ML-KEM/PQC-KEM (X448MLKEM1024 non-FIPS)
     KeyCreation,
-    /// Sign/verify: ECDSA (P-256, P-384, P-521), `EdDSA` (Ed25519, Ed448 non-FIPS), ECDSA secp256k1 (non-FIPS), RSA-PSS, ML-DSA (non-FIPS), SLH-DSA (non-FIPS)
+    /// Sign/verify: ECDSA (P-256, P-384, P-521), `EdDSA` (Ed25519, Ed448), ECDSA secp256k1 (non-FIPS), RSA-PSS, ML-DSA, SLH-DSA
     #[value(alias = "sign")]
     SignVerify,
     /// KMIP Message batch: AES `BulkData`, RSA KMIP Message (OAEP, KWP)

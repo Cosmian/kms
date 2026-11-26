@@ -12,6 +12,7 @@ pub(crate) fn extract_uid<'a>(text: &'a str, pattern: &'a str) -> Option<&'a str
         .and_then(|cap| cap.name("uid").map(|uid| uid.as_str()))
 }
 /// Extract the certificate ID from a test.
+#[cfg(feature = "non-fips")] // only used by the non-FIPS Google CSE key-pair tests
 pub(crate) fn extract_certificate_id(text: &str) -> Option<&str> {
     let formatted = r"certificate ID:\s*(?P<uid>[a-fA-F0-9\-]+)";
     let uid_regex = RegexBuilder::new(formatted)
@@ -39,6 +40,7 @@ pub(crate) fn extract_unique_identifier(text: &str) -> Option<&str> {
 }
 
 /// Extract the decryption user key from a test.
+#[cfg(feature = "non-fips")] // only used by the non-FIPS CoverCrypt tests
 pub(crate) fn extract_user_key(text: &str) -> Option<&str> {
     extract_uid(text, "Unique identifier")
 }

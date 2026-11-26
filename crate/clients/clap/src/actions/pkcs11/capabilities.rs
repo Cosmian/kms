@@ -1038,6 +1038,14 @@ async fn provision_keys(kms_rest_client: &KmsClient) -> KmsCliResult<Provisioned
     )
     .await?;
 
+    // Ed25519 and Ed448 are served by the FIPS provider (FIPS 186-5).
+    for (label, curve) in [
+        ("Ed25519", RecommendedCurve::CURVEED25519),
+        ("Ed448", RecommendedCurve::CURVEED448),
+    ] {
+        provision_ec_curve(kms_rest_client, label, curve, &mut provisioned).await?;
+    }
+
     for &(label, curve) in NON_FIPS_CURVES {
         provision_ec_curve(kms_rest_client, label, curve, &mut provisioned).await?;
     }
@@ -1045,14 +1053,10 @@ async fn provision_keys(kms_rest_client: &KmsClient) -> KmsCliResult<Provisioned
     Ok(provisioned)
 }
 
-/// secp256k1, Ed25519 and Ed448 are not FIPS-approved: they are only provisioned in a
-/// `non-fips` build, where the server actually allows creating them.
+/// secp256k1 is not FIPS-approved: it is only provisioned in a `non-fips` build, where
+/// the server actually allows creating it.
 #[cfg(feature = "non-fips")]
-const NON_FIPS_CURVES: &[(&str, RecommendedCurve)] = &[
-    ("secp256k1", RecommendedCurve::SECP256K1),
-    ("Ed25519", RecommendedCurve::CURVEED25519),
-    ("Ed448", RecommendedCurve::CURVEED448),
-];
+const NON_FIPS_CURVES: &[(&str, RecommendedCurve)] = &[("secp256k1", RecommendedCurve::SECP256K1)];
 /// FIPS build: no non-FIPS curve is provisioned.
 #[cfg(not(feature = "non-fips"))]
 const NON_FIPS_CURVES: &[(&str, RecommendedCurve)] = &[];
@@ -1846,9 +1850,7 @@ fn run_ecdsa_checks(
 
 /// One-shot `CKM_EDDSA` sign/verify, plus the v3.0 message-based
 /// `C_MessageSignInit`/`C_SignMessage`/`C_MessageSignFinal` flow, for every
-/// provisioned `EdDSA` curve (Ed25519, Ed448) — both gated behind the `non-fips`
-/// feature, since neither curve is FIPS-approved.
-#[cfg(feature = "non-fips")]
+/// provisioned `EdDSA` curve (Ed25519, Ed448).
 fn run_eddsa_checks(
     func_list: &CK_FUNCTION_LIST,
     func_list_3_0: &CK_FUNCTION_LIST_3_0,
@@ -1899,31 +1901,6 @@ fn run_eddsa_checks(
             detail: message_detail,
             outcome,
         });
-    }
-}
-
-/// FIPS build: Ed25519/Ed448 are not FIPS-approved, so every `CKM_EDDSA` row is skipped.
-#[cfg(not(feature = "non-fips"))]
-fn run_eddsa_checks(
-    _func_list: &CK_FUNCTION_LIST,
-    _func_list_3_0: &CK_FUNCTION_LIST_3_0,
-    _slot_id: CK_SLOT_ID,
-    _handles: &[(&'static str, (CK_OBJECT_HANDLE, CK_OBJECT_HANDLE))],
-    results: &mut Vec<CheckResult>,
-) {
-    for label in ["Ed25519", "Ed448"] {
-        for detail in [
-            format!("sign/verify (one-shot, {label})"),
-            format!("C_MessageSignInit/C_SignMessage/C_MessageSignFinal ({label})"),
-        ] {
-            results.push(CheckResult {
-                name: "CKM_EDDSA",
-                detail,
-                outcome: Outcome::Skip(format!(
-                    "{label} is not FIPS-approved; built without --features non-fips"
-                )),
-            });
-        }
     }
 }
 
@@ -2056,7 +2033,6 @@ fn sign_verify_on_session(
 }
 
 /// v3.0 message-based `EdDSA` sign, then one-shot verify, on a dedicated session.
-#[cfg(feature = "non-fips")]
 #[expect(
     unsafe_code,
     reason = "PKCS#11 C_* calls through the loaded module function table"
@@ -2087,7 +2063,6 @@ fn eddsa_message_sign_verify(
     result
 }
 
-#[cfg(feature = "non-fips")]
 #[expect(
     unsafe_code,
     reason = "PKCS#11 C_* calls through the loaded module function table"

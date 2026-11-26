@@ -1,6 +1,4 @@
 #[cfg(feature = "non-fips")]
-use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_client::reexport::cosmian_kms_client_utils::configurable_kem_utils::{
     KemAlgorithm, build_create_configurable_kem_keypair_request,
 };
@@ -23,14 +21,12 @@ use cosmian_kms_client::{
             RecommendedCurve, UniqueIdentifier,
         },
         requests::{
-            create_ec_key_pair_request, create_rsa_key_pair_request, decrypt_request,
-            encrypt_request, symmetric_key_create_request,
+            create_ec_key_pair_request, create_pqc_key_pair_request, create_rsa_key_pair_request,
+            decrypt_request, encrypt_request, symmetric_key_create_request,
         },
     },
 };
-use cosmian_kms_crypto::crypto::is_fips_build;
-#[cfg(feature = "non-fips")]
-use cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation;
+use cosmian_kms_crypto::crypto::{is_fips_build, pqc::unpack_kem_encapsulation};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
@@ -39,15 +35,15 @@ use zeroize::Zeroizing;
 #[cfg(feature = "non-fips")]
 use super::helpers::{
     aes_gcm_siv_params, bench_uid, chacha20_params, kem_params, remove_leftover_key,
-    rsa_pkcs15_params, try_create_ec_kp_no_fips, try_create_pqc_kp, try_create_sym_key,
+    rsa_pkcs15_params, try_create_ec_kp_no_fips, try_create_sym_key,
 };
 use super::{
     helpers::{
         HsmKeyLedger, aes_cbc_params, aes_gcm_params, aes_xts_params, create_rsa_kp,
         create_sym_key, hsm_rsa_encrypt_variants, hsm_rsa_pkcs1v15_sign_params, hsm_uid,
         rsa_kwp_params, rsa_oaep_params, try_create_ec_kp, try_create_hsm_ec_kp,
-        try_create_hsm_rsa_kp, try_create_hsm_sym_key, with_fips_ec_masks, with_fips_rsa_masks,
-        with_private_key_uid,
+        try_create_hsm_rsa_kp, try_create_hsm_sym_key, try_create_pqc_kp, with_fips_ec_masks,
+        with_fips_rsa_masks, with_private_key_uid,
     },
     transport::{Transport, bench_message_id, bench_op, bench_op_id, timed_group},
     types::bench_ko,
@@ -112,7 +108,6 @@ pub(super) fn bench_encrypt(
     #[cfg(feature = "non-fips")]
     bench_kem(c, client, rt, transport)?;
 
-    #[cfg(feature = "non-fips")]
     bench_pqc_kem(c, client, rt, transport)?;
     Ok(())
 }
@@ -802,7 +797,6 @@ fn bench_kem(
     Ok(())
 }
 
-#[cfg(feature = "non-fips")]
 fn bench_pqc_kem(
     c: &mut Criterion,
     client: &KmsClient,
@@ -815,6 +809,7 @@ fn bench_pqc_kem(
         ("ML-KEM-768", CryptographicAlgorithm::MLKEM_768),
         ("ML-KEM-1024", CryptographicAlgorithm::MLKEM_1024),
         ("X25519MLKEM768", CryptographicAlgorithm::X25519MLKEM768),
+        #[cfg(feature = "non-fips")]
         ("X448MLKEM1024", CryptographicAlgorithm::X448MLKEM1024),
     ];
 
@@ -986,10 +981,10 @@ pub(super) fn bench_key_creation(
                 Operation::CreateKeyPair(Box::new(req)),
             )?;
         }
-        #[cfg(feature = "non-fips")]
         for (label, curve) in [
             ("ed25519", RecommendedCurve::CURVEED25519),
             ("ed448", RecommendedCurve::CURVEED448),
+            #[cfg(feature = "non-fips")]
             ("secp256k1", RecommendedCurve::SECP256K1),
         ] {
             if try_create_ec_kp(rt, client, &format!("probe-ec-{label}"), curve).is_some() {
@@ -1115,14 +1110,14 @@ pub(super) fn bench_key_creation(
         group.finish();
     }
 
-    // PQC key pairs (non-FIPS)
-    #[cfg(feature = "non-fips")]
+    // PQC key pairs
     {
         let pqc_algos: &[(&str, CryptographicAlgorithm)] = &[
             ("ML-KEM-512", CryptographicAlgorithm::MLKEM_512),
             ("ML-KEM-768", CryptographicAlgorithm::MLKEM_768),
             ("ML-KEM-1024", CryptographicAlgorithm::MLKEM_1024),
             ("X25519MLKEM768", CryptographicAlgorithm::X25519MLKEM768),
+            #[cfg(feature = "non-fips")]
             ("X448MLKEM1024", CryptographicAlgorithm::X448MLKEM1024),
             ("ML-DSA-44", CryptographicAlgorithm::MLDSA_44),
             ("ML-DSA-65", CryptographicAlgorithm::MLDSA_65),
@@ -1203,45 +1198,24 @@ pub(super) fn bench_sign_verify(
         bench_ec_sign(c, client, rt, transport, label, curve, Some(algo))?;
     }
 
-    // Non-FIPS EC signature algorithms
-    #[cfg(feature = "non-fips")]
-    {
-        bench_ec_sign(
-            c,
-            client,
-            rt,
-            transport,
+    // secp256k1 (non-FIPS) and EdDSA
+    for (label, curve, algo) in [
+        #[cfg(feature = "non-fips")]
+        (
             "ecdsa-secp256k1",
             RecommendedCurve::SECP256K1,
             Some(DigitalSignatureAlgorithm::ECDSAWithSHA256),
-        )?;
-
-        bench_ec_sign(
-            c,
-            client,
-            rt,
-            transport,
-            "eddsa-ed25519",
-            RecommendedCurve::CURVEED25519,
-            None,
-        )?;
-
-        bench_ec_sign(
-            c,
-            client,
-            rt,
-            transport,
-            "eddsa-ed448",
-            RecommendedCurve::CURVEED448,
-            None,
-        )?;
+        ),
+        ("eddsa-ed25519", RecommendedCurve::CURVEED25519, None),
+        ("eddsa-ed448", RecommendedCurve::CURVEED448, None),
+    ] {
+        bench_ec_sign(c, client, rt, transport, label, curve, algo)?;
     }
 
     // RSA-PSS
     bench_rsa_pss_sign(c, client, rt, transport)?;
 
-    // PQC signature algorithms (non-FIPS)
-    #[cfg(feature = "non-fips")]
+    // PQC signature algorithms
     bench_pqc_sign(
         c,
         client,
@@ -1255,7 +1229,6 @@ pub(super) fn bench_sign_verify(
         ],
     )?;
 
-    #[cfg(feature = "non-fips")]
     bench_pqc_sign(
         c,
         client,
@@ -1398,7 +1371,6 @@ fn bench_rsa_pss_sign(
     Ok(())
 }
 
-#[cfg(feature = "non-fips")]
 fn bench_pqc_sign(
     c: &mut Criterion,
     client: &KmsClient,
@@ -1477,7 +1449,7 @@ fn bench_pqc_sign(
 // - Sign: RSA-PSS, RSA-PKCS1v15 hash-and-sign (SHA1/256/384/512), ECDSA
 //   (P-256/P-384 — requires `digested_data`/prehashed input because SoftHSM2
 //   only implements raw `CKM_ECDSA`, not the combined `CKM_ECDSA_SHA*`
-//   mechanisms), EdDSA (Ed25519/Ed448, non-FIPS only — pure, un-hashed
+//   mechanisms), EdDSA (Ed25519/Ed448 — pure, un-hashed
 //   `CKM_EDDSA`, requires `cryptographic_algorithm` set to `Ed25519`/`Ed448`
 //   in the request with no `digital_signature_algorithm` and no
 //   `digested_data`, exactly mirroring `ckms ec sign`'s own request
@@ -1618,8 +1590,7 @@ pub(super) fn bench_hsm_encrypt(
     Ok(())
 }
 
-/// HSM `EdDSA` sign benchmarks (Ed25519/Ed448 are non-FIPS).
-#[cfg(feature = "non-fips")]
+/// HSM `EdDSA` sign benchmarks.
 const HSM_EDDSA_SIGN: [(&str, RecommendedCurve, CryptographicAlgorithm); 2] = [
     (
         "eddsa-ed25519",
@@ -1632,19 +1603,12 @@ const HSM_EDDSA_SIGN: [(&str, RecommendedCurve, CryptographicAlgorithm); 2] = [
         CryptographicAlgorithm::Ed448,
     ),
 ];
-/// No HSM `EdDSA` sign benchmark in a FIPS build.
-#[cfg(not(feature = "non-fips"))]
-const HSM_EDDSA_SIGN: [(&str, RecommendedCurve, CryptographicAlgorithm); 0] = [];
 
-/// HSM `EdDSA` key-creation benchmarks (Ed25519/Ed448 are non-FIPS).
-#[cfg(feature = "non-fips")]
+/// HSM `EdDSA` key-creation benchmarks.
 const HSM_EDDSA_KEY_CREATION: [(&str, RecommendedCurve); 2] = [
     ("hsm-ed25519", RecommendedCurve::CURVEED25519),
     ("hsm-ed448", RecommendedCurve::CURVEED448),
 ];
-/// No HSM `EdDSA` key-creation benchmark in a FIPS build.
-#[cfg(not(feature = "non-fips"))]
-const HSM_EDDSA_KEY_CREATION: [(&str, RecommendedCurve); 0] = [];
 
 pub(super) fn bench_hsm_sign_verify(
     c: &mut Criterion,
@@ -1778,7 +1742,7 @@ pub(super) fn bench_hsm_sign_verify(
         group.finish();
     }
 
-    // EdDSA (Ed25519/Ed448, non-FIPS) — pure, un-hashed CKM_EDDSA. Verified
+    // EdDSA (Ed25519/Ed448) — pure, un-hashed CKM_EDDSA. Verified
     // working end-to-end against a live SoftHSM2 2.6.1 token: the request
     // must set `cryptographic_algorithm` to `Ed25519`/`Ed448` (mirroring
     // `ckms ec sign`'s own request construction — see module docs above) with
@@ -1913,7 +1877,7 @@ pub(super) fn bench_hsm_key_creation(
         group.finish();
     }
 
-    // EdDSA key pairs (Ed25519/Ed448, non-FIPS). Key creation succeeds
+    // EdDSA key pairs (Ed25519/Ed448). Key creation succeeds
     // unconditionally on SoftHSM2 (unlike P-521, see module docs above).
     for (label, curve) in HSM_EDDSA_KEY_CREATION {
         let mut group = timed_group(c, format!("{slug}/key-creation/{label}"));

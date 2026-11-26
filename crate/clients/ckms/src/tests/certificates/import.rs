@@ -6,10 +6,12 @@ use cosmian_kms_cli_actions::reexport::{
     },
 };
 
+#[cfg(feature = "non-fips")]
+use crate::tests::utils::owner_config;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
+    tests::utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
 };
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;

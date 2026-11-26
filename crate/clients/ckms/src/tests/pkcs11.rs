@@ -297,13 +297,10 @@ async fn test_pkcs11_capabilities_with_jwt_auth() {
         }
     }
 
-    #[cfg(feature = "non-fips")]
-    {
-        assert!(
-            stdout.contains("CKM_EDDSA"),
-            "Expected a report row for CKM_EDDSA in a non-fips build.\nstdout: {stdout}"
-        );
-    }
+    assert!(
+        stdout.contains("CKM_EDDSA"),
+        "Expected a report row for CKM_EDDSA.\nstdout: {stdout}"
+    );
 
     // Every C_* function is reported exactly once, split between the legacy
     // v2.40 ABI and v3.x extension tables.

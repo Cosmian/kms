@@ -399,7 +399,6 @@ async fn test_generate_csr_key_pair_generation_errors() -> CosmianResult<()> {
     .unwrap_err();
     assert!(err.to_string().contains("must be sensitive"), "{err}");
     // a key encapsulation key cannot sign
-    #[cfg(feature = "non-fips")]
     {
         let err = generate_csr_args(&conf, &[&base[..], &["--algorithm", "ml-kem-512"]].concat())
             .unwrap_err();

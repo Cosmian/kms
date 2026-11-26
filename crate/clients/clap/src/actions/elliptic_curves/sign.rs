@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-#[cfg(feature = "non-fips")]
-use cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kmip::{
     kmip_0::kmip_types::HashingAlgorithm,
-    kmip_2_1::kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm},
+    kmip_2_1::kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+    },
 };
 use cosmian_kms_client::{KmsClient, reexport::cosmian_kms_client_utils::create_utils::Curve};
 
@@ -63,12 +63,10 @@ impl SignAction {
                 hashing_algorithm: Some(HashingAlgorithm::SHA512),
                 ..CryptographicParameters::default()
             },
-            #[cfg(feature = "non-fips")]
             Curve::Ed25519 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                 ..CryptographicParameters::default()
             },
-            #[cfg(feature = "non-fips")]
             Curve::Ed448 => CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                 ..CryptographicParameters::default()
@@ -118,13 +116,6 @@ impl SignAction {
 }
 
 /// Whether `curve` is an `EdDSA` curve, which signs the raw message (no pre-hash).
-#[cfg(feature = "non-fips")]
 const fn is_eddsa(curve: Curve) -> bool {
     matches!(curve, Curve::Ed25519 | Curve::Ed448)
-}
-
-/// FIPS builds expose no `EdDSA` curve.
-#[cfg(not(feature = "non-fips"))]
-const fn is_eddsa(_curve: Curve) -> bool {
-    false
 }

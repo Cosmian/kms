@@ -11,12 +11,16 @@ use uuid::Uuid;
 
 #[cfg(feature = "non-fips")]
 use crate::tests::rsa::create_key_pair::{RsaKeyPairOptions, create_rsa_key_pair};
-use crate::tests::utils::{ckms_bin, owner_config};
+use crate::tests::utils::owner_config;
+#[cfg(feature = "non-fips")]
+use crate::tests::{
+    shared::{ExportKeyParams, export_key},
+    utils::ckms_bin,
+};
 use crate::{
     error::result::CosmianResult,
-    tests::{
-        shared::{ExportKeyParams, export_key},
-        symmetric::{create_key::create_symmetric_key, encrypt_decrypt::run_encrypt_decrypt_test},
+    tests::symmetric::{
+        create_key::create_symmetric_key, encrypt_decrypt::run_encrypt_decrypt_test,
     },
 };
 use test_kms_server::TestsContext;
@@ -173,6 +177,7 @@ pub(crate) fn test_unwrap_on_export(ctx: &TestsContext) -> CosmianResult<()> {
 /// "This key is sensitive and cannot be exported from the HSM".  The fix detects the `::` HSM
 /// prefix and routes through a server-side `Import(key_wrap_type=NotWrapped)` round-trip that
 /// lets the KMS crypto-oracle perform the unwrapping without ever exposing the KEK material.
+#[cfg(feature = "non-fips")] // only called from the non-FIPS part of `test_all_hsm_cli`
 pub(crate) fn test_unwrap_with_hsm_key(ctx: &TestsContext) -> CosmianResult<()> {
     use cosmian_kms_cli_actions::reexport::cosmian_kms_client::read_object_from_json_ttlv_file;
 

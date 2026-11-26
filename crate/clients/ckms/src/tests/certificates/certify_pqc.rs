@@ -167,6 +167,8 @@ fn certify_ml_kem_ca_issued(
 /// Prove the KMS server correctly serves HTTPS with an ML-DSA-44 TLS certificate
 /// and that `ckms` (using OpenSSL 3.6.5) can natively perform KMIP operations
 /// over the PQC TLS connection — no special client needed.
+// The PQC TLS test server (`start_test_kms_server_with_pqc_tls`) is non-FIPS only.
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_server_with_pqc_tls_cert() -> CosmianResult<()> {
     use test_kms_server::start_test_kms_server_with_pqc_tls;
@@ -434,6 +436,7 @@ async fn test_certify_x25519_ml_kem_768_format_unsupported() {
     );
 }
 
+#[cfg(feature = "non-fips")] // not served by the FIPS provider / ConfigurableKEM
 #[tokio::test]
 async fn test_certify_x448_ml_kem_1024_format_unsupported() {
     let ctx = start_default_test_kms_server().await;
@@ -448,6 +451,7 @@ async fn test_certify_x448_ml_kem_1024_format_unsupported() {
     );
 }
 
+#[cfg(feature = "non-fips")] // not served by the FIPS provider / ConfigurableKEM
 #[tokio::test]
 async fn test_certify_ml_kem_512_p256_format_unsupported() {
     let ctx = start_default_test_kms_server().await;
@@ -462,6 +466,7 @@ async fn test_certify_ml_kem_512_p256_format_unsupported() {
     );
 }
 
+#[cfg(feature = "non-fips")] // not served by the FIPS provider / ConfigurableKEM
 #[tokio::test]
 async fn test_certify_ml_kem_768_p256_format_unsupported() {
     let ctx = start_default_test_kms_server().await;
@@ -476,6 +481,7 @@ async fn test_certify_ml_kem_768_p256_format_unsupported() {
     );
 }
 
+#[cfg(feature = "non-fips")] // not served by the FIPS provider / ConfigurableKEM
 #[tokio::test]
 async fn test_certify_ml_kem_512_curve25519_format_unsupported() {
     let ctx = start_default_test_kms_server().await;
@@ -490,6 +496,7 @@ async fn test_certify_ml_kem_512_curve25519_format_unsupported() {
     );
 }
 
+#[cfg(feature = "non-fips")] // not served by the FIPS provider / ConfigurableKEM
 #[tokio::test]
 async fn test_certify_ml_kem_768_curve25519_format_unsupported() {
     let ctx = start_default_test_kms_server().await;
