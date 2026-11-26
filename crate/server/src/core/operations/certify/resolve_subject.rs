@@ -158,7 +158,7 @@ fn cryptographic_usage_mask_private_key(
         CryptographicAlgorithm::MLKEM_512
         | CryptographicAlgorithm::MLKEM_768
         | CryptographicAlgorithm::MLKEM_1024
-        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Unrestricted,
+        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Decrypt,
         c => kms_bail!(KmsError::InvalidRequest(format!(
             "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
         ))),
@@ -194,9 +194,9 @@ fn cryptographic_usage_mask_public_key(
         CryptographicAlgorithm::MLKEM_512
         | CryptographicAlgorithm::MLKEM_768
         | CryptographicAlgorithm::MLKEM_1024
-        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Unrestricted,
+        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Encrypt,
         c => kms_bail!(KmsError::InvalidRequest(format!(
-            "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
+            "Cryptographic algorithm not supported for public key in FIPS mode: {c}"
         ))),
     })
 }
