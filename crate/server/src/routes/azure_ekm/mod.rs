@@ -4,11 +4,15 @@ use actix_web::{
     HttpRequest, HttpResponse, post,
     web::{Data, Json, JsonConfig, Path, Query},
 };
+use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::AtomicOperation;
 use cosmian_logger::{info, trace, warn};
 use serde::Deserialize;
 
 use crate::{
     core::KMS,
+    error::KmsError,
+    middlewares::UserId,
+    result::KResult,
     routes::azure_ekm::{
         error::AzureEkmErrorReply,
         handlers::{get_key_metadata_handler, unwrap_key_handler, wrap_key_handler},
@@ -22,6 +26,54 @@ use crate::{
 pub(crate) mod error;
 pub(crate) mod handlers;
 pub(crate) mod models;
+
+/// System tag stamped on keys bound to Azure Managed HSM EKM.
+pub(crate) const AZURE_EKM_SYSTEM_TAG: &str = "_azure_ekm";
+
+impl KMS {
+    /// Ensure `key_name` carries [`AZURE_EKM_SYSTEM_TAG`] in the database tags set,
+    /// logging a warning rather than failing a live EKM call on transient DB errors.
+    pub(crate) async fn stamp_azure_ekm_tag_best_effort(&self, key_name: &str) {
+        if let Err(e) = self.stamp_azure_ekm_tag(key_name).await {
+            warn!("Azure EKM: failed to stamp {AZURE_EKM_SYSTEM_TAG} on '{key_name}': {e}");
+        }
+    }
+
+    async fn stamp_azure_ekm_tag(&self, key_name: &str) -> KResult<()> {
+        let mut tags = self.database.retrieve_tags(key_name).await?;
+        if !tags.insert(AZURE_EKM_SYSTEM_TAG.to_owned()) {
+            return Ok(());
+        }
+        let Some(owm) = self.database.retrieve_object_arc(key_name).await? else {
+            return Ok(());
+        };
+        let owner = UserId::from(owm.owner());
+        let op = match owm.version() {
+            Some(version) => AtomicOperation::UpdateObjectIfVersion((
+                owm.id().to_owned(),
+                owm.object().clone(),
+                owm.attributes().clone(),
+                Some(tags),
+                version,
+            )),
+            None => AtomicOperation::UpdateObject((
+                owm.id().to_owned(),
+                owm.object().clone(),
+                owm.attributes().clone(),
+                Some(tags),
+            )),
+        };
+        match self
+            .database
+            .atomic(&owner, &[op])
+            .await
+            .map_err(KmsError::from)
+        {
+            Ok(_) | Err(KmsError::Conflict(_)) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+}
 
 /// List of API versions supported by this implementation
 pub(crate) const SUPPORTED_API_VERSIONS: [&str; 1] = [
@@ -37,7 +89,7 @@ fn validate_api_version(version: &str) -> Result<(), AzureEkmErrorReply> {
     Ok(())
 }
 
-fn validate_key_name(key_name: &str) -> Result<(), AzureEkmErrorReply> {
+pub(crate) fn validate_key_name(key_name: &str) -> Result<(), AzureEkmErrorReply> {
     if key_name.is_empty() || key_name.len() > 64 {
         return Err(AzureEkmErrorReply::invalid_request(
             "Key name length must be between 1 and 64 characters",

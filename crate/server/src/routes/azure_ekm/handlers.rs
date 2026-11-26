@@ -80,6 +80,7 @@ pub(crate) async fn get_key_metadata_handler(
                     match algorithm {
                         CryptographicAlgorithm::AES => {
                             if key_length == AZURE_EKM_REQUIRED_AES_KEY_LENGTH {
+                                kms.stamp_azure_ekm_tag_best_effort(&key_name).await;
                                 Ok(HttpResponse::Ok().json(KeyMetadataResponse::aes()))
                             } else {
                                 // It's indeed uncommon to see an error wrapped in an Ok() - this was done in purpose to reduce useless conversions
@@ -125,6 +126,7 @@ pub(crate) async fn get_key_metadata_handler(
                             let n_base64url = URL_SAFE_NO_PAD.encode(&mod_bytes);
                             let e_base64url = URL_SAFE_NO_PAD.encode(&exp_bytes);
 
+                            kms.stamp_azure_ekm_tag_best_effort(&key_name).await;
                             Ok(HttpResponse::Ok().json(KeyMetadataResponse::rsa(
                                 key_length,
                                 n_base64url,
@@ -314,6 +316,7 @@ pub(crate) async fn wrap_key_handler(
     // Encode wrapped key as base64url
     let wrapped_base64url = URL_SAFE_NO_PAD.encode(&wrapped_key_bytes);
 
+    kms.stamp_azure_ekm_tag_best_effort(key_name).await;
     Ok(WrapKeyResponse {
         value: wrapped_base64url,
     })
@@ -448,6 +451,7 @@ pub(crate) async fn unwrap_key_handler(
         }
     };
     let unwrapped_base64url = URL_SAFE_NO_PAD.encode(&unwrapped_dek_bytes);
+    kms.stamp_azure_ekm_tag_best_effort(key_name).await;
     Ok(UnwrapKeyResponse {
         value: unwrapped_base64url,
     })
