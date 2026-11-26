@@ -5,7 +5,10 @@ use cosmian_kmip::{
     kmip_2_1::kmip_types::{CryptographicAlgorithm, KeyFormatType},
 };
 use foreign_types::ForeignType;
-use openssl::pkey::PKey;
+use openssl::{
+    pkey::{HasPrivate, HasPublic, PKey, PKeyRef},
+    pkey_ctx::PkeyCtx,
+};
 
 use super::{PqcKeyMaterial, PqcKeyPolicy, create_pqc_key_pair, ml_kem_algorithm_name, pqc_keygen};
 use crate::{
@@ -48,31 +51,45 @@ pub fn create_ml_kem_key_pair(
 /// ML-KEM encapsulation: produces a (`shared_secret`, `ciphertext`) pair.
 ///
 /// The `public_key_der` should be SPKI (`SubjectPublicKeyInfo`) DER bytes.
-#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
 pub fn ml_kem_encapsulate(public_key_der: &[u8]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
     let pkey = PKey::public_key_from_der(public_key_der)?;
-    // SAFETY: `pkey` owns a valid EVP_PKEY that outlives the call.
-    unsafe { ml_kem_encapsulate_raw(pkey.as_ptr()) }
+    kem_encapsulate(&pkey, "ML-KEM")
 }
 
-/// ML-KEM encapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
-unsafe fn ml_kem_encapsulate_raw(
-    pkey: *mut openssl_sys::EVP_PKEY,
-) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
-    unsafe {
-        let ctx = openssl_sys::EVP_PKEY_CTX_new(pkey, ptr::null_mut());
-        if ctx.is_null() {
-            return Err(CryptoError::Default(
-                "ML-KEM encapsulate: EVP_PKEY_CTX_new failed".to_owned(),
-            ));
-        }
-        let _ctx_guard = CtxGuard(ctx);
+/// ML-KEM decapsulation: recovers the shared secret from a ciphertext.
+///
+/// The `private_key_der` should be PKCS#8 DER bytes.
+pub fn ml_kem_decapsulate(
+    private_key_der: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, CryptoError> {
+    let pkey = PKey::private_key_from_der(private_key_der)?;
+    kem_decapsulate(&pkey, ciphertext, "ML-KEM")
+}
 
+/// KEM encapsulation with an OpenSSL provider key (ML-KEM or hybrid). `label` prefixes errors.
+///
+/// Upstream tracking: `rust-openssl` has no safe `EVP_PKEY_encapsulate` (Issue #1251,
+/// upstream PRs #2649, #2646, #2636, #2611). The context is owned by the safe `PkeyCtx`.
+#[expect(
+    unsafe_code,
+    reason = "EVP_PKEY_encapsulate has no safe rust-openssl binding (#1251)"
+)]
+pub(crate) fn kem_encapsulate<T: HasPublic>(
+    pkey: &PKeyRef<T>,
+    label: &str,
+) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
+    let pctx = PkeyCtx::new(pkey).map_err(|e| {
+        CryptoError::Default(format!("{label} encapsulate: EVP_PKEY_CTX_new failed: {e}"))
+    })?;
+    let ctx = pctx.as_ptr();
+    // SAFETY: `ctx` is a valid EVP_PKEY_CTX owned by the `PkeyCtx` (`pctx`) above, which outlives
+    // every call below; the output buffers are sized by the preceding size query.
+    unsafe {
         if openssl_sys::EVP_PKEY_encapsulate_init(ctx, ptr::null()) != 1 {
-            return Err(CryptoError::Default(
-                "ML-KEM encapsulate: EVP_PKEY_encapsulate_init failed".to_owned(),
-            ));
+            return Err(CryptoError::Default(format!(
+                "{label} encapsulate: EVP_PKEY_encapsulate_init failed"
+            )));
         }
 
         // Determine output sizes
@@ -86,9 +103,9 @@ unsafe fn ml_kem_encapsulate_raw(
             ptr::from_mut(&mut secret_len),
         ) != 1
         {
-            return Err(CryptoError::Default(
-                "ML-KEM encapsulate: size query failed".to_owned(),
-            ));
+            return Err(CryptoError::Default(format!(
+                "{label} encapsulate: size query failed"
+            )));
         }
 
         let expected_wrapped = wrapped_len;
@@ -104,17 +121,17 @@ unsafe fn ml_kem_encapsulate_raw(
             ptr::from_mut(&mut secret_len),
         ) != 1
         {
-            return Err(CryptoError::Default("ML-KEM encapsulate failed".to_owned()));
+            return Err(CryptoError::Default(format!("{label} encapsulate failed")));
         }
 
         if wrapped_len != expected_wrapped {
             return Err(CryptoError::Default(format!(
-                "ML-KEM encapsulate: ciphertext size mismatch (expected {expected_wrapped}, got {wrapped_len})"
+                "{label} encapsulate: ciphertext size mismatch (expected {expected_wrapped}, got {wrapped_len})"
             )));
         }
         if secret_len != expected_secret {
             return Err(CryptoError::Default(format!(
-                "ML-KEM encapsulate: shared secret size mismatch (expected {expected_secret}, got {secret_len})"
+                "{label} encapsulate: shared secret size mismatch (expected {expected_secret}, got {secret_len})"
             )));
         }
 
@@ -122,43 +139,37 @@ unsafe fn ml_kem_encapsulate_raw(
     }
 }
 
-/// ML-KEM decapsulation: recovers the shared secret from a ciphertext.
+/// KEM decapsulation with an OpenSSL provider key (ML-KEM or hybrid). `label` prefixes errors.
 ///
-/// The `private_key_der` should be PKCS#8 DER bytes.
-#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
-pub fn ml_kem_decapsulate(
-    private_key_der: &[u8],
+/// Upstream tracking: `rust-openssl` has no safe `EVP_PKEY_decapsulate` (Issue #1251,
+/// upstream PRs #2649, #2646, #2636, #2611). The context is owned by the safe `PkeyCtx`.
+#[expect(
+    unsafe_code,
+    reason = "EVP_PKEY_decapsulate has no safe rust-openssl binding (#1251)"
+)]
+pub(crate) fn kem_decapsulate<T: HasPrivate>(
+    pkey: &PKeyRef<T>,
     ciphertext: &[u8],
+    label: &str,
 ) -> Result<Vec<u8>, CryptoError> {
+    // Guard: an empty slice has a dangling .as_ptr(); passing it to C is UB.
     if ciphertext.is_empty() {
-        return Err(CryptoError::Default(
-            "ML-KEM decapsulate: empty ciphertext".to_owned(),
-        ));
+        return Err(CryptoError::Default(format!(
+            "{label} decapsulate: empty ciphertext"
+        )));
     }
-    let pkey = PKey::private_key_from_der(private_key_der)?;
-    // SAFETY: `pkey` owns a valid EVP_PKEY that outlives the call.
-    unsafe { ml_kem_decapsulate_raw(pkey.as_ptr(), ciphertext) }
-}
-
-/// ML-KEM decapsulation using a raw `EVP_PKEY` pointer.
-#[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
-unsafe fn ml_kem_decapsulate_raw(
-    pkey: *mut openssl_sys::EVP_PKEY,
-    ciphertext: &[u8],
-) -> Result<Vec<u8>, CryptoError> {
+    let pctx = PkeyCtx::new(pkey).map_err(|e| {
+        CryptoError::Default(format!("{label} decapsulate: EVP_PKEY_CTX_new failed: {e}"))
+    })?;
+    let ctx = pctx.as_ptr();
+    // SAFETY: `ctx` is a valid EVP_PKEY_CTX owned by the `PkeyCtx` (`pctx`) above, which outlives
+    // every call below; `ciphertext` is non-empty (checked above) and the output buffer is
+    // sized by the preceding size query.
     unsafe {
-        let ctx = openssl_sys::EVP_PKEY_CTX_new(pkey, ptr::null_mut());
-        if ctx.is_null() {
-            return Err(CryptoError::Default(
-                "ML-KEM decapsulate: EVP_PKEY_CTX_new failed".to_owned(),
-            ));
-        }
-        let _ctx_guard = CtxGuard(ctx);
-
         if openssl_sys::EVP_PKEY_decapsulate_init(ctx, ptr::null()) != 1 {
-            return Err(CryptoError::Default(
-                "ML-KEM decapsulate: EVP_PKEY_decapsulate_init failed".to_owned(),
-            ));
+            return Err(CryptoError::Default(format!(
+                "{label} decapsulate: EVP_PKEY_decapsulate_init failed"
+            )));
         }
 
         // Determine output size for the shared secret
@@ -171,9 +182,9 @@ unsafe fn ml_kem_decapsulate_raw(
             ciphertext.len(),
         ) != 1
         {
-            return Err(CryptoError::Default(
-                "ML-KEM decapsulate: size query failed".to_owned(),
-            ));
+            return Err(CryptoError::Default(format!(
+                "{label} decapsulate: size query failed"
+            )));
         }
 
         let expected_secret = secret_len;
@@ -187,27 +198,15 @@ unsafe fn ml_kem_decapsulate_raw(
             ciphertext.len(),
         ) != 1
         {
-            return Err(CryptoError::Default("ML-KEM decapsulate failed".to_owned()));
+            return Err(CryptoError::Default(format!("{label} decapsulate failed")));
         }
 
         if secret_len != expected_secret {
             return Err(CryptoError::Default(format!(
-                "ML-KEM decapsulate: shared secret size mismatch (expected {expected_secret}, got {secret_len})"
+                "{label} decapsulate: shared secret size mismatch (expected {expected_secret}, got {secret_len})"
             )));
         }
         Ok(shared_secret)
-    }
-}
-
-/// RAII guard to free an `EVP_PKEY_CTX`.
-pub(crate) struct CtxGuard(pub(crate) *mut openssl_sys::EVP_PKEY_CTX);
-
-impl Drop for CtxGuard {
-    #[expect(unsafe_code, reason = "FFI call into OpenSSL C API")]
-    fn drop(&mut self) {
-        unsafe {
-            openssl_sys::EVP_PKEY_CTX_free(self.0);
-        }
     }
 }
 
