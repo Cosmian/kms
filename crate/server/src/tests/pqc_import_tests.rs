@@ -53,18 +53,17 @@ async fn test_import_hybrid_kem_public_key_cross_instance() -> KResult<()> {
     let kms = test_kms().await?;
     let owner = UserId::from("pqcimporthybrid");
 
-    let mut request = create_pqc_key_pair_request(
-        VENDOR_ID_COSMIAN,
-        EMPTY_TAGS,
-        CryptographicAlgorithm::X25519MLKEM768,
-        false,
-    )?;
-    // FIPS builds do not let `Unrestricted` encrypt or decrypt.
-    if let Some(attributes) = request.common_attributes.as_mut() {
-        attributes.cryptographic_usage_mask =
-            Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt);
-    }
-    let cr = kms.create_key_pair(request, &owner).await?;
+    let cr = kms
+        .create_key_pair(
+            create_pqc_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                EMPTY_TAGS,
+                CryptographicAlgorithm::X25519MLKEM768,
+                false,
+            )?,
+            &owner,
+        )
+        .await?;
     let priv_uid = cr.private_key_unique_identifier.to_string();
     let pub_uid = cr.public_key_unique_identifier.to_string();
 

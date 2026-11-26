@@ -250,8 +250,37 @@ pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     };
     common_attributes.set_tags(vendor_id, tags)?;
 
+    // Unrestricted authorizes no operation in a FIPS build: standard PQC keys get explicit masks.
+    let masks = match algorithm {
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768 => Some((
+            CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey,
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey,
+        )),
+        CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87
+        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => {
+            Some((CryptographicUsageMask::Sign, CryptographicUsageMask::Verify))
+        }
+        _ => None,
+    };
     let private_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
+        cryptographic_usage_mask: masks.map(|(private, _)| private),
         key_format_type: Some(KeyFormatType::PKCS8),
         object_type: Some(ObjectType::PrivateKey),
         sensitive: sensitive.then_some(true),
@@ -261,6 +290,7 @@ pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 
     let public_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
+        cryptographic_usage_mask: masks.map(|(_, public)| public),
         key_format_type: Some(KeyFormatType::PKCS8),
         object_type: Some(ObjectType::PublicKey),
         activation_date: Some(time_normalize()?),
