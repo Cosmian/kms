@@ -11,7 +11,7 @@ Packaging and releases are described in [README_nightly.md](README_nightly.md).
 |`pull_request`|everything except the upstream-only jobs on fork PRs|yes, per PR branch|
 |tag push (`**`)|everything, plus real `cargo publish` and the production documentation deploy|no|
 |`schedule` (daily 03:00 UTC, default branch)|everything the nightly set contains (see below)|no|
-|`workflow_dispatch`|same as `schedule`, plus `xks-remote` (waits for its manual approval)|no|
+|`workflow_dispatch`|same as `schedule`|no|
 
 Only PRs share a concurrency group (`ci-CI-<head_ref>`). Every other event gets a unique group.
 
@@ -54,7 +54,7 @@ flowchart TB
     Suites --> Publish
 ```
 
-`cargo-publish` (tags only) needs the whole `test-suites` matrix, not a hand-picked list of jobs: any failed or cancelled leg blocks the crates.io publish, and so does the human approval of the `xks-remote-approval` environment that the `xks-remote` leg waits on.
+`cargo-publish` (tags only) needs the whole `test-suites` matrix, not a hand-picked list of jobs: any failed or cancelled leg blocks the crates.io publish.
 
 Every leg of `test-suites` waits for `nix-dev-shell-cache`, so a cache miss delays all legs, including the macOS, Windows, clippy and documentation ones, until the Nix closure is built.
 
@@ -81,7 +81,7 @@ A leaf that fails only when grouped (port, Docker or environment leak) or only i
 |HSM benches (`bench:pkcs11`, `bench:hsm`)|skipped|run|
 |Windows `cargo test`|quick: `test_kms_server` and `ckms` lib tests excluded (covered on Linux); no Windows legs on fork PRs|full|
 |`cargo-publish-dry-run`|`--no-verify` (no compile); none on fork PRs|full `--all-features` compile, not on tags (the real publish runs there)|
-|`xks-remote`|runs (upstream PRs, manual approval environment)|dispatch and tags only, not `schedule`|
+|`xks-remote`|no legs|run (upstream repository only)|
 |Linux "No Nix" legs|run|run|
 
 The DB scoping also applies locally: `mise run test:db:psql`, `test:db:mysql`, `test:db:percona`, `test:db:mariadb` and `test:db:redis` no longer run DB-independent server, crypto and KMIP unit tests. Use `test:db:sqlite` for the full workspace suite.
