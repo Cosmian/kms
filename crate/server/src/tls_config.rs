@@ -399,14 +399,19 @@ pub(crate) mod tests {
     }
 
     /// The check is fail-closed on an expired CRL: a client the CRL does not revoke is still
-    /// rejected once the CRL's `nextUpdate` has passed.
+    /// rejected once the CRL's `nextUpdate` has passed. The control directory holds the same
+    /// CRL with a one-day validity and accepts that client, so only the expiry differs.
     #[test]
     fn clients_are_rejected_when_the_issuer_crl_has_expired() {
-        let dir = tempfile::tempdir().unwrap();
+        let expired = tempfile::tempdir().unwrap();
+        let valid = tempfile::tempdir().unwrap();
         // `nextUpdate` = now, so the CRL is already expired after the sleep below
-        write_crl(dir.path(), 0, &[USER], 0).unwrap();
+        write_crl(expired.path(), 0, &[USER], 0).unwrap();
+        write_crl(valid.path(), 0, &[USER], 1).unwrap();
         thread::sleep(Duration::from_millis(1100));
-        let addr = spawn_server(dir.path(), 1).unwrap();
+        let addr = spawn_server(valid.path(), 1).unwrap();
+        assert!(is_accepted(addr, OWNER).unwrap());
+        let addr = spawn_server(expired.path(), 1).unwrap();
         assert!(!is_accepted(addr, OWNER).unwrap());
     }
 }
