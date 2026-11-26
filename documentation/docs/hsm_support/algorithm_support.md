@@ -38,8 +38,8 @@ Legend:
 | EC secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | 📄 | 📄 | — |
 | EC secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | — | 📄 | — |
 | EC Brainpool / FRP256v1 | ❌ | ❌ | 📄 | 📄 | ❌ | ❌ | — | — | ❌ | — |
-| Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | 📄 | 📄 | ✅ |
-| Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | — | 📄 | ✅ |
+| Ed25519 | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | 📄 | 📄 | ✅ |
+| Ed448 | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | — | 📄 | ✅ |
 
 ## Encryption mechanisms
 
@@ -60,8 +60,8 @@ Legend:
 | ECDSA (raw `CKM_ECDSA` and/or combined `CKM_ECDSA_SHA*`) | ✅ | ✅ | 📄 | ⚠️ | 📄 | ✅ | — | 📄 (P-256/P-384 only) | 📄 | ✅ |
 | ECDSA secp256k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | ❌ | 📄 | — |
 | ECDSA secp192k1 (non-fips) | ✅ | 📄 | 📄 | 📄 | 📄 | 📄 | — | ❌ | 📄 | — |
-| EdDSA Ed25519 (non-fips) | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | ❌ | 📄 | ✅ |
-| EdDSA Ed448 (non-fips) | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | ❌ | 📄 | ✅ |
+| EdDSA Ed25519 | ✅ | ✅ | ❌ | 📄 | 📄 | ✅ | — | ❌ | 📄 | ✅ |
+| EdDSA Ed448 | ✅ | ❌ | ❌ | 📄 | 📄 | ✅ | — | ❌ | 📄 | ✅ |
 
 !!! warning Crypt2Pay EC/RSA key generation: known, currently blocked issue
     Crypt2Pay's own PKCS#11 API User Guide documents `CKM_RSA_PKCS_KEY_PAIR_GEN` and

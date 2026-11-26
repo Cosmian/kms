@@ -20,26 +20,16 @@ use serde_json::{Value, json};
 
 use crate::{result::KResult, tests::test_utils};
 
-/// Returns `true` if this vector requires non-FIPS algorithms (e.g. OKP/EdDSA)
-/// and should be skipped when the `non-fips` feature is not enabled.
+/// Returns `true` if this vector requires a non-FIPS algorithm (X25519 OKP keys) and should be
+/// skipped when the `non-fips` feature is not enabled. `EdDSA` (Ed25519/Ed448) runs in FIPS builds.
 #[cfg(not(feature = "non-fips"))]
 fn is_non_fips_vector(v: &Value) -> bool {
-    let kty = v
+    let crv = v
         .get("key")
-        .and_then(|k| k.get("kty"))
+        .and_then(|k| k.get("crv"))
         .and_then(Value::as_str)
         .unwrap_or("");
-    let alg = v
-        .get("algorithm")
-        .and_then(Value::as_str)
-        .or_else(|| {
-            v.get("key")
-                .and_then(|k| k.get("alg"))
-                .and_then(Value::as_str)
-        })
-        .unwrap_or("");
-    // OKP (Ed25519, X25519) is not FIPS-approved
-    kty == "OKP" || alg == "EdDSA"
+    crv == "X25519"
 }
 
 /// Root directory for JOSE test vectors (relative to workspace root).

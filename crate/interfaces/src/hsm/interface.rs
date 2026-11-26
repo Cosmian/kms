@@ -33,10 +33,8 @@ pub enum HsmKeypairAlgorithm {
     #[cfg(feature = "non-fips")]
     Secp192k1,
     /// Ed25519 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
-    #[cfg(feature = "non-fips")]
     Ed25519,
     /// Ed448 (`CKM_EC_EDWARDS_KEY_PAIR_GEN`) for `EdDSA` signing.
-    #[cfg(feature = "non-fips")]
     Ed448,
     /// X25519 (`CKM_EC_MONTGOMERY_KEY_PAIR_GEN`) for ECDH key agreement.
     #[cfg(feature = "non-fips")]
@@ -57,10 +55,8 @@ pub enum EcCurve {
     #[cfg(feature = "non-fips")]
     Secp192k1,
     /// Edwards curve used for `EdDSA` signing.
-    #[cfg(feature = "non-fips")]
     Ed25519,
     /// Edwards curve used for `EdDSA` signing.
-    #[cfg(feature = "non-fips")]
     Ed448,
     /// Montgomery curve used for X25519 ECDH key agreement.
     #[cfg(feature = "non-fips")]
@@ -88,12 +84,12 @@ impl EcCurve {
             Self::P256 => 256,
             Self::P384 => 384,
             Self::P521 => 521,
+            Self::Ed25519 => 256,
+            Self::Ed448 => 456,
             #[cfg(feature = "non-fips")]
-            Self::Secp256k1 | Self::Ed25519 | Self::X25519 => 256,
+            Self::Secp256k1 | Self::X25519 => 256,
             #[cfg(feature = "non-fips")]
             Self::Secp192k1 => 192,
-            #[cfg(feature = "non-fips")]
-            Self::Ed448 => 456,
         }
     }
 }
@@ -123,9 +119,9 @@ impl TryFrom<&Attributes> for HsmObjectFilter {
                 CryptographicAlgorithm::RSA => Self::RsaKey,
                 CryptographicAlgorithm::EC
                 | CryptographicAlgorithm::ECDSA
-                | CryptographicAlgorithm::ECDH => Self::EcKey,
-                #[cfg(feature = "non-fips")]
-                CryptographicAlgorithm::Ed25519 | CryptographicAlgorithm::Ed448 => Self::EcKey,
+                | CryptographicAlgorithm::ECDH
+                | CryptographicAlgorithm::Ed25519
+                | CryptographicAlgorithm::Ed448 => Self::EcKey,
                 _ => {
                     return Err(InterfaceError::Default(format!(
                         "Unsupported cryptographic algorithm for HSMs: {cryptographic_algorithm}"
@@ -952,7 +948,6 @@ mod characterization_tests {
         );
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn characterization_hsm_object_filter_try_from_edwards_algorithms() {
         assert_filter(

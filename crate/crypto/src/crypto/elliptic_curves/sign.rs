@@ -274,7 +274,6 @@ mod tests {
         assert_eq!(sig1, sig2, "Ed25519 signatures must be deterministic");
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn ed448_deterministic() {
         // Generate Ed448 key

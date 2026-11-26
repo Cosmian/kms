@@ -1,9 +1,5 @@
 use std::{collections::HashSet, sync::Arc};
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::{
-    pqc_private_key_pkcs8_to_raw, pqc_public_key_spki_to_raw,
-};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError, SensitiveBytes,
@@ -22,9 +18,12 @@ use cosmian_kms_server_database::reexport::{
             },
         },
     },
-    cosmian_kms_crypto::openssl::{
-        kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
-        openssl_private_key_to_kmip, openssl_public_key_to_kmip,
+    cosmian_kms_crypto::{
+        crypto::pqc::{pqc_private_key_pkcs8_to_raw, pqc_public_key_spki_to_raw},
+        openssl::{
+            kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
+            openssl_private_key_to_kmip, openssl_public_key_to_kmip,
+        },
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
@@ -613,7 +612,6 @@ async fn post_process_active_private_key(
     // PQC keys are stored as PKCS#8 (ML-KEM, ML-DSA, SLH-DSA) or Raw
     // (hybrid KEMs) and do not support an OpenSSL round-trip.
     // PKCS#8 → Raw conversion is supported; return as-is otherwise.
-    #[cfg(feature = "non-fips")]
     if is_pqc_algorithm(key_block.cryptographic_algorithm) {
         let stored_fmt = key_block.key_format_type;
         // Convert PKCS#8 → Raw when requested; any other format must be the stored one
@@ -883,7 +881,6 @@ async fn process_public_key(
         }
 
         // PQC public keys: skip the OpenSSL round-trip, same rationale as private keys.
-        #[cfg(feature = "non-fips")]
         if is_pqc_algorithm(key_block.cryptographic_algorithm) {
             let stored_fmt = key_block.key_format_type;
             // Convert SPKI (stored as PKCS8 format type) → Raw when requested; any other format
@@ -1142,7 +1139,6 @@ async fn process_covercrypt_key(
 
 /// Returns `true` for algorithms whose keys have no OpenSSL representation and must skip the
 /// OpenSSL round-trip on export: PQC (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA) and `ConfigurableKEM`.
-#[cfg(feature = "non-fips")]
 const fn is_pqc_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
     matches!(
         algo,

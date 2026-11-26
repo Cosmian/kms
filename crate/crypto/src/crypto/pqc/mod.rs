@@ -8,6 +8,7 @@ use std::{
     ptr,
 };
 
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
@@ -29,6 +30,30 @@ use crate::{
     crypto::{KeyPair, KeyPairIdentity, KmsRng},
     error::CryptoError,
 };
+
+/// A KEM result: `(shared secret, encapsulation)`.
+pub type KemEncapsulation = (Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>);
+
+/// Pack a KEM result as the `Data` of a KMIP `Encrypt` response: the serialized
+/// `(shared secret, encapsulation)` tuple. The encapsulation is a KEM ciphertext, not an
+/// IV/counter/nonce, so `IVCounterNonce` stays empty for every KEM.
+pub fn pack_kem_encapsulation(
+    shared_secret: Zeroizing<Vec<u8>>,
+    encapsulation: Zeroizing<Vec<u8>>,
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    (shared_secret, encapsulation).serialize().map_err(|e| {
+        CryptoError::ConversionError(format!("failed serializing the KEM encapsulation: {e}"))
+    })
+}
+
+/// Inverse of [`pack_kem_encapsulation`]: returns `(shared secret, encapsulation)`.
+pub fn unpack_kem_encapsulation(data: &[u8]) -> Result<KemEncapsulation, CryptoError> {
+    KemEncapsulation::deserialize(data).map_err(|e| {
+        CryptoError::ConversionError(format!(
+            "the KEM response data is not a (shared secret, encapsulation) tuple: {e}"
+        ))
+    })
+}
 
 /// Result of [`pqc_keygen`]: (private PKCS#8 DER, public SPKI DER, key bits).
 type PqcKeygenResult = (Zeroizing<Vec<u8>>, Vec<u8>, u32);
@@ -327,7 +352,13 @@ fn hybrid_kem_algorithm_name(
 ) -> Result<&'static str, CryptoError> {
     match algorithm {
         CryptographicAlgorithm::X25519MLKEM768 => Ok("X25519MLKEM768"),
+        #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::X448MLKEM1024 => Ok("X448MLKEM1024"),
+        #[cfg(not(feature = "non-fips"))]
+        CryptographicAlgorithm::X448MLKEM1024 => Err(CryptoError::NotSupported(
+            "X448MLKEM1024 is not available in a FIPS build: the OpenSSL FIPS provider does not serve it"
+                .to_owned(),
+        )),
         other => Err(CryptoError::Default(format!(
             "Not a hybrid KEM algorithm: {other:?}"
         ))),
@@ -504,6 +535,8 @@ mod tests {
         assert!(result.is_err(), "garbage bytes must return Err, not panic");
     }
 
+    // Loads under `X448MLKEM1024`, which is non-FIPS.
+    #[cfg(feature = "non-fips")]
     #[test]
     fn load_raw_pub_key_wrong_algorithm_returns_err() {
         // Generate a valid X25519MLKEM768 raw public key, then load it under a
@@ -530,6 +563,8 @@ mod tests {
         assert!(result.is_err(), "garbage bytes must return Err, not panic");
     }
 
+    // Loads under `X448MLKEM1024`, which is non-FIPS.
+    #[cfg(feature = "non-fips")]
     #[test]
     fn load_raw_priv_key_wrong_algorithm_returns_err() {
         let (priv_raw, _, _) = pqc_keygen_raw("X25519MLKEM768", None, None).expect("keygen");
@@ -749,6 +784,8 @@ mod tests {
 
     // ── Propquery tests (SP 800-227 / RS4 readiness) ─────────────────────────
 
+    // `provider=default` is not loaded in a FIPS process.
+    #[cfg(feature = "non-fips")]
     #[test]
     fn pqc_keygen_with_propquery_default_succeeds() {
         // Passing standard default provider properties explicitly should succeed
@@ -774,6 +811,8 @@ mod tests {
         );
     }
 
+    // `provider=default` is not loaded in a FIPS process.
+    #[cfg(feature = "non-fips")]
     #[test]
     fn pqc_keygen_raw_with_propquery_succeeds() {
         let (priv_raw, pub_raw, bits) =
@@ -875,5 +914,46 @@ mod tests {
     #[test]
     fn test_slh_dsa_verify_official_vectors() {
         check_verify_official_vectors(crate::kat_vectors::slh_dsa_verify_groups().unwrap());
+    }
+
+    #[test]
+    fn kem_encapsulation_pack_round_trip() {
+        // a ciphertext longer than 127 bytes has a multi-byte length prefix
+        let secret = Zeroizing::new(vec![7_u8; 32]);
+        let encapsulation = Zeroizing::new(vec![9_u8; 1088]);
+        let packed = pack_kem_encapsulation(secret.clone(), encapsulation.clone()).unwrap();
+        let (s, e) = unpack_kem_encapsulation(&packed).unwrap();
+        assert_eq!((s, e), (secret, encapsulation));
+        // golden layout, shared with the Web UI parser and the vector runner:
+        // LEB128 length + secret, LEB128 length (1088 = 0xC0 0x08) + encapsulation
+        assert_eq!(packed.len(), 1 + 32 + 2 + 1088);
+        assert_eq!(packed.get(..1).unwrap(), &[32]);
+        assert_eq!(packed.get(33..35).unwrap(), &[0xC0, 0x08]);
+        // truncated and trailing data are refused, not silently shortened or ignored
+        let (_, truncated) = packed.split_last().unwrap();
+        unpack_kem_encapsulation(truncated).unwrap_err();
+        unpack_kem_encapsulation(&[]).unwrap_err();
+        let mut trailing = packed.to_vec();
+        trailing.push(0);
+        unpack_kem_encapsulation(&trailing).unwrap_err();
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn hybrid_kem_algorithm_name_rejects_x448_in_fips() {
+        assert!(matches!(
+            hybrid_kem_algorithm_name(CryptographicAlgorithm::X448MLKEM1024),
+            Err(CryptoError::NotSupported(_))
+        ));
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn seeded_pqc_keygen_runs_on_the_fips_provider() {
+        for name in ["ML-KEM-768", "ML-DSA-65"] {
+            let (key_type, seed_len) = seeded_key_type(name).unwrap();
+            let key = pqc_keygen_seeded(key_type, &vec![0x11_u8; seed_len], Some(c"fips=yes"));
+            assert!(key.is_ok(), "{name}: {key:?}");
+        }
     }
 }

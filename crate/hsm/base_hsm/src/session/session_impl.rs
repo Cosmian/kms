@@ -66,7 +66,7 @@ const MAX_SIGNATURE_BUFFER_LEN: usize = 512;
 
 /// EC key types listed by `list_ec_objects`.
 #[cfg(not(feature = "non-fips"))]
-const EC_KEY_TYPES: &[CK_KEY_TYPE] = &[CKK_EC];
+const EC_KEY_TYPES: &[CK_KEY_TYPE] = &[CKK_EC, CKK_EC_EDWARDS];
 /// EC key types listed by `list_ec_objects`.
 #[cfg(feature = "non-fips")]
 const EC_KEY_TYPES: &[CK_KEY_TYPE] = &[CKK_EC, CKK_EC_EDWARDS, CKK_EC_MONTGOMERY];
@@ -188,12 +188,9 @@ pub enum HsmSigningAlgorithm {
         hashing_algorithm: HashingAlgorithm,
         prehashed: bool,
     },
-    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, un-hashed input). Non-FIPS: see
-    /// `crate::crypto::elliptic_curves::sign` for the equivalent software gating (issue #1157).
-    #[cfg(feature = "non-fips")]
+    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, un-hashed input; issue #1157).
     Ed25519,
     /// `CKM_EDDSA` over an Ed448 private key.
-    #[cfg(feature = "non-fips")]
     Ed448,
     /// `CKM_EDDSA` — pure Ed25519 (OASIS Cryptoki v3.0 §2.3.9). Not (yet) reachable
     /// through `SigningAlgorithm::from`/KMIP (Phase 2); only constructed directly by
@@ -231,9 +228,7 @@ impl From<SigningAlgorithm> for HsmSigningAlgorithm {
                 hashing_algorithm,
                 prehashed,
             },
-            #[cfg(feature = "non-fips")]
             SigningAlgorithm::Ed25519 => Self::Ed25519,
-            #[cfg(feature = "non-fips")]
             SigningAlgorithm::Ed448 => Self::Ed448,
         }
     }
@@ -1919,7 +1914,6 @@ impl Session {
             // EdDSA (Ed25519/Ed448) is a pure, un-hashed signature scheme (RFC 8032): the raw
             // message is passed directly to CKM_EDDSA, with no digest and no DER re-encoding
             // (unlike ECDSA above), matching the software `eddsa_sign` convention.
-            #[cfg(feature = "non-fips")]
             HsmSigningAlgorithm::Ed25519 | HsmSigningAlgorithm::Ed448 => {
                 self.sign_with_simple_mechanism(key_handle, CKM_EDDSA, data)
             }
@@ -2360,7 +2354,6 @@ impl Session {
             }
             // EdDSA (Ed25519/Ed448) is a pure, un-hashed signature scheme (RFC 8032): the raw
             // message and signature are passed directly to CKM_EDDSA, matching `sign()` above.
-            #[cfg(feature = "non-fips")]
             HsmSigningAlgorithm::Ed25519 | HsmSigningAlgorithm::Ed448 => {
                 self.verify_with_simple_mechanism(key_handle, CKM_EDDSA, data, signature)
             }

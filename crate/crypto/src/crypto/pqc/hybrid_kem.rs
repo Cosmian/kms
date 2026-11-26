@@ -99,6 +99,8 @@ mod tests {
         encaps_decaps_roundtrip(CryptographicAlgorithm::X25519MLKEM768);
     }
 
+    // X448MLKEM1024 is not served by the FIPS provider.
+    #[cfg(feature = "non-fips")]
     #[test]
     fn x448_ml_kem_1024_roundtrip() {
         encaps_decaps_roundtrip(CryptographicAlgorithm::X448MLKEM1024);

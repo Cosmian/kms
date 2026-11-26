@@ -977,20 +977,20 @@ fn validate_algorithm(
         | CryptographicAlgorithm::Ed448
         | CryptographicAlgorithm::CoverCrypt
         | CryptographicAlgorithm::CoverCryptBulk => {}
-        #[cfg(feature = "non-fips")]
-        CryptographicAlgorithm::Ed25519 => {}
-        #[cfg(feature = "non-fips")]
-        CryptographicAlgorithm::ConfigurableKEM
+        CryptographicAlgorithm::Ed25519
         | CryptographicAlgorithm::MLKEM_512
         | CryptographicAlgorithm::MLKEM_768
         | CryptographicAlgorithm::MLKEM_1024
         | CryptographicAlgorithm::X25519MLKEM768
-        | CryptographicAlgorithm::X448MLKEM1024
         | CryptographicAlgorithm::MLDSA_44
         | CryptographicAlgorithm::MLDSA_65
         | CryptographicAlgorithm::MLDSA_87 => {
-            // Configurable KEM, ML-KEM, hybrid KEM and ML-DSA variants are in-scope in non-FIPS mode.
+            // ML-KEM, hybrid KEM, ML-DSA and Ed25519 are in-scope.
             // If an allowlist is configured, they must still be explicitly allowed.
+        }
+        #[cfg(feature = "non-fips")]
+        CryptographicAlgorithm::ConfigurableKEM | CryptographicAlgorithm::X448MLKEM1024 => {
+            // Configurable KEM and X448MLKEM1024 are in-scope in non-FIPS mode only.
         }
         _ => {
             return deny(

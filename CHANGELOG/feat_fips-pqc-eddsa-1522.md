@@ -1,0 +1,28 @@
+## Features
+
+### Crypto
+- Expose ML-KEM-512/768/1024, ML-DSA-44/65/87, the 12 SLH-DSA parameter sets, `X25519MLKEM768`, Ed25519 and Ed448 in FIPS builds: the OpenSSL FIPS provider 3.5.9 (CMVP #5586) serves them. `X448MLKEM1024` (rejected with an explicit error), `ConfigurableKEM`, standalone X25519/X448, secp256k1 and P-192 stay non-FIPS ([#1522](https://github.com/Cosmian/kms/issues/1522))
+
+### Server
+- `CreateKeyPair`, `Sign`, `SignatureVerify`, `Encrypt`/`Decrypt` (KEM), `Export`, `Certify` (RFC 9881, 9909, 9935), JOSE (`EdDSA`, `ML-DSA-44`, `OKP` Ed25519/Ed448), JWKS, SSH certificates, SPIRE transit keys, SCEP and the HSM EdDSA paths now accept these algorithms in FIPS builds. A FIPS build no longer refuses `CreateKeyPair` for Ed25519 and Ed448 ([#1522](https://github.com/Cosmian/kms/issues/1522))
+- The `DEFAULT` KMIP policy of a FIPS build allows `Ed25519`, `MLKEM_512/768/1024`, `X25519MLKEM768` and `MLDSA_44/65/87`
+- Google CSE refuses `RSA/ECB/PKCS1Padding` decryption in FIPS builds from KMS code, since the 3.5.9 FIPS provider accepts RSA PKCS#1 v1.5 decryption
+
+### CLI
+- `ckms pqc`, PQC and EdDSA `certify` algorithms, Ed25519/Ed448 signing, the benchmarks, the PKCS#11 capability checks and the WASM algorithm lists are available in FIPS builds; `x448-ml-kem-1024` and the `ConfigurableKEM` algorithms are not offered there. The `ckms` integration tests now run in FIPS builds ([#1522](https://github.com/Cosmian/kms/issues/1522))
+
+### UI
+- The PQC pages and menu are shown in FIPS mode ([#1522](https://github.com/Cosmian/kms/issues/1522))
+
+## Refactor
+
+### Crypto
+- Remove the `unsafe` FFI around seeded ML-KEM/ML-DSA key generation (safe `PKey::private_key_from_seed`), the hand-written `extern "C"` block and the duplicated KEM encapsulate/decapsulate code; the remaining `unsafe` (`EVP_PKEY_Q_keygen`, raw hybrid key loading, `EVP_PKEY_encapsulate`/`decapsulate`) waits for rust-openssl bindings ([#894](https://github.com/Cosmian/kms/issues/894), [#1251](https://github.com/Cosmian/kms/issues/1251))
+
+## Documentation
+
+- Document ML-KEM, ML-DSA, SLH-DSA, `X25519MLKEM768`, Ed25519 and Ed448 as FIPS-mode algorithms (algorithms, KMIP policy, PKI, RNG, HSM support and the 5.x to 6.0 upgrade notes)
+
+---
+
+Fixes #1522

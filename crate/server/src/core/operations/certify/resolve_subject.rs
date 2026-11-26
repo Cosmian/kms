@@ -138,8 +138,27 @@ fn cryptographic_usage_mask_private_key(
         CryptographicAlgorithm::ECDH => FIPS_PRIVATE_ECC_MASK_ECDH,
         CryptographicAlgorithm::ECDSA
         | CryptographicAlgorithm::Ed25519
-        | CryptographicAlgorithm::Ed448 => FIPS_PRIVATE_ECC_MASK_SIGN,
+        | CryptographicAlgorithm::Ed448
+        | CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87
+        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => FIPS_PRIVATE_ECC_MASK_SIGN,
         CryptographicAlgorithm::EC => FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Unrestricted,
         c => kms_bail!(KmsError::InvalidRequest(format!(
             "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
         ))),
@@ -155,8 +174,27 @@ fn cryptographic_usage_mask_public_key(
         CryptographicAlgorithm::ECDH => FIPS_PUBLIC_ECC_MASK_ECDH,
         CryptographicAlgorithm::ECDSA
         | CryptographicAlgorithm::Ed25519
-        | CryptographicAlgorithm::Ed448 => FIPS_PUBLIC_ECC_MASK_SIGN,
+        | CryptographicAlgorithm::Ed448
+        | CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87
+        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => FIPS_PUBLIC_ECC_MASK_SIGN,
         CryptographicAlgorithm::EC => FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Unrestricted,
         c => kms_bail!(KmsError::InvalidRequest(format!(
             "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
         ))),

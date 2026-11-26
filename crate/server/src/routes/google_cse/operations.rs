@@ -18,7 +18,10 @@ use cosmian_kms_server_database::reexport::{
             kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
         },
     },
-    cosmian_kms_crypto::{CryptoResultHelper, crypto::rsa::sign_rsa_digest_with_algorithm},
+    cosmian_kms_crypto::{
+        CryptoResultHelper,
+        crypto::{is_fips_build, rsa::sign_rsa_digest_with_algorithm},
+    },
 };
 use cosmian_logger::{debug, trace};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -606,6 +609,13 @@ pub async fn private_key_decrypt(
     let mut ctx = PkeyCtx::new(&private_key)?;
     ctx.decrypt_init()?;
     if request.algorithm == "RSA/ECB/PKCS1Padding" {
+        kms_ensure!(
+            !is_fips_build(),
+            KmsError::InvalidRequest(
+                "RSA/ECB/PKCS1Padding (RSA PKCS#1 v1.5 decryption) is not allowed in a FIPS build"
+                    .to_owned()
+            )
+        );
         ctx.set_rsa_padding(Padding::PKCS1)?;
     } else {
         if let Some(label) = request.rsa_oaep_label {
@@ -900,6 +910,13 @@ pub async fn privileged_private_key_decrypt(
     let mut ctx = PkeyCtx::new(&private_key)?;
     ctx.decrypt_init()?;
     if request.algorithm == "RSA/ECB/PKCS1Padding" {
+        kms_ensure!(
+            !is_fips_build(),
+            KmsError::InvalidRequest(
+                "RSA/ECB/PKCS1Padding (RSA PKCS#1 v1.5 decryption) is not allowed in a FIPS build"
+                    .to_owned()
+            )
+        );
         ctx.set_rsa_padding(Padding::PKCS1)?;
     } else {
         if let Some(label) = request.rsa_oaep_label {

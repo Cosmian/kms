@@ -349,7 +349,6 @@ fn sign_verify_round_trips(slot: &Arc<SlotManager>) -> HResult<()> {
         &[0x11_u8; 32],
     )?;
 
-    #[cfg(feature = "non-fips")]
     {
         let sk_id = new_id();
         let pk_id = sk_id.clone() + "_pk";
@@ -419,7 +418,6 @@ fn softhsm2_v3_adapter_message_signature() -> HResult<()> {
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::rsa_pss_sign_all_algorithms(&slot)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
-    #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::concurrent_sign_does_not_degrade(&slot)?;
     sign_verify_round_trips(&slot)?;

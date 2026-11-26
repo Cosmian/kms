@@ -2,9 +2,19 @@
 //! These keys are `ByteString`-only: they have no OpenSSL representation.
 use std::{path::Path, sync::Arc};
 
-use cosmian_kms_client_utils::{
-    configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
-    reexport::cosmian_kmip::kmip_2_1::kmip_objects::{Object, ObjectType},
+#[cfg(feature = "non-fips")]
+use cosmian_kms_client_utils::configurable_kem_utils::{
+    KemAlgorithm, build_create_configurable_kem_keypair_request,
+};
+use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::kmip_objects::{
+    Object, ObjectType,
+};
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::kmip_types::{
+        CryptographicDomainParameters, CryptographicParameters, RecommendedCurve,
+    },
+    cosmian_kms_crypto::crypto::kem::kem_keygen,
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -20,8 +30,7 @@ use cosmian_kms_server_database::reexport::{
                 Operation, ReKeyKeyPair, Revoke,
             },
             kmip_types::{
-                CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
-                EncodingOption, EncryptionKeyInformation, KeyFormatType, RecommendedCurve,
+                CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation, KeyFormatType,
                 UniqueIdentifier, WrappingMethod,
             },
             requests::{
@@ -32,9 +41,7 @@ use cosmian_kms_server_database::reexport::{
         time_normalize,
     },
     cosmian_kms_crypto::{
-        crypto::{
-            KeyPair, KeyPairIdentity, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair,
-        },
+        crypto::{KeyPair, KeyPairIdentity, pqc::hybrid_kem::create_hybrid_kem_key_pair},
         reexport::cosmian_crypto_core::bytes_ser_de::Serializable,
     },
 };
@@ -57,10 +64,14 @@ use crate::{
 
 #[derive(Clone, Copy)]
 enum Alg {
+    #[cfg(feature = "non-fips")]
     MlKem512P256,
+    #[cfg(feature = "non-fips")]
     MlKem768P256,
     X25519MlKem768,
+    #[cfg(feature = "non-fips")]
     MlKem768X25519,
+    #[cfg(feature = "non-fips")]
     X448MlKem1024,
     /// Pure (non hybrid) ML-KEM, stored as PKCS#8
     MlKem768,
@@ -77,6 +88,7 @@ impl Alg {
 
     fn base_request(self, tag: &str) -> KResult<CreateKeyPair> {
         Ok(match self {
+            #[cfg(feature = "non-fips")]
             Self::MlKem512P256 => build_create_configurable_kem_keypair_request(
                 VENDOR_ID_COSMIAN,
                 None,
@@ -86,6 +98,7 @@ impl Alg {
                 None,
             )
             .map_err(|e| KmsError::Default(e.to_string()))?,
+            #[cfg(feature = "non-fips")]
             Self::MlKem768P256 => build_create_configurable_kem_keypair_request(
                 VENDOR_ID_COSMIAN,
                 None,
@@ -95,6 +108,7 @@ impl Alg {
                 None,
             )
             .map_err(|e| KmsError::Default(e.to_string()))?,
+            #[cfg(feature = "non-fips")]
             Self::MlKem768X25519 => build_create_configurable_kem_keypair_request(
                 VENDOR_ID_COSMIAN,
                 None,
@@ -110,6 +124,7 @@ impl Alg {
                 CryptographicAlgorithm::X25519MLKEM768,
                 false,
             )?,
+            #[cfg(feature = "non-fips")]
             Self::X448MlKem1024 => create_pqc_key_pair_request(
                 VENDOR_ID_COSMIAN,
                 [tag],
@@ -128,6 +143,7 @@ impl Alg {
     /// Stored algorithm, private key format, public key format
     const fn stored(self) -> (CryptographicAlgorithm, KeyFormatType, KeyFormatType) {
         match self {
+            #[cfg(feature = "non-fips")]
             Self::MlKem512P256 | Self::MlKem768P256 | Self::MlKem768X25519 => (
                 CryptographicAlgorithm::ConfigurableKEM,
                 KeyFormatType::ConfigurableKEMSecretKey,
@@ -138,6 +154,7 @@ impl Alg {
                 KeyFormatType::Raw,
                 KeyFormatType::Raw,
             ),
+            #[cfg(feature = "non-fips")]
             Self::X448MlKem1024 => (
                 CryptographicAlgorithm::X448MLKEM1024,
                 KeyFormatType::Raw,
@@ -154,10 +171,14 @@ impl Alg {
 
 pub(super) async fn test_hybrid_kem_lifecycle() -> KResult<()> {
     for alg in [
+        #[cfg(feature = "non-fips")]
         Alg::MlKem512P256,
+        #[cfg(feature = "non-fips")]
         Alg::MlKem768P256,
+        #[cfg(feature = "non-fips")]
         Alg::MlKem768X25519,
         Alg::X25519MlKem768,
+        #[cfg(feature = "non-fips")]
         Alg::X448MlKem1024,
         Alg::MlKem768,
     ] {
@@ -515,7 +536,12 @@ async fn import_activated(
 /// imported (still wrapped) in a server whose KEK is in the HSM. The software key is itself
 /// wrapped by the HSM KEK on that server.
 pub(super) async fn test_ttlv_wrapped_kem_import() -> KResult<()> {
-    for alg in [Alg::MlKem768P256, Alg::X25519MlKem768, Alg::MlKem768] {
+    for alg in [
+        #[cfg(feature = "non-fips")]
+        Alg::MlKem768P256,
+        Alg::X25519MlKem768,
+        Alg::MlKem768,
+    ] {
         Box::pin(ttlv_wrapped_import(alg)).await?;
     }
     Ok(())
@@ -612,10 +638,15 @@ pub(super) async fn test_client_wrapped_kem_import() -> KResult<()> {
         .ok_or_else(|| KmsError::Default("Missing KEK".to_owned()))?;
     create_kek(&kek_uid, &owner, &kms).await?;
 
-    for configurable in [true, false] {
+    let key_pair_builders: Vec<fn(&str, &str) -> KResult<KeyPair>> = vec![
+        #[cfg(feature = "non-fips")]
+        client_configurable_key_pair,
+        client_hybrid_key_pair,
+    ];
+    for make_pair in key_pair_builders {
         let sk = format!("cw-{}", Uuid::new_v4());
         let pk = format!("{sk}_pk");
-        let pair = client_key_pair(configurable, &sk, &pk)?;
+        let pair = make_pair(&sk, &pk)?;
         for (uid, object, object_type) in [
             (&sk, pair.private_key(), ObjectType::PrivateKey),
             (&pk, pair.public_key(), ObjectType::PublicKey),
@@ -683,43 +714,45 @@ pub(super) async fn test_client_wrapped_kem_import() -> KResult<()> {
     Ok(())
 }
 
-fn client_key_pair(configurable: bool, sk: &str, pk: &str) -> KResult<KeyPair> {
-    let common = Attributes {
-        activation_date: Some(time_normalize()?),
-        ..Default::default()
-    };
-    if configurable {
-        kem_keygen(
-            VENDOR_ID_COSMIAN,
-            sk.to_owned(),
-            None,
-            pk.to_owned(),
-            None,
-            &Attributes {
-                cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                    qlength: Some(256),
-                    recommended_curve: Some(RecommendedCurve::P256),
-                }),
-                cryptographic_parameters: Some(CryptographicParameters {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
-                    ..Default::default()
-                }),
-                ..common
+fn client_hybrid_key_pair(sk: &str, pk: &str) -> KResult<KeyPair> {
+    create_hybrid_kem_key_pair(
+        CryptographicAlgorithm::X25519MLKEM768,
+        KeyPairIdentity {
+            vendor_id: VENDOR_ID_COSMIAN,
+            private_key_uid: sk,
+            public_key_uid: pk,
+            common_attributes: Attributes {
+                activation_date: Some(time_normalize()?),
+                ..Default::default()
             },
-        )
-    } else {
-        create_hybrid_kem_key_pair(
-            CryptographicAlgorithm::X25519MLKEM768,
-            KeyPairIdentity {
-                vendor_id: VENDOR_ID_COSMIAN,
-                private_key_uid: sk,
-                public_key_uid: pk,
-                common_attributes: common,
-                private_key_attributes: None,
-                public_key_attributes: None,
-            },
-            None,
-        )
-    }
+            private_key_attributes: None,
+            public_key_attributes: None,
+        },
+        None,
+    )
+    .map_err(|e| KmsError::Default(e.to_string()))
+}
+
+#[cfg(feature = "non-fips")]
+fn client_configurable_key_pair(sk: &str, pk: &str) -> KResult<KeyPair> {
+    kem_keygen(
+        VENDOR_ID_COSMIAN,
+        sk.to_owned(),
+        None,
+        pk.to_owned(),
+        None,
+        &Attributes {
+            cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                qlength: Some(256),
+                recommended_curve: Some(RecommendedCurve::P256),
+            }),
+            cryptographic_parameters: Some(CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
+                ..Default::default()
+            }),
+            activation_date: Some(time_normalize()?),
+            ..Default::default()
+        },
+    )
     .map_err(|e| KmsError::Default(e.to_string()))
 }

@@ -35,12 +35,11 @@ use super::{unwrap_key::unwrap, wrap_key::wrap};
 #[cfg(feature = "non-fips")]
 use crate::crypto::elliptic_curves::operation::create_x25519_key_pair;
 #[cfg(feature = "non-fips")]
-use crate::crypto::{
-    KeyPairIdentity, kem::kem_keygen, pqc::hybrid_kem::create_hybrid_kem_key_pair,
-};
+use crate::crypto::kem::kem_keygen;
 use crate::{
     crypto::{
-        KmsRng,
+        KeyPair, KeyPairIdentity, KmsRng,
+        pqc::hybrid_kem::create_hybrid_kem_key_pair,
         wrap::{aes_gcm_decrypt, key_data_to_wrap, unwrap_key_block, wrap_object_with_key},
     },
     crypto_bail, crypto_ensure,
@@ -756,9 +755,7 @@ fn test_encrypt_decrypt_ec_p384() -> CryptoResult<()> {
 
 /// ByteString-only asymmetric keys (`ConfigurableKEM`, native hybrid KEM) have no OpenSSL
 /// representation: they must wrap/unwrap as raw bytes (`NoEncoding`) and as TTLV.
-#[cfg(feature = "non-fips")]
-#[test]
-fn test_wrap_unwrap_byte_string_kem_keys() -> CryptoResult<()> {
+fn wrap_unwrap_byte_string_pair(pair: &mut KeyPair) -> CryptoResult<()> {
     let mut sym_wrapping_key_bytes = vec![0; 32];
     KmsRng::new().fill_bytes(&mut sym_wrapping_key_bytes)?;
     let sym_key = create_symmetric_key_kmip_object(
@@ -770,46 +767,9 @@ fn test_wrap_unwrap_byte_string_kem_keys() -> CryptoResult<()> {
         },
     )?;
 
-    let common = Attributes {
-        cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-            qlength: Some(256),
-            recommended_curve: Some(RecommendedCurve::P256),
-        }),
-        cryptographic_parameters: Some(CryptographicParameters {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let mut configurable = kem_keygen(
-        VENDOR_ID_COSMIAN,
-        "dk".to_owned(),
-        None,
-        "ek".to_owned(),
-        None,
-        &common,
-    )?;
-    let mut native = create_hybrid_kem_key_pair(
-        CryptographicAlgorithm::X25519MLKEM768,
-        KeyPairIdentity {
-            vendor_id: VENDOR_ID_COSMIAN,
-            private_key_uid: "sk",
-            public_key_uid: "pk",
-            common_attributes: Attributes::default(),
-            private_key_attributes: None,
-            public_key_attributes: None,
-        },
-        None,
-    )?;
-
     for encoding in [EncodingOption::NoEncoding, EncodingOption::TTLVEncoding] {
-        for i in 0..4 {
-            let pair = if i < 2 {
-                &mut configurable
-            } else {
-                &mut native
-            };
-            let obj = if i % 2 == 0 {
+        for i in 0..2 {
+            let obj = if i == 0 {
                 pair.private_key_mut()
             } else {
                 pair.public_key_mut()
@@ -839,4 +799,47 @@ fn test_wrap_unwrap_byte_string_kem_keys() -> CryptoResult<()> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn test_wrap_unwrap_byte_string_hybrid_kem_keys() -> CryptoResult<()> {
+    let mut native = create_hybrid_kem_key_pair(
+        CryptographicAlgorithm::X25519MLKEM768,
+        KeyPairIdentity {
+            vendor_id: VENDOR_ID_COSMIAN,
+            private_key_uid: "sk",
+            public_key_uid: "pk",
+            common_attributes: Attributes::default(),
+            private_key_attributes: None,
+            public_key_attributes: None,
+        },
+        None,
+    )?;
+    wrap_unwrap_byte_string_pair(&mut native)
+}
+
+// ConfigurableKEM is a software KEM outside the validated module: non-FIPS only.
+#[cfg(feature = "non-fips")]
+#[test]
+fn test_wrap_unwrap_byte_string_configurable_kem_keys() -> CryptoResult<()> {
+    let common = Attributes {
+        cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+            qlength: Some(256),
+            recommended_curve: Some(RecommendedCurve::P256),
+        }),
+        cryptographic_parameters: Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut configurable = kem_keygen(
+        VENDOR_ID_COSMIAN,
+        "dk".to_owned(),
+        None,
+        "ek".to_owned(),
+        None,
+        &common,
+    )?;
+    wrap_unwrap_byte_string_pair(&mut configurable)
 }

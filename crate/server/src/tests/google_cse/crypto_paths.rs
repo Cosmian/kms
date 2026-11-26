@@ -334,8 +334,6 @@ fn decrypt_cases() -> Vec<DecryptCase> {
         ),
     ]
     .into_iter()
-    // The FIPS provider refuses PKCS#1 v1.5 encryption.
-    .filter(|(_, padding, _)| !(is_fips_build() && *padding == Padding::PKCS1))
     .map(|(algorithm, padding, md)| DecryptCase {
         algorithm,
         padding,
@@ -346,6 +344,11 @@ fn decrypt_cases() -> Vec<DecryptCase> {
 
 /// Encrypt `DEK` with the public part of `rsa`, the way a Google client does.
 fn encrypt_dek(rsa: &Rsa<Private>, case: &DecryptCase, label: Option<&[u8]>) -> Vec<u8> {
+    // The server refuses PKCS#1 v1.5 before decrypting in a FIPS build, and the FIPS provider may
+    // refuse to encrypt with it: send a ciphertext-sized placeholder.
+    if is_fips_build() && case.padding == Padding::PKCS1 {
+        return vec![0_u8; usize::try_from(rsa.size()).unwrap()];
+    }
     let key = PKey::from_rsa(rsa.clone()).unwrap();
     let mut ctx = PkeyCtx::new(&key).unwrap();
     ctx.encrypt_init().unwrap();
@@ -386,7 +389,7 @@ async fn private_key_decrypt_all_algorithms() {
     for (encoding, der) in der_encodings(&rsa) {
         let wrapped_private_key = wrap_bytes(&app, &der).await;
         for case in decrypt_cases() {
-            let (status, body) = post_json_raw(
+            let reply = post_json_raw(
                 &app,
                 decrypt_request(
                     case.algorithm,
@@ -396,6 +399,11 @@ async fn private_key_decrypt_all_algorithms() {
                 "/google_cse/privatekeydecrypt",
             )
             .await;
+            if is_fips_build() && case.padding == Padding::PKCS1 {
+                assert_failed(&reply, "not allowed in a FIPS build");
+                continue;
+            }
+            let (status, body) = reply;
             assert_eq!(
                 status,
                 StatusCode::OK,
@@ -565,7 +573,7 @@ async fn privileged_private_key_decrypt_all_algorithms() {
     let wrapped = wrap_bytes(&app, &rsa.private_key_to_der().unwrap()).await;
 
     for case in decrypt_cases() {
-        let (status, body) = post_json_raw(
+        let reply = post_json_raw(
             &app,
             privileged_decrypt_request(
                 case.algorithm,
@@ -576,6 +584,11 @@ async fn privileged_private_key_decrypt_all_algorithms() {
             "/google_cse/privilegedprivatekeydecrypt",
         )
         .await;
+        if is_fips_build() && case.padding == Padding::PKCS1 {
+            assert_failed(&reply, "not allowed in a FIPS build");
+            continue;
+        }
+        let (status, body) = reply;
         assert_eq!(status, StatusCode::OK, "{}: {body}", case.algorithm);
         assert_eq!(field(&body, "data_encryption_key"), b64(&DEK));
     }
@@ -587,7 +600,7 @@ async fn privileged_private_key_decrypt_spki_mismatch() {
     let rsa = Rsa::generate(2048).unwrap();
     let other = Rsa::generate(2048).unwrap();
     let wrapped = wrap_bytes(&app, &rsa.private_key_to_der().unwrap()).await;
-    let case = &decrypt_cases()[0];
+    let case = &decrypt_cases()[1];
 
     let reply = post_json_raw(
         &app,
@@ -611,7 +624,7 @@ async fn privileged_private_key_decrypt_bad_spki_algorithm() {
     let app = app().await;
     let rsa = Rsa::generate(2048).unwrap();
     let wrapped = wrap_bytes(&app, &rsa.private_key_to_der().unwrap()).await;
-    let case = &decrypt_cases()[0];
+    let case = &decrypt_cases()[1];
 
     let mut request = privileged_decrypt_request(
         case.algorithm,

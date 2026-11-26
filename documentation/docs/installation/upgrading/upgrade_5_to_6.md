@@ -47,7 +47,7 @@ A 6.0 FIPS build enforces more of the FIPS 140-3 rules than 5.29.0:
 - a caller-supplied AES-GCM IV is refused (the server generates it);
 - HMAC generation with a key shorter than 112 bits is refused;
 - PBKDF2 DeriveKey needs a salt of at least 16 bytes, at least 1000 iterations and an output of at least 14 bytes;
-- CreateKeyPair of Ed25519 and Ed448 keys is refused;
+- ML-KEM, ML-DSA, SLH-DSA, `X25519MLKEM768`, Ed25519 and Ed448 are now available (OpenSSL FIPS provider 3.5.9); `X448MLKEM1024`, `ConfigurableKEM` and standalone X25519/X448 stay non-FIPS;
 - the server refuses to start when the `default` provider is activated through `OPENSSL_CONF`;
 - an AES-GCM key is limited to 2^32 invocations.
 
