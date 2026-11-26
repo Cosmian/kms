@@ -1,16 +1,16 @@
-# Upgrading from 5.x to 6.0
+# Upgrading from 5.x to 5.30
 
-This guide is for operators moving a running KMS from a 5.x release to 6.0. 6.0 follows KMIP strictly: there is no legacy mode and no compatibility exception that contradicts the specification. A request that a 5.x server accepted can therefore fail on 6.0, and a batch can stop earlier than before. The database schema is upgraded automatically at startup (see [Database Migrations](./database_migrations.md)); the work for you is in the clients.
+This guide is for operators moving a running KMS from a 5.x release to 5.30. 5.30 follows KMIP strictly: there is no legacy mode and no compatibility exception that contradicts the specification. A request that a 5.x server accepted can therefore fail on 5.30, and a batch can stop earlier than before. The database schema is upgraded automatically at startup (see [Database Migrations](./database_migrations.md)); the work for you is in the clients.
 
 ## Before you upgrade
 
 1. **Inventory the KMIP clients and integrations** that talk to the server, and for each one note which operations it sends (create/register, locate/get, encrypt/decrypt/MAC, rotate, revoke/destroy). The [client changes](#client-changes) table below tells you which of them can break.
 2. **Take a cold backup of the database** with the server stopped. For SQLite, copy the whole `sqlite_path` directory (`cp -a`). For the other backends, use the backend's own dump tool.
-3. **Plan recovery as "restore the backup with the old binary".** Opening a database written by 6.0 with a 5.x server is not supported, even if a pre-runner binary does not refuse startup. Restore the pre-upgrade backup before starting the 5.x binary. Keys and changes made after that backup are not retained.
+3. **Plan recovery as "restore the backup with the old binary".** Opening a database written by 5.30 with a 5.x server is not supported, even if a pre-runner binary does not refuse startup. Restore the pre-upgrade backup before starting the 5.x binary. Keys and changes made after that backup are not retained.
 4. **Check your source database version.** SQL databases created on KMS `5.0.0` or later and Redis-with-Findex databases (*non-FIPS only*) created on `5.12.0` or later upgrade automatically at startup. Older databases are refused at startup and require export and re-import; see [Database Migrations](./database_migrations.md#supported-source-versions).
 5. **If you use Set Constraints, configure a Crypto Officer first** (see the table below): `[roles] crypto_officer_users`.
-6. **Stop every node before starting 6.0: there is no rolling upgrade.** A 5.x node running against a database already used by 6.0 does not honour the new object-state triggers (PostgreSQL) nor the Usage Limits accounting; see [database tables](../../configuration/database/tables.md).
-7. **Upgrade `ckms` together with the server.** A 5.29.0 `ckms certificates validate` exits 0 against a 6.0 server even for an invalid chain: 6.0 answers with an `Invalid` validity indicator instead of an error, and the 5.29.0 client prints it without failing.
+6. **Stop every node before starting 5.30: there is no rolling upgrade.** A 5.x node running against a database already used by 5.30 does not honour the new object-state triggers (PostgreSQL) nor the Usage Limits accounting; see [database tables](../../configuration/database/tables.md).
+7. **Upgrade `ckms` together with the server.** A 5.29.0 `ckms certificates validate` exits 0 against a 5.30 server even for an invalid chain: 5.30 answers with an `Invalid` validity indicator instead of an error, and the 5.29.0 client prints it without failing.
 
 ## Migration matrix by database backend
 
@@ -35,7 +35,7 @@ Run it yourself before cutting over: `mise run test:db:upgrade-all --backend <sq
 
 Each row is a behaviour that changed to follow KMIP. The last column is what the client or operator must do.
 
-| Change | 5.x behaviour | 6.0 behaviour | Client action |
+| Change | 5.x behaviour | 5.30 behaviour | Client action |
 |---|---|---|---|
 | Revoke of a Pre-Active object | A non-compromise Revoke moved it to Deactivated. | A non-compromise Revoke is refused with `Wrong_Key_Lifecycle_State`; the object stays Pre-Active. A compromise reason is still accepted. | Destroy a never-activated object directly, or activate it before use and revoke it when retiring it. |
 | Batch error continuation | An omitted `BatchErrorContinuationOption` continued after a failed item. | An omitted option is `Stop`. | Send `Continue` when later items must still run, and check every result. |
@@ -55,13 +55,13 @@ The full list of changes is in the release notes.
 
 ## Packages
 
-- **Debian and RPM packages**: the post-remove script of 5.29.0 and earlier stops and disables `cosmian_kms.service` during an upgrade. The 6.0 packages record whether the service was enabled and running before the upgrade, restore both afterwards (the service restarts on the new binary), and no longer disable it on upgrade; a fresh install still leaves the service stopped. `/etc/cosmian/kms.toml` is kept, with a timestamped copy next to it in `/etc/cosmian/`. The packaged `kms.toml` template of 6.0 sets `region_role` and a `[kv]` section; merge any new key you need by hand.
+- **Debian and RPM packages**: the post-remove script of 5.29.0 and earlier stops and disables `cosmian_kms.service` during an upgrade. The 5.30 packages record whether the service was enabled and running before the upgrade, restore both afterwards (the service restarts on the new binary), and no longer disable it on upgrade; a fresh install still leaves the service stopped. `/etc/cosmian/kms.toml` is kept, with a timestamped copy next to it in `/etc/cosmian/`. The packaged `kms.toml` template of 5.30 sets `region_role` and a `[kv]` section; merge any new key you need by hand.
 - **Debian, edited `kms.toml`**: when you changed `/etc/cosmian/kms.toml`, dpkg asks whether to keep it because the packaged template changed. A non-interactive `apt-get install ./cosmian-kms-server-*.deb` fails with `end of file on stdin at conffile prompt` and leaves the package unconfigured (service disabled). Run it with `-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold` to keep your file (the new template is then written to `kms.toml.dpkg-dist`), or answer `N` at the prompt. If the upgrade already aborted, finish it with `dpkg --configure -a --force-confold`, which also restores the service state; do not run the install a second time before that, it would record the already disabled state.
-- **Windows installer**: `kms.toml`, `data` and `logs` are kept, whether the installer runs silently, interactively with "uninstall before installing", or without uninstalling. The new default configuration is written to `kms.toml.new` next to `kms.toml`; merge new keys by hand. The installers of 5.29.0 and earlier replaced `kms.toml` by the template and, with "uninstall before installing", deleted `data` and `logs`. The 6.0 installer saves and restores them around the old uninstaller; as a precaution (that interactive path has no automated test), keep a copy of `kms.toml` and the `data` directory before running it.
+- **Windows installer**: `kms.toml`, `data` and `logs` are kept, whether the installer runs silently, interactively with "uninstall before installing", or without uninstalling. The new default configuration is written to `kms.toml.new` next to `kms.toml`; merge new keys by hand. The installers of 5.29.0 and earlier replaced `kms.toml` by the template and, with "uninstall before installing", deleted `data` and `logs`. The 5.30 installer saves and restores them around the old uninstaller; as a precaution (that interactive path has no automated test), keep a copy of `kms.toml` and the `data` directory before running it.
 
 ## FIPS builds
 
-A 6.0 FIPS build enforces more of the FIPS 140-3 rules than 5.29.0:
+A 5.30 FIPS build enforces more of the FIPS 140-3 rules than 5.29.0:
 
 - a caller-supplied AES-GCM IV is refused (the server generates it);
 - HMAC generation with a key shorter than 112 bits is refused;
@@ -80,7 +80,7 @@ Restoring the pre-upgrade database backup is required (see above). Also restore 
 
 ## Verify the upgrade
 
-Test your real client applications against a non-production copy of your database upgraded to 6.0 before cutting over production traffic:
+Test your real client applications against a non-production copy of your database upgraded to 5.30 before cutting over production traffic:
 
 - create or register a key;
 - locate and get it;
@@ -90,15 +90,15 @@ Test your real client applications against a non-production copy of your databas
 
 ## Tested clients
 
-Results of running client libraries against 5.29.0 and 6.0 servers. "Adapted" means a synthetic client workload rather than a vendor product test suite.
+Results of running client libraries against 5.29.0 and 5.30 servers. "Adapted" means a synthetic client workload rather than a vendor product test suite.
 
-| Client | Workload | 5.29.0 server | 6.0 server |
+| Client | Workload | 5.29.0 server | 5.30 server |
 |---|---|---|---|
 | PyKMIP 0.10.0 (Python 3.11.15), adapted | 17 KMIP operations | Non-FIPS build: 17/17. FIPS build: 14/17. | Non-FIPS build: 17/17. FIPS build: 14/17. |
 | `ovh/kmip-go` v0.9.2, adapted | Updated workload (`IVLength` = 96) | Passes (FIPS and non-FIPS builds). | Passes (FIPS and non-FIPS builds). |
-| `ovh/kmip-go` v0.9.2, adapted | Pre-6.0 workload (`IVLength` = 12) | Passes. | Fails, see below. |
+| `ovh/kmip-go` v0.9.2, adapted | Pre-5.30 workload (`IVLength` = 12) | Passes. | Fails, see below. |
 
-- **PyKMIP, FIPS builds** (5.29.0 and 6.0 alike): `create_keypair`, `sign` and `signature_verify` fail because the driver's RSA key pair carries no usage mask and a FIPS build refuses it (`RSA: forbidden CryptographicUsageMask value, got None but expected among 0x00000A29 in FIPS mode`). This is unrelated to the upgrade.
-- **kmip-go, 5.29.0 workload against 6.0**: `TestEncryptDecryptAES_GCM_V14` and `TestEncryptDecryptAES_GCM_MultiVersion` (V1.2, V1.4) fail with `Encrypt: IV Length of 12 bits is not valid for Aes256Gcm` (the IV Length row above: send `96`). `TestVersionGating_KMIP12` (1.2, 1.3, 1.4) fails because Get Attribute List no longer lists `Alternative Name`, which the workload expected on a new key (the Get Attribute List row above).
+- **PyKMIP, FIPS builds** (5.29.0 and 5.30 alike): `create_keypair`, `sign` and `signature_verify` fail because the driver's RSA key pair carries no usage mask and a FIPS build refuses it (`RSA: forbidden CryptographicUsageMask value, got None but expected among 0x00000A29 in FIPS mode`). This is unrelated to the upgrade.
+- **kmip-go, 5.29.0 workload against 5.30**: `TestEncryptDecryptAES_GCM_V14` and `TestEncryptDecryptAES_GCM_MultiVersion` (V1.2, V1.4) fail with `Encrypt: IV Length of 12 bits is not valid for Aes256Gcm` (the IV Length row above: send `96`). `TestVersionGating_KMIP12` (1.2, 1.3, 1.4) fails because Get Attribute List no longer lists `Alternative Name`, which the workload expected on a new key (the Get Attribute List row above).
 
 Not tested: the Synology DSM client script, other KMIP client libraries and products, KMIP 1.x clients other than the `ovh/kmip-go` KMIP 1.2 to 1.4 cases above.

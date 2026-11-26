@@ -2,7 +2,7 @@
 
 When you start a newer KMS binary against an existing database, the server checks the stored database version and applies any required schema or data updates automatically before opening its HTTP and KMIP ports. Once the update completes, the server records the new version and begins serving requests. Subsequent restarts at the same version start immediately without re-running completed steps.
 
-For KMIP protocol and client behavior changes when upgrading to 6.0, see [Upgrading from 5.x to 6.0](./upgrade_5_to_6.md).
+For KMIP protocol and client behavior changes when upgrading to 5.30, see [Upgrading from 5.x to 5.30](./upgrade_5_to_5_30.md).
 
 ## Supported source versions
 
