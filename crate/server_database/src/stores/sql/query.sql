@@ -215,6 +215,9 @@ LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = $2
 WHERE (objects.owner = $2 OR read_access.userid = $2)
   AND objects.wrapping_key_id = $1;
 
+-- name: select-ids-wrapped-by
+SELECT id FROM objects WHERE wrapping_key_id = $1;
+
 -- name: select-objects-null-wrapping-key
 SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
 

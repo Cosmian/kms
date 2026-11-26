@@ -285,6 +285,9 @@ LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
 WHERE (objects.owner = ? OR read_access.userid = ?)
   AND objects.wrapping_key_id = ?;
 
+-- name: select-ids-wrapped-by
+SELECT id FROM objects WHERE wrapping_key_id = ?;
+
 -- name: has-objects
 SELECT 1 FROM objects LIMIT 1;
 
