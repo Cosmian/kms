@@ -56,6 +56,11 @@ Returns `application/pkix-crl` (DER, default) or `application/x-pem-file` (PEM).
     private key from being used as an unauthenticated signing oracle, not to
     restrict access to the revocation list itself.
 
+!!! tip "mTLS client certificates"
+    To make the KMS reject revoked **client** certificates, write the PEM CRL into the
+    `clients_crl_dir` directory; see
+    [Revoking client certificates (CRL)](../configuration/authentication.md#revoking-client-certificates-crl).
+
 The generated CRL includes:
 
 - **Authority Key Identifier** (AKI) — derived from the CA's `subjectKeyIdentifier`

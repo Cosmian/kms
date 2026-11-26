@@ -100,6 +100,20 @@ By default a client certificate stays valid until it expires. To reject revoked 
 certificates, point `clients_crl_dir` (`--clients-crl-dir`, `KMS_CLIENTS_CRL_DIR`) to a directory of
 CRLs. It requires `clients_ca_cert_file` and applies to both the HTTPS server and the KMIP socket server.
 
+=== "Docker"
+
+    ```sh
+    docker run -p 9998:9998 --name kms \
+        -v /etc/cosmian/client-crls:/etc/cosmian/client-crls:ro \
+        ghcr.io/cosmian/kms-fips:latest \
+        --tls-cert-file server.crt \
+        --tls-key-file server.key \
+        --clients-ca-cert-file client_ca.cert.pem \
+        --clients-crl-dir /etc/cosmian/client-crls
+    ```
+
+    Mount the certificate and key files into the container the same way as the CRL directory.
+
 === "kms.toml"
 
     ```toml
@@ -117,6 +131,27 @@ cp ca.crl.pem /etc/cosmian/client-crls/
 openssl rehash /etc/cosmian/client-crls
 ```
 
+##### Where the CRL comes from
+
+The CRL must be a PEM file signed by the CA that issued the client certificates. If that CA is
+managed by this KMS, generate the CRL with `ckms` and write it straight into the directory (the
+KMS default output format is DER, so ask for PEM):
+
+```sh
+ckms certificates generate-crl \
+  --certificate-id <CA_CERT_ID> \
+  --validity-days 7 \
+  --output-format pem \
+  --output-file /etc/cosmian/client-crls/ca.crl.pem
+openssl rehash /etc/cosmian/client-crls
+```
+
+Otherwise, download the CRL published by your external CA and convert it to PEM if needed
+(`openssl crl -inform DER -in ca.crl -out ca.crl.pem`). See
+[Revocation & CRL Distribution](../use_cases/pki-revocation.md) for the KMS endpoint and the
+automatic refresh. The KMS does not fetch or refresh the CRLs of this directory itself: renew them
+before their `nextUpdate` with a job of your own (for example `cron`), as described below.
+
 When a CRL is renewed, add it under the next suffix (`<hash>.r1`, `<hash>.r2`, ...): OpenSSL
 reads them on demand, without restarting the server, and uses the CRL with the most recent
 `thisUpdate` date. Make sure the new CRL has a later `thisUpdate` than the one it replaces.
@@ -127,6 +162,11 @@ Behavior to be aware of:
 - **Fail-closed:** when `clients_crl_dir` is set, a client certificate is rejected if no CRL of
   its issuing CA is present in the directory, or if that CRL has expired (`nextUpdate` in the past).
   Keep the CRLs refreshed before their `nextUpdate`.
+- **CRL only, no OCSP:** client certificates are checked against the CRLs of this directory
+  only. The KMS does not query an OCSP responder when authenticating clients; its own
+  [OCSP responder](../use_cases/pki-ocsp.md) serves relying parties and is not used here.
+- **Signature:** a CRL whose signature does not verify against the issuing CA certificate in
+  `clients_ca_cert_file` is not usable and the client is rejected.
 - Only the client (leaf) certificate is checked against the CRL; CRLs of intermediate CAs are not.
 - Revocation is evaluated when the TLS connection is established. A connection already open
   (for example an HTTP keep-alive connection) keeps its identity until it is closed, even if the
