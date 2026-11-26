@@ -104,15 +104,14 @@ CRLs. It requires `clients_ca_cert_file` and applies to both the HTTPS server an
 
     ```sh
     docker run -p 9998:9998 --name kms \
+        -v "$PWD/certs":/certs:ro \
         -v /etc/cosmian/client-crls:/etc/cosmian/client-crls:ro \
         ghcr.io/cosmian/kms-fips:latest \
-        --tls-cert-file server.crt \
-        --tls-key-file server.key \
-        --clients-ca-cert-file client_ca.cert.pem \
+        --tls-cert-file /certs/server.crt \
+        --tls-key-file /certs/server.key \
+        --clients-ca-cert-file /certs/client_ca.cert.pem \
         --clients-crl-dir /etc/cosmian/client-crls
     ```
-
-    Mount the certificate and key files into the container the same way as the CRL directory.
 
 === "kms.toml"
 
@@ -138,19 +137,21 @@ managed by this KMS, generate the CRL with `ckms` and write it straight into the
 KMS default output format is DER, so ask for PEM):
 
 ```sh
+HASH=$(openssl x509 -noout -subject_hash -in client_ca.cert.pem)
 ckms certificates generate-crl \
   --certificate-id <CA_CERT_ID> \
   --validity-days 7 \
   --output-format pem \
-  --output-file /etc/cosmian/client-crls/ca.crl.pem
-openssl rehash /etc/cosmian/client-crls
+  --output-file /etc/cosmian/client-crls/$HASH.r0
 ```
 
-Otherwise, download the CRL published by your external CA and convert it to PEM if needed
-(`openssl crl -inform DER -in ca.crl -out ca.crl.pem`). See
+Otherwise, download the CRL published by your external CA and convert it to PEM, saving it under
+the same `$HASH.rN` name (`openssl crl -inform DER -in ca.crl -out /etc/cosmian/client-crls/$HASH.r0`). See
 [Revocation & CRL Distribution](../use_cases/pki-revocation.md) for the KMS endpoint and the
 automatic refresh. The KMS does not fetch or refresh the CRLs of this directory itself: renew them
-before their `nextUpdate` with a job of your own (for example `cron`), as described below.
+before their `nextUpdate` with a job of your own (for example `cron`), writing each renewed CRL to
+the next unused suffix (`$HASH.r1`, `$HASH.r2`, ...) as described below. Do not re-run the command
+above with the same file name, and do not run `openssl rehash` again for a renewal.
 
 When a CRL is renewed, add it under the next suffix (`<hash>.r1`, `<hash>.r2`, ...): OpenSSL
 reads them on demand, without restarting the server, and uses the CRL with the most recent
