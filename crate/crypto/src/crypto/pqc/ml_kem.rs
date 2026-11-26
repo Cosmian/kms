@@ -42,8 +42,10 @@ pub fn create_ml_kem_key_pair(
         },
         PqcKeyPolicy {
             cryptographic_algorithm: algorithm,
-            private_key_usage_mask: CryptographicUsageMask::Unrestricted,
-            public_key_usage_mask: CryptographicUsageMask::Unrestricted,
+            private_key_usage_mask: CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::UnwrapKey,
+            public_key_usage_mask: CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::WrapKey,
         },
     )
 }
