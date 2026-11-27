@@ -2,19 +2,23 @@
 //! (native hybrid KEM groups and `ConfigurableKEM`) must be importable into a KMS instance
 //! unchanged, and remain usable for encapsulation afterwards.
 
+#[cfg(feature = "non-fips")]
 use cosmian_kms_client_utils::configurable_kem_utils::{
     KemAlgorithm, build_create_configurable_kem_keypair_request,
 };
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-        kmip_attributes::Attributes,
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Get, Import},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
-        requests::{create_pqc_key_pair_request, decrypt_request, encrypt_request},
+    cosmian_kmip::{
+        kmip_0::kmip_types::CryptographicUsageMask,
+        kmip_2_1::{
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+            kmip_attributes::Attributes,
+            kmip_objects::{Object, ObjectType},
+            kmip_operations::{Get, Import},
+            kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
+            requests::{create_pqc_key_pair_request, decrypt_request, encrypt_request},
+        },
     },
-    cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation,
+    cosmian_kms_crypto::crypto::pqc::unpack_kem_encapsulation,
 };
 use cosmian_logger::log_init;
 use uuid::Uuid;
@@ -33,6 +37,8 @@ async fn reimport_public_key(kms: &KMS, owner: &UserId, object: &Object) -> KRes
         key_wrap_type: None,
         attributes: Attributes {
             object_type: Some(ObjectType::PublicKey),
+            // FIPS builds neither default the mask of an imported key nor let `Unrestricted` encrypt.
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             ..Attributes::default()
         },
         object: object.clone(),
@@ -102,6 +108,7 @@ async fn test_import_hybrid_kem_public_key_cross_instance() -> KResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_import_configurable_kem_public_key_cross_instance() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
@@ -145,5 +152,31 @@ async fn test_import_configurable_kem_public_key_cross_instance() -> KResult<()>
         )
         .await?;
     assert!(er.data.is_some_and(|d| !d.is_empty()));
+    Ok(())
+}
+
+/// The OpenSSL FIPS provider does not serve X448MLKEM1024: a FIPS build refuses to create it.
+#[cfg(not(feature = "non-fips"))]
+#[tokio::test]
+async fn test_create_x448_ml_kem_1024_refused_in_fips_build() -> KResult<()> {
+    log_init(option_env!("RUST_LOG"));
+    let kms = test_kms().await?;
+    let owner = UserId::from("pqcx448fips");
+
+    let result = kms
+        .create_key_pair(
+            create_pqc_key_pair_request(
+                VENDOR_ID_COSMIAN,
+                EMPTY_TAGS,
+                CryptographicAlgorithm::X448MLKEM1024,
+                false,
+            )?,
+            &owner,
+        )
+        .await;
+    assert!(
+        result.is_err(),
+        "X448MLKEM1024 must be refused in a FIPS build"
+    );
     Ok(())
 }

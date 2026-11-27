@@ -1,7 +1,5 @@
 use std::{cmp::min, collections::HashSet};
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         creation_time,
@@ -13,7 +11,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
             kmip_operations::Certify,
-            kmip_types::{KeyFormatType, LinkType, VendorAttributeValue},
+            kmip_types::{CryptographicAlgorithm, KeyFormatType, LinkType, VendorAttributeValue},
         },
     },
     cosmian_kms_crypto::{
@@ -24,25 +22,19 @@ use cosmian_kms_server_database::reexport::{
         },
     },
 };
-use cosmian_logger::debug;
-#[cfg(feature = "non-fips")]
-use cosmian_logger::warn;
-#[cfg(feature = "non-fips")]
-use openssl::x509::extension::KeyUsage;
+use cosmian_logger::{debug, warn};
 use openssl::{
     asn1::{Asn1Integer, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
     nid::Nid,
-    x509::{X509, X509Extension},
+    x509::{X509, X509Extension, extension::KeyUsage},
 };
 
 use super::{
     issuer::{Issuer, IssuerKey},
-    rfc9608,
+    rfc9608, rfc9881, rfc9909, rfc9935,
     subject::Subject,
 };
-#[cfg(feature = "non-fips")]
-use super::{rfc9881, rfc9909, rfc9935};
 use crate::{
     core::{
         KMS,
@@ -111,17 +103,9 @@ pub(crate) async fn build_and_sign_certificate(
         .try_for_each(|extension| x509_builder.append_extension(extension))?;
 
     // RFC 9881 §5 / RFC 9909 §6 / RFC 9935 §5: auto-add PQC keyUsage
-    #[cfg(feature = "non-fips")]
     apply_pqc_key_usage(&mut x509_builder, subject, &attributes, vendor_id)?;
 
     // RFC 5280 §4.2: user-supplied extensions from vendor attribute CNF
-    #[cfg_attr(
-        not(feature = "non-fips"),
-        expect(
-            unused_variables,
-            reason = "only read by the non-fips PQC keyUsage warning"
-        )
-    )]
     let (has_cdp, has_user_key_usage) =
         apply_user_extensions(&mut x509_builder, &mut attributes, vendor_id, issuer)?;
     // Combine: CDP is present if it came from the subject (CSR/existing cert) OR user vendor attrs.
@@ -136,7 +120,6 @@ pub(crate) async fn build_and_sign_certificate(
     let has_cdp = has_cdp || inject_server_crl_dp(&mut x509_builder, issuer, kms_public_url)?;
 
     // Warn when user-supplied keyUsage overrides RFC-mandated PQC keyUsage
-    #[cfg(feature = "non-fips")]
     if has_user_key_usage && subject_pqc_algorithm(subject).is_some() {
         warn!(
             "User-supplied keyUsage in extension config overrides the RFC-mandated PQC keyUsage \
@@ -217,7 +200,6 @@ pub(crate) async fn build_and_sign_certificate(
 /// RFC 9881 (ML-DSA) / RFC 9935 (ML-KEM): extract the KMIP `CryptographicAlgorithm` from a
 /// Subject that represents a fresh keypair or standalone public key. Returns `None` for
 /// CSR-based and re-certification cases (they already carry RFC-compliant extensions).
-#[cfg(feature = "non-fips")]
 const fn subject_pqc_algorithm(subject: &Subject) -> Option<CryptographicAlgorithm> {
     match subject {
         Subject::PublicKeyAndSubjectName(_, owm, _) => {
@@ -274,7 +256,6 @@ pub(super) fn extension_config_is_ca(attributes: &Attributes, vendor_id: &str) -
 /// - CA (`is_ca=true`): `digitalSignature | keyCertSign | cRLSign` (critical)
 ///
 /// Called by [`rfc9881::apply_extensions`] and [`rfc9909::apply_extensions`].
-#[cfg(feature = "non-fips")]
 pub(super) fn pqc_signing_key_usage(is_ca: bool) -> KResult<openssl::x509::X509Extension> {
     let mut ku = KeyUsage::new();
     ku.critical().digital_signature();
@@ -291,7 +272,6 @@ pub(super) fn pqc_signing_key_usage(is_ca: bool) -> KResult<openssl::x509::X509E
 /// Dispatches to the per-RFC submodule based on the algorithm family.
 /// CSR-based and re-certification cases already carry extensions from the original object,
 /// so this only fires when `subject_pqc_algorithm` returns `Some`.
-#[cfg(feature = "non-fips")]
 fn apply_pqc_key_usage(
     x509_builder: &mut openssl::x509::X509Builder,
     subject: &Subject,

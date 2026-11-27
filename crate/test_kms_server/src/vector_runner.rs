@@ -2629,7 +2629,6 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/asymmetric/rsa2048_pss_sha512_sign").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_eddsa_ed25519_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -2809,7 +2808,6 @@ ObjectType = "SymmetricKey"
 
     // ── Dynamic vectors: asymmetric ───────────────────────────────────────
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_eddsa_ed448_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -2852,42 +2850,36 @@ ObjectType = "SymmetricKey"
 
     // ── Dynamic vectors: PQC ──────────────────────────────────────────────
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_dsa_44_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_dsa_44_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_dsa_65_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_dsa_65_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_dsa_87_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_dsa_87_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_kem_512_encap_decap() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_kem_512_encap_decap").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_kem_768_encap_decap() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_kem_768_encap_decap").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_kem_1024_encap_decap() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -2896,98 +2888,84 @@ ObjectType = "SymmetricKey"
 
     // ── PQC: Export as Raw ──────────────────────────────────────────────
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_dsa_44_export_raw() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_dsa_44_export_raw").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_ml_kem_768_export_raw() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/ml_kem_768_export_raw").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_sha2_128s_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_sha2_128s_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_sha2_128f_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_sha2_128f_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_sha2_192s_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_sha2_192s_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_sha2_192f_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_sha2_192f_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_sha2_256s_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_sha2_256s_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_sha2_256f_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_sha2_256f_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_shake_128s_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_shake_128s_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_shake_128f_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_shake_128f_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_shake_192s_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_shake_192s_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_shake_192f_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_shake_192f_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_shake_256s_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/asymmetric/slh_dsa_shake_256s_sign_verify").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_slh_dsa_shake_256f_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -3288,8 +3266,6 @@ ObjectType = "SymmetricKey"
 
     // ── KAT vectors: asymmetric (new) ────────────────────────────────────
 
-    // A FIPS build refuses Ed25519 (the only provider it uses is the FIPS provider).
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_asym_ed25519_eddsa_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -3476,7 +3452,6 @@ ObjectType = "SymmetricKey"
 
     // ── KAT vectors: non-FIPS asymmetric ─────────────────────────────────
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_kat_asym_ed448_eddsa_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -4643,49 +4618,42 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_rsa4096").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_ml_kem_512() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_kem_512").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_ml_kem_768() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_kem_768").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_ml_kem_1024() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_kem_1024").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_ml_dsa_44() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_dsa_44").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_ml_dsa_65() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_dsa_65").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_ml_dsa_87() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_dsa_87").await
     }
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_slh_dsa_sha2_128f() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -4759,7 +4727,6 @@ ObjectType = "SymmetricKey"
 
     // ── Non-FIPS ReKeyKeyPair vectors ───────────────────────────────────
 
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_ed25519() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -5046,8 +5013,6 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/kek_import_ed25519").await
     }
 
-    // Ed25519 signing is not available in the OpenSSL FIPS provider.
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_hsm_kek_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -5072,8 +5037,6 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/kek_ec_p256_create_sign").await
     }
 
-    // Ed25519 is not in the OpenSSL FIPS provider, the only provider a FIPS build uses.
-    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_hsm_kek_ed25519_create_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -5319,14 +5282,6 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    #[cfg(not(feature = "non-fips"))]
-    async fn test_vec_hsm_resident_ed25519_rejected() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/resident_ed25519_rejected").await
-    }
-
-    #[tokio::test]
-    #[cfg(feature = "non-fips")]
     async fn test_vec_hsm_resident_ed25519_created() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_ed25519_created").await

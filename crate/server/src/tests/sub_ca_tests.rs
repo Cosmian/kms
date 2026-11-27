@@ -405,7 +405,6 @@ async fn csr_generation_refuses_an_exhausted_usage_limit() -> KResult<()> {
 }
 
 /// Ed25519 keys sign without a digest, unlike RSA and EC.
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn csr_for_a_database_ed25519_key() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{

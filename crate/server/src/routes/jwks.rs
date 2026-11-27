@@ -207,7 +207,6 @@ fn object_to_jwk(
     match pkey.id() {
         Id::RSA => rsa_to_jwk(uid, &pkey, usage_mask).map(|jwk| to_json_value(uid, &jwk)),
         Id::EC => Ok(ec_to_jwk(uid, &pkey, usage_mask)?.and_then(|jwk| to_json_value(uid, &jwk))),
-        #[cfg(feature = "non-fips")]
         Id::ED25519 => Ok(eddsa_to_jwk(uid, &pkey)?.and_then(|jwk| to_json_value(uid, &jwk))),
         #[cfg(feature = "non-fips")]
         Id::X25519 => x25519_to_jwk(uid, &pkey),
@@ -388,12 +387,11 @@ fn ec_to_jwk(
     }))
 }
 
-/// Serialize an Ed25519 public key to JWK (OKP, non-FIPS only).
+/// Serialize an Ed25519 public key to JWK (OKP).
 ///
 /// Uses the raw public key bytes (RFC 8037 §2): 32 bytes for Ed25519.
 /// Ed448 is not supported because `jsonwebtoken` v10 lacks the `Ed448` variant
 /// in its [`EllipticCurve`] enum; those keys are silently skipped.
-#[cfg(feature = "non-fips")]
 fn eddsa_to_jwk(uid: &str, pkey: &PKey<Public>) -> KResult<Option<Jwk>> {
     use jsonwebtoken::jwk::{OctetKeyPairParameters, OctetKeyPairType};
 

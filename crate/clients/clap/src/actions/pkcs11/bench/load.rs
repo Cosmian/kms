@@ -86,7 +86,7 @@ impl ConcreteMode {
         }
     }
 
-    /// Whether this mode exercises a key type (Ed25519, secp256k1) or an algorithm
+    /// Whether this mode exercises a key type (secp256k1) or an algorithm
     /// (RSAES-PKCS1-v1_5, which the HSM session refuses in FIPS builds) that only
     /// non-FIPS builds may use; FIPS builds never select such modes.
     pub(crate) const fn requires_non_fips(self) -> bool {
@@ -96,8 +96,6 @@ impl ConcreteMode {
                 | Self::DecryptRsaPkcs
                 | Self::SignSecp256k1
                 | Self::VerifySecp256k1
-                | Self::SignEdDsa
-                | Self::VerifyEdDsa
         )
     }
 }
@@ -1231,18 +1229,20 @@ mod tests {
     }
 
     #[test]
-    fn eddsa_and_secp256k1_modes_exist_only_in_non_fips_builds() {
+    fn secp256k1_modes_exist_only_in_non_fips_builds() {
         let all = labels(&expand_bench_mode(BenchMode::All, None));
         let sign_verify = labels(&expand_bench_mode(BenchMode::SignVerify, None));
-        let ed_or_k1 = |label: &&str| label.contains("eddsa") || label.contains("secp256k1");
+        let is_k1 = |label: &&str| label.contains("secp256k1");
+        for label in ["sign/eddsa-ed25519", "verify/eddsa-ed25519"] {
+            assert!(all.contains(&label), "{label} missing from `all`");
+            assert!(
+                sign_verify.contains(&label),
+                "{label} missing from `sign-verify`"
+            );
+        }
 
         if NON_FIPS_BUILD {
-            let expected = [
-                "sign/ecdsa-secp256k1",
-                "verify/ecdsa-secp256k1",
-                "sign/eddsa-ed25519",
-                "verify/eddsa-ed25519",
-            ];
+            let expected = ["sign/ecdsa-secp256k1", "verify/ecdsa-secp256k1"];
             for label in expected {
                 assert!(all.contains(&label), "{label} missing from `all`");
                 assert!(
@@ -1251,12 +1251,12 @@ mod tests {
                 );
             }
         } else {
-            assert!(!all.iter().any(ed_or_k1), "{all:?}");
-            assert!(!sign_verify.iter().any(ed_or_k1), "{sign_verify:?}");
+            assert!(!all.iter().any(is_k1), "{all:?}");
+            assert!(!sign_verify.iter().any(is_k1), "{sign_verify:?}");
         }
         // Modes that are not tied to a mode family never include them.
         let encrypt = labels(&expand_bench_mode(BenchMode::Encrypt, None));
-        assert!(!encrypt.iter().any(ed_or_k1));
+        assert!(!encrypt.iter().any(is_k1));
     }
 
     #[test]
@@ -1297,16 +1297,12 @@ mod tests {
     }
 
     #[test]
-    fn algorithm_filter_selects_ed25519_only_when_the_build_has_it() {
+    fn algorithm_filter_selects_eddsa_and_secp256k1() {
         let modes = expand_bench_mode(BenchMode::All, Some(&filter_on("eddsa")));
-        if NON_FIPS_BUILD {
-            assert_eq!(
-                modes,
-                vec![ConcreteMode::SignEdDsa, ConcreteMode::VerifyEdDsa]
-            );
-        } else {
-            assert_eq!(modes.len(), 0);
-        }
+        assert_eq!(
+            modes,
+            vec![ConcreteMode::SignEdDsa, ConcreteMode::VerifyEdDsa]
+        );
 
         let modes = expand_bench_mode(BenchMode::All, Some(&filter_on("secp256k1")));
         if NON_FIPS_BUILD {

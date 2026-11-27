@@ -5,7 +5,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_objects::Object,
     kmip_types::VendorAttributeValue,
 };
-
 pub(crate) use unwrap::{
     authorize_stored_unwrap, authorize_unwrap_with, unwrap_object, unwrap_stored_object,
 };

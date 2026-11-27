@@ -4,20 +4,23 @@ use actix_web::{
     HttpRequest, HttpResponse, delete, post,
     web::{Data, Json, Path},
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
-    kmip_2_1::{
-        extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-        kmip_attributes::{Attribute, Attributes},
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
-        kmip_operations::{Destroy, Import, ImportResponse, Operation, Revoke, SetAttribute},
-        kmip_types::{KeyFormatType, Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
-        requests::{
-            create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request,
-            symmetric_key_create_request,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
+        kmip_2_1::{
+            extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
+            kmip_attributes::{Attribute, Attributes},
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
+            kmip_operations::{Destroy, Import, ImportResponse, Operation, Revoke, SetAttribute},
+            kmip_types::{KeyFormatType, Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+            requests::{
+                create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request,
+                symmetric_key_create_request,
+            },
         },
     },
+    cosmian_kms_crypto::crypto::is_fips_build,
 };
 use cosmian_logger::trace;
 use openssl::{
@@ -102,7 +105,6 @@ pub(crate) async fn create_key(
             "oct" => import_symmetric_key(&kms, &user, &body).await,
             "EC" => import_ec_key(&kms, &user, &body).await,
             "RSA" => import_rsa_key(&kms, &user, &body).await,
-            #[cfg(feature = "non-fips")]
             "OKP" => import_okp_key(&kms, &user, &body).await,
             other => Err(CryptoApiError::BadRequest(format!(
                 "Unsupported key type '{other}' for import."
@@ -114,10 +116,9 @@ pub(crate) async fn create_key(
             "oct" => generate_symmetric_key(&kms, &user, &body).await,
             "EC" => generate_ec_key_pair(&kms, &user, &body).await,
             "RSA" => generate_rsa_key_pair(&kms, &user, &body).await,
-            #[cfg(feature = "non-fips")]
             "OKP" => generate_okp_key_pair(&kms, &user, &body).await,
             other => Err(CryptoApiError::BadRequest(format!(
-                "Unsupported key type '{other}'. Supported: oct, EC, RSA, OKP (non-FIPS). \
+                "Unsupported key type '{other}'. Supported: oct, EC, RSA, OKP. \
                  alg={alg_str}"
             ))),
         }
@@ -409,15 +410,19 @@ async fn generate_rsa_key_pair(
     })
 }
 
-// ─── Internal: OKP (Ed25519) key pair generation (non-FIPS) ─────────────────
+// ─── Internal: OKP (Ed25519, X25519 non-FIPS) key pair generation ───────────
 
-#[cfg(feature = "non-fips")]
 async fn generate_okp_key_pair(
     kms: &Arc<KMS>,
     user: &UserId,
     body: &KeyCreateRequest,
 ) -> Result<KeyCreateResponse, CryptoApiError> {
     let crv = body.crv.as_deref().unwrap_or("Ed25519");
+    if crv == "X25519" && is_fips_build() {
+        return Err(CryptoApiError::BadRequest(
+            "X25519 OKP keys are not available in a FIPS build".to_owned(),
+        ));
+    }
     let alg = body.alg.as_deref();
 
     // X25519 is a key-agreement-only curve: it cannot sign, so an `alg` must be
@@ -1144,9 +1149,8 @@ async fn import_rsa_public_key(
     })
 }
 
-// ─── Internal: OKP (Ed25519) key import (non-FIPS) ──────────────────────────
+// ─── Internal: OKP (Ed25519, X25519 non-FIPS) key import ────────────────────
 
-#[cfg(feature = "non-fips")]
 async fn import_okp_key(
     kms: &Arc<KMS>,
     user: &UserId,
@@ -1159,6 +1163,11 @@ async fn import_okp_key(
     })?;
 
     let crv = body.crv.as_deref().unwrap_or("Ed25519");
+    if crv == "X25519" && is_fips_build() {
+        return Err(CryptoApiError::BadRequest(
+            "X25519 OKP keys are not available in a FIPS build".to_owned(),
+        ));
+    }
     let alg = body.alg.as_deref();
 
     if crv != "Ed25519" && crv != "X25519" {

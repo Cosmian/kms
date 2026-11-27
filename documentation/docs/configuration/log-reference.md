@@ -378,8 +378,6 @@ Crate path: `crate/server`
 | `trace` | `{jwt_authorization_config:#?}` | `src/routes/google_cse/jwt.rs` | `jwt_authorization_config` — … | — |
 | `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
 | `error` | `OpenSSL does not appear to be available (version number is 0).              Please verify that OpenSSL is correctly installed and accessible.` | `src/main.rs` | — | — |
-| `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
-| `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip/handlers.rs` | `x` | — |

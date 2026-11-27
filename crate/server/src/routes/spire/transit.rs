@@ -180,63 +180,24 @@ pub(crate) struct SignTransitResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Non-FIPS-only key-type mappings.
-//
-// These are isolated behind function-level `#[cfg(feature = "non-fips")]` (with
-// FIPS-build stubs) so that no feature gate sits inside another function's body,
-// per the cardinal rule in AGENTS.md §4. In a FIPS build the stubs return `None`,
-// making `ed25519`/`ml-dsa-65` genuinely unreachable at compile time.
-
-/// Map an OpenSSL key `Id` to a non-FIPS transit key type (`ed25519`).
-#[cfg(feature = "non-fips")]
-fn nonfips_transit_key_type_from_pkey_id(id: openssl::pkey::Id) -> Option<&'static str> {
+/// Map an OpenSSL key `Id` to a transit key type (`ed25519`).
+fn transit_key_type_from_pkey_id(id: openssl::pkey::Id) -> Option<&'static str> {
     (id == openssl::pkey::Id::ED25519).then_some("ed25519")
 }
 
-/// FIPS-build stub: no non-FIPS key `Id` mapping exists.
-#[cfg(not(feature = "non-fips"))]
-const fn nonfips_transit_key_type_from_pkey_id(_id: openssl::pkey::Id) -> Option<&'static str> {
-    None
-}
-
-/// Map a KMIP `RecommendedCurve` to a non-FIPS transit key type (`ed25519`).
-#[cfg(feature = "non-fips")]
-fn nonfips_transit_key_type_from_curve(curve: Option<RecommendedCurve>) -> Option<&'static str> {
+/// Map a KMIP `RecommendedCurve` to a transit key type (`ed25519`).
+fn transit_key_type_from_curve(curve: Option<RecommendedCurve>) -> Option<&'static str> {
     matches!(curve, Some(RecommendedCurve::CURVEED25519)).then_some("ed25519")
 }
 
-/// FIPS-build stub: no non-FIPS curve mapping exists.
-#[cfg(not(feature = "non-fips"))]
-const fn nonfips_transit_key_type_from_curve(
-    _curve: Option<RecommendedCurve>,
-) -> Option<&'static str> {
-    None
-}
-
-/// Map a KMIP `CryptographicAlgorithm` to a non-FIPS transit key type (`ml-dsa-65`).
-#[cfg(feature = "non-fips")]
-fn nonfips_transit_key_type_from_alg(alg: Option<CryptographicAlgorithm>) -> Option<&'static str> {
+/// Map a KMIP `CryptographicAlgorithm` to a transit key type (`ml-dsa-65`).
+fn transit_key_type_from_alg(alg: Option<CryptographicAlgorithm>) -> Option<&'static str> {
     matches!(alg, Some(CryptographicAlgorithm::MLDSA_65)).then_some("ml-dsa-65")
 }
 
-/// FIPS-build stub: no non-FIPS algorithm mapping exists.
-#[cfg(not(feature = "non-fips"))]
-const fn nonfips_transit_key_type_from_alg(
-    _alg: Option<CryptographicAlgorithm>,
-) -> Option<&'static str> {
-    None
-}
-
-/// Map a Vault key type string to a non-FIPS `RecommendedCurve` (`ed25519`).
-#[cfg(feature = "non-fips")]
-fn nonfips_curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
+/// Map a Vault key type string to a `RecommendedCurve` (`ed25519`).
+fn curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
     (key_type == "ed25519").then_some(RecommendedCurve::CURVEED25519)
-}
-
-/// FIPS-build stub: no non-FIPS key type maps to a curve.
-#[cfg(not(feature = "non-fips"))]
-const fn nonfips_curve_from_key_type(_key_type: &str) -> Option<RecommendedCurve> {
-    None
 }
 
 /// Derive the Vault transit key type string from an OpenSSL `PKey<Public>`.
@@ -259,7 +220,7 @@ fn transit_key_type_from_pkey(pkey: &openssl::pkey::PKey<openssl::pkey::Public>)
             Ok(4096) => "rsa-4096",
             _ => "rsa-2048",
         },
-        other => nonfips_transit_key_type_from_pkey_id(other).unwrap_or("ecdsa-p256"),
+        other => transit_key_type_from_pkey_id(other).unwrap_or("ecdsa-p256"),
     }
 }
 
@@ -276,14 +237,14 @@ fn transit_key_type_from_attrs(attrs: &Attributes) -> &'static str {
             match curve {
                 Some(RecommendedCurve::P256) => "ecdsa-p256",
                 Some(RecommendedCurve::P384) => "ecdsa-p384",
-                other => nonfips_transit_key_type_from_curve(other).unwrap_or("ecdsa-p256"),
+                other => transit_key_type_from_curve(other).unwrap_or("ecdsa-p256"),
             }
         }
         Some(CryptographicAlgorithm::RSA) => match attrs.cryptographic_length {
             Some(4096) => "rsa-4096",
             _ => "rsa-2048",
         },
-        other => nonfips_transit_key_type_from_alg(other).unwrap_or("ecdsa-p256"),
+        other => transit_key_type_from_alg(other).unwrap_or("ecdsa-p256"),
     }
 }
 
@@ -292,18 +253,8 @@ fn transit_curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
     match key_type {
         "ecdsa-p256" => Some(RecommendedCurve::P256),
         "ecdsa-p384" => Some(RecommendedCurve::P384),
-        other => nonfips_curve_from_key_type(other),
+        other => curve_from_key_type(other),
     }
-}
-
-#[cfg(feature = "non-fips")]
-const fn nonfips_supported_transit_types_suffix() -> &'static str {
-    ", ed25519, ml-dsa-65"
-}
-
-#[cfg(not(feature = "non-fips"))]
-const fn nonfips_supported_transit_types_suffix() -> &'static str {
-    ""
 }
 
 /// Map a Vault key type string to an RSA bit count.
@@ -414,14 +365,11 @@ fn auto_rotate_disabled(value: Option<&serde_json::Value>) -> bool {
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 
-/// Create a non-FIPS-only transit key (currently ML-DSA-65).
+/// Create an ML-DSA-65 transit key.
 ///
-/// Returns `Some(response)` when `body.key_type` names a non-FIPS key type this
-/// function handles, or `None` to let the caller fall through to the
-/// FIPS-approved key types. Isolated behind a function-level `#[cfg]` so no
-/// feature gate sits inside `create_transit_key`'s body (AGENTS.md §4).
-#[cfg(feature = "non-fips")]
-async fn create_nonfips_transit_key(
+/// Returns `Some(response)` when `body.key_type` is `ml-dsa-65`, or `None` to let the
+/// caller fall through to the other key types.
+async fn create_pqc_transit_key(
     kms: &KMS,
     user: &UserId,
     name: &str,
@@ -457,20 +405,6 @@ async fn create_nonfips_transit_key(
         name.to_owned(),
         body.key_type.clone(),
     )))
-}
-
-/// FIPS-build stub: no non-FIPS transit key types exist.
-#[cfg(not(feature = "non-fips"))]
-// Not `async`: `std::future::Ready` keeps the signature awaitable by the caller without a
-// state machine, so no `unused_async` suppression is needed.
-fn create_nonfips_transit_key(
-    _kms: &KMS,
-    _user: &UserId,
-    _name: &str,
-    _body: &CreateTransitKeyRequest,
-    _tags: [&str; 1],
-) -> std::future::Ready<SpireResult<Option<Json<TransitKeyInfoWrapper>>>> {
-    std::future::ready(Ok(None))
 }
 
 /// `POST /keys/{name}` — create a new transit signing key.
@@ -602,9 +536,8 @@ async fn create_transit_key_impl(
         return Ok(key_created_response(name, body.key_type));
     }
 
-    // ML-DSA (non-FIPS only) — handled by a #[cfg]-gated free function so no
-    // feature gate sits inside this function body.
-    if let Some(resp) = create_nonfips_transit_key(&kms, &user, &name, &body, tags).await? {
+    // ML-DSA-65 transit keys use the PQC key-pair request.
+    if let Some(resp) = create_pqc_transit_key(&kms, &user, &name, &body, tags).await? {
         return Ok(resp);
     }
 
@@ -629,9 +562,8 @@ async fn create_transit_key_impl(
 
     Err(SpireApiError::BadRequest(format!(
         "unsupported transit key type '{}'. Supported: aes256-gcm96, ecdsa-p256, ecdsa-p384, \
-         rsa-2048, rsa-4096{}",
-        body.key_type,
-        nonfips_supported_transit_types_suffix()
+         rsa-2048, rsa-4096, ed25519, ml-dsa-65",
+        body.key_type
     )))
 }
 
@@ -1040,19 +972,12 @@ mod tests {
         assert_eq!(transit_curve_from_key_type("unknown"), None);
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn curve_from_key_type_maps_ed25519_in_non_fips() {
         assert_eq!(
             transit_curve_from_key_type("ed25519"),
             Some(RecommendedCurve::CURVEED25519)
         );
-    }
-
-    #[cfg(not(feature = "non-fips"))]
-    #[test]
-    fn curve_from_key_type_rejects_ed25519_in_fips() {
-        assert_eq!(transit_curve_from_key_type("ed25519"), None);
     }
 
     #[test]
@@ -1127,7 +1052,6 @@ mod tests {
         assert_eq!(transit_key_type_from_attrs(&rsa_default), "rsa-2048");
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn key_type_from_attrs_maps_non_fips_algorithms() {
         assert_eq!(

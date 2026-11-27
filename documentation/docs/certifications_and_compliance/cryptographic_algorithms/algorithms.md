@@ -268,14 +268,15 @@ The hybrid approach ensures that security is maintained even if one of the two u
 is broken: the combined shared secret remains secure as long as at least one component KEM is secure.
 
 Key generation, encapsulation and decapsulation are exposed via the KMS CLI under
-`ckms pqc` (non-FIPS builds only) using algorithm names `ml-kem-512-p256`, `ml-kem-768-p256`,
+`ckms pqc` (non-FIPS builds only, since `ConfigurableKEM` is not served by the FIPS provider) using algorithm names `ml-kem-512-p256`, `ml-kem-768-p256`,
 `ml-kem-512-curve25519`, and `ml-kem-768-curve25519`.
 
 ### OpenSSL Native PQC Algorithms
 
 Starting with OpenSSL 3.5, the Eviden KMS also provides direct support for OpenSSL-native Post-Quantum
-Cryptography algorithms standardized by NIST in August 2024. These algorithms are available in
-**non-FIPS builds only**.
+Cryptography algorithms standardized by NIST in August 2024. ML-KEM, ML-DSA, SLH-DSA and `X25519MLKEM768` are
+available in FIPS and non-FIPS builds (they are served by the OpenSSL FIPS provider 3.5.9); `X448MLKEM1024` is
+available in **non-FIPS builds only**.
 
 #### ML-KEM — Key Encapsulation Mechanism (NIST FIPS 203)
 
@@ -368,8 +369,8 @@ The `Sign` operation is used to perform digital signature operations on provided
 | ECDSA      | P-256, P-384, P-521                              | **Restricted** to curves P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
 | ECDSA      | secp256k1                                        | No                                               | ECDSA on the secp256k1 curve (RFC 6979 deterministic). Non-FIPS only.                                                     |
 | EdDSA      | Ed25519, Ed448                                   | Yes                                              | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
-| ML-DSA     | ML-DSA-44, ML-DSA-65, ML-DSA-87                  | No (non-FIPS only)                               | Lattice-based signatures. NIST [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final). Supersedes CRYSTALS-Dilithium.      |
-| SLH-DSA    | SLH-DSA-SHA2/SHAKE-128/192/256-s/f (12 variants) | No (non-FIPS only)                               | Hash-based signatures. NIST [FIPS 205](https://csrc.nist.gov/pubs/fips/205/final). Supersedes SPHINCS+.                   |
+| ML-DSA     | ML-DSA-44, ML-DSA-65, ML-DSA-87                  | Yes                                              | Lattice-based signatures. NIST [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final). Supersedes CRYSTALS-Dilithium.      |
+| SLH-DSA    | SLH-DSA-SHA2/SHAKE-128/192/256-s/f (12 variants) | Yes                                              | Hash-based signatures. NIST [FIPS 205](https://csrc.nist.gov/pubs/fips/205/final). Supersedes SPHINCS+.                   |
 
 ### Digital Signature Operations
 

@@ -81,7 +81,6 @@ fn test_hsm_proteccio_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 /// HSM-delegated `EdDSA` signing (issue #1157, "HSM delegation Track B"). Additive: exercises
 /// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms without touching any of
 /// the pre-existing ECDSA/RSA signing coverage above.
-#[cfg(feature = "non-fips")]
 #[test]
 #[ignore = "Requires Linux, Proteccio PKCS#11 library, and HSM environment"]
 fn test_hsm_proteccio_eddsa_sign_all_curves() -> HResult<()> {

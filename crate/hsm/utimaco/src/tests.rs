@@ -116,7 +116,6 @@ fn test_hsm_utimaco_multi_threaded_rsa_encrypt_decrypt_test() -> HResult<()> {
 /// only the new `CKM_EC_EDWARDS_KEY_PAIR_GEN`/`CKM_EDDSA` mechanisms. Not added to
 /// `test_hsm_utimaco_all`: see the exclusion comment on that function — EC/ECDSA-adjacent
 /// mechanisms combined with the rest of the aggregator are documented to abort the simulator.
-#[cfg(feature = "non-fips")]
 #[test]
 #[ignore = "Requires Linux, Utimaco PKCS#11 library, and HSM environment"]
 fn test_hsm_utimaco_eddsa_sign_all_curves() -> HResult<()> {

@@ -32,7 +32,6 @@ mod opaque_object;
 mod pgp;
 #[cfg(not(target_os = "windows"))]
 mod pkcs11;
-#[cfg(feature = "non-fips")]
 mod pqc;
 mod query;
 #[cfg(feature = "non-fips")]

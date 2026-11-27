@@ -2,7 +2,7 @@ use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kms_client::{KmsClient, create_private_file, kmip_2_1::requests::encrypt_request};
-use cosmian_kms_crypto::crypto::kem::unpack_kem_encapsulation;
+use cosmian_kms_crypto::crypto::pqc::unpack_kem_encapsulation;
 
 use crate::{
     actions::{console, labels::KEY_ID, shared::get_key_uid},

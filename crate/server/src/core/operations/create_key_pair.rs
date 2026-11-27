@@ -1,6 +1,5 @@
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_keygen;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::{
     hybrid_kem::create_hybrid_kem_key_pair, ml_dsa::create_ml_dsa_key_pair,
     ml_kem::create_ml_kem_key_pair, slh_dsa::create_slh_dsa_key_pair,
@@ -20,7 +19,7 @@ use cosmian_kms_server_database::reexport::{cosmian_kms_crypto::crypto::{
 use cosmian_kms_server_database::reexport::{ cosmian_kms_crypto::crypto::{
     cover_crypt::master_keys::create_master_keypair
 }};
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::{KmsRng, is_fips_build};
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::KmsRng;
 use cosmian_kms_server_database::reexport::cosmian_kms_interfaces::{AtomicOperation};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::ErrorReason,
@@ -32,8 +31,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
 };
-#[cfg(feature = "non-fips")]
-use cosmian_logger::warn;
 use cosmian_logger::{debug, info, trace};
 use uuid::Uuid;
 use crate::middlewares::UserId;
@@ -225,27 +222,6 @@ pub(crate) async fn create_key_pair(
     })
 }
 
-/// The `OpenSSL` FIPS provider is the only provider a FIPS build uses, and it has no `EdDSA`: refuse
-/// the request with a clear reason instead of an `OpenSSL` "unsupported" error.
-fn reject_eddsa_key_pair(algorithm: CryptographicAlgorithm) -> KResult<()> {
-    if is_fips_build()
-        && matches!(
-            algorithm,
-            CryptographicAlgorithm::Ed25519 | CryptographicAlgorithm::Ed448
-        )
-    {
-        kms_bail!(KmsError::Kmip21Error(
-            ErrorReason::Invalid_Field,
-            format!(
-                "CreateKeyPair: {algorithm:?} is not available in a FIPS build (the OpenSSL FIPS \
-                 provider has no EdDSA); a FIPS build can only create RSA and elliptic-curve \
-                 (EC/ECDSA/ECDH) key pairs"
-            )
-        ))
-    }
-    Ok(())
-}
-
 /// Resolve an attribute that must hold the same value on the private and the public key.
 ///
 /// KMIP 2.1 §6.1.9: Private/Public Key Attributes take precedence over Common Attributes,
@@ -290,13 +266,6 @@ fn generate_key_pair(
     request: CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,
-    #[cfg_attr(
-        not(feature = "non-fips"),
-        expect(
-            unused_variables,
-            reason = "rng is only used by the non-fips PQC generators"
-        )
-    )]
     rng: &KmsRng,
 ) -> KResult<KeyPair> {
     trace!("Internal create key pair");
@@ -347,7 +316,6 @@ fn generate_key_pair(
         ))
     };
     trace!("cryptographic_algorithm: {cryptographic_algorithm}");
-    reject_eddsa_key_pair(cryptographic_algorithm)?;
 
     // Generate the key pair based on the cryptographic algorithm.
     let key_pair = match cryptographic_algorithm {
@@ -435,75 +403,11 @@ fn generate_key_pair(
                     request.private_key_attributes,
                     request.public_key_attributes,
                 ),
-                RecommendedCurve::CURVEED25519 => {
-                    #[cfg(not(feature = "non-fips"))]
-                    // Ed25519 not allowed for ECDH nor ECDSA.
-                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
-                    {
-                        kms_bail!(KmsError::NotSupported(
-                            "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             Elliptic Curves operations in FIPS mode"
-                                .to_owned()
-                        ))
-                    }
-                    #[cfg(feature = "non-fips")]
-                    {
-                        if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
-                            || cryptographic_algorithm == CryptographicAlgorithm::ECDH
-                            || cryptographic_algorithm == CryptographicAlgorithm::EC
-                        {
-                            kms_bail!(KmsError::NotSupported(
-                                "Edwards curve can't be created for EC or ECDSA".to_owned()
-                            ))
-                        }
-                        warn!(
-                            "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             ECDH. Creating anyway."
-                        );
-                        create_ed25519_key_pair(
-                            vendor_id,
-                            private_key_uid,
-                            public_key_uid,
-                            common_attributes,
-                            request.private_key_attributes,
-                            request.public_key_attributes,
-                        )
-                    }
-                }
-                RecommendedCurve::CURVEED448 => {
-                    #[cfg(not(feature = "non-fips"))]
-                    {
-                        // Ed448 not allowed for ECDH nor ECDSA.
-                        // see NIST.SP.800-186 - Section 3.1.2 table 2.
-                        kms_bail!(KmsError::NotSupported(
-                            "An Edwards Keypair on curve 448 should not be requested to perform \
-                             Elliptic Curves operations in FIPS mode"
-                                .to_owned()
-                        ))
-                    }
-                    #[cfg(feature = "non-fips")]
-                    {
-                        if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
-                            || cryptographic_algorithm == CryptographicAlgorithm::EC
-                            || cryptographic_algorithm == CryptographicAlgorithm::ECDH
-                        {
-                            kms_bail!(KmsError::NotSupported(
-                                "Edwards curve can't be created for EC or ECDSA".to_owned()
-                            ))
-                        }
-                        warn!(
-                            "An Edwards Keypair on curve 448 should not be requested to perform \
-                             ECDH. Creating anyway."
-                        );
-                        create_ed448_key_pair(
-                            vendor_id,
-                            private_key_uid,
-                            public_key_uid,
-                            common_attributes,
-                            request.private_key_attributes,
-                            request.public_key_attributes,
-                        )
-                    }
+                RecommendedCurve::CURVEED25519 | RecommendedCurve::CURVEED448 => {
+                    // Edwards curves are for EdDSA only (NIST SP 800-186 §3.1.2 table 2).
+                    kms_bail!(KmsError::NotSupported(
+                        "Edwards curve can't be created for EC or ECDSA".to_owned()
+                    ))
                 }
 
                 other => kms_bail!(KmsError::NotSupported(format!(
@@ -553,7 +457,6 @@ fn generate_key_pair(
             request.private_key_attributes,
             request.public_key_attributes,
         ),
-        #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::MLKEM_512
         | CryptographicAlgorithm::MLKEM_768
         | CryptographicAlgorithm::MLKEM_1024 => create_ml_kem_key_pair(
@@ -568,7 +471,6 @@ fn generate_key_pair(
             },
             Some(rng),
         ),
-        #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::MLDSA_44
         | CryptographicAlgorithm::MLDSA_65
         | CryptographicAlgorithm::MLDSA_87 => create_ml_dsa_key_pair(
@@ -583,7 +485,6 @@ fn generate_key_pair(
             },
             Some(rng),
         ),
-        #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::X25519MLKEM768 | CryptographicAlgorithm::X448MLKEM1024 => {
             create_hybrid_kem_key_pair(
                 cryptographic_algorithm,
@@ -598,7 +499,6 @@ fn generate_key_pair(
                 Some(rng),
             )
         }
-        #[cfg(feature = "non-fips")]
         CryptographicAlgorithm::SLHDSA_SHA2_128s
         | CryptographicAlgorithm::SLHDSA_SHA2_128f
         | CryptographicAlgorithm::SLHDSA_SHA2_192s
@@ -681,24 +581,21 @@ pub(super) async fn spawn_generate_key_pair(
 
 #[cfg(test)]
 mod tests {
-    use cosmian_kms_server_database::reexport::{
-        cosmian_kmip::{
-            kmip_0::kmip_types::ErrorReason,
-            kmip_2_1::{
-                extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-                kmip_attributes::Attributes,
-                kmip_operations::GetAttributes,
-                kmip_types::{
-                    CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve,
-                    UniqueIdentifier, UsageLimits, UsageLimitsUnit,
-                },
-                requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+            kmip_attributes::Attributes,
+            kmip_operations::GetAttributes,
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicDomainParameters, RecommendedCurve,
+                UniqueIdentifier, UsageLimits, UsageLimitsUnit,
             },
+            requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
         },
-        cosmian_kms_crypto::crypto::is_fips_build,
     };
 
-    use super::{reject_eddsa_key_pair, resolve_shared_attribute, spawn_generate_key_pair};
+    use super::{resolve_shared_attribute, spawn_generate_key_pair};
     use crate::{
         error::KmsError, middlewares::UserId, result::KResult, tests::test_utils::test_kms,
     };
@@ -768,20 +665,6 @@ mod tests {
         assert!(matches!(
             err,
             Some(KmsError::Kmip21Error(ErrorReason::Invalid_Attribute, _))
-        ));
-    }
-
-    #[test]
-    fn eddsa_key_pair_is_refused_only_in_a_fips_build() {
-        for algorithm in [
-            CryptographicAlgorithm::Ed25519,
-            CryptographicAlgorithm::Ed448,
-        ] {
-            assert_eq!(reject_eddsa_key_pair(algorithm).is_err(), is_fips_build());
-        }
-        assert!(matches!(
-            reject_eddsa_key_pair(CryptographicAlgorithm::ECDSA),
-            Ok(())
         ));
     }
 

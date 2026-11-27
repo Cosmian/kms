@@ -27,8 +27,6 @@ use sha2::{Digest as _, Sha256};
 use tokio::runtime::Runtime;
 use zeroize::Zeroizing;
 
-#[cfg(feature = "non-fips")]
-use super::jose::jose_try_create_okp_kp;
 use super::{
     helpers::{
         HsmKeyLedger, aes_cbc_params, aes_gcm_params, create_sym_key, hsm_rsa_encrypt_variants,
@@ -37,7 +35,7 @@ use super::{
     },
     jose::{
         jose_create_sym_key, jose_rsa_oaep_decrypt_body, jose_try_create_ec_kp,
-        jose_try_create_rsa_kp,
+        jose_try_create_okp_kp, jose_try_create_rsa_kp,
     },
     output::criterion_home,
     transport::{make_wire_request, to_wire_bytes, wire_response_ok},
@@ -281,7 +279,6 @@ fn preserialized_wire_op(
 }
 
 /// Push a prepared optional op, or skip it with a notice when it cannot be serialized.
-#[cfg(feature = "non-fips")]
 fn push_op(ops: &mut Vec<PreparedLoadOp>, op: KmsCliResult<PreparedLoadOp>) {
     match op {
         Ok(op) => ops.push(op),
@@ -408,6 +405,7 @@ fn prepare_load_ops(
             eprintln!("[load] ECDSA P-256 key creation failed, skipping sign load test");
         }
 
+        push_eddsa_json_sign_op(rt, client, &mut ops);
         push_non_fips_json_sign_ops(rt, client, &mut ops);
     }
 
@@ -484,6 +482,7 @@ fn prepare_load_ops(
             )?);
         }
 
+        push_eddsa_wire_sign_op(rt, client, &mut ops);
         push_non_fips_wire_sign_ops(rt, client, &mut ops);
     }
 
@@ -539,9 +538,8 @@ fn prepare_load_ops(
     Ok(ops)
 }
 
-/// TTLV-JSON sign load ops on the non-FIPS curves (Ed25519, secp256k1).
-#[cfg(feature = "non-fips")]
-fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+/// TTLV-JSON sign load ops on the `EdDSA` curve (Ed25519) and, in non-FIPS builds, secp256k1.
+fn push_eddsa_json_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
     if let Some((_, priv_id)) = try_create_ec_kp(
         rt,
         client,
@@ -566,7 +564,11 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
     } else {
         eprintln!("[load] Ed25519 key creation failed, skipping sign load test");
     }
+}
 
+/// TTLV-JSON sign load op on secp256k1 (non-FIPS).
+#[cfg(feature = "non-fips")]
+fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
     if let Some((_, priv_id)) = try_create_ec_kp(
         rt,
         client,
@@ -595,7 +597,7 @@ fn push_non_fips_json_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
     }
 }
 
-/// FIPS build: Ed25519 and secp256k1 are not FIPS-approved, nothing to add.
+/// FIPS build: secp256k1 is not FIPS-approved, nothing to add.
 #[cfg(not(feature = "non-fips"))]
 const fn push_non_fips_json_sign_ops(
     _rt: &Runtime,
@@ -604,9 +606,8 @@ const fn push_non_fips_json_sign_ops(
 ) {
 }
 
-/// TTLV-bytes sign load ops on the non-FIPS curves (Ed25519, secp256k1).
-#[cfg(feature = "non-fips")]
-fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
+/// TTLV-bytes sign load op on the `EdDSA` curve (Ed25519).
+fn push_eddsa_wire_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
     if let Some((_, priv_id)) = try_create_ec_kp(
         rt,
         client,
@@ -627,7 +628,11 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
             ),
         );
     }
+}
 
+/// TTLV-bytes sign load op on secp256k1 (non-FIPS).
+#[cfg(feature = "non-fips")]
+fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
     if let Some((_, priv_id)) = try_create_ec_kp(
         rt,
         client,
@@ -654,7 +659,7 @@ fn push_non_fips_wire_sign_ops(rt: &Runtime, client: &KmsClient, ops: &mut Vec<P
     }
 }
 
-/// FIPS build: Ed25519 and secp256k1 are not FIPS-approved, nothing to add.
+/// FIPS build: secp256k1 is not FIPS-approved, nothing to add.
 #[cfg(not(feature = "non-fips"))]
 const fn push_non_fips_wire_sign_ops(
     _rt: &Runtime,
@@ -664,7 +669,6 @@ const fn push_non_fips_wire_sign_ops(
 }
 
 /// JOSE `EdDSA` (Ed25519) sign load op.
-#[cfg(feature = "non-fips")]
 fn push_jose_eddsa_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<PreparedLoadOp>) {
     if let Some((priv_kid, _pub_kid)) = jose_try_create_okp_kp(rt, client) {
         let jose_sign_req = JoseSignReq {
@@ -683,15 +687,6 @@ fn push_jose_eddsa_sign_op(rt: &Runtime, client: &KmsClient, ops: &mut Vec<Prepa
     } else {
         eprintln!("[load] JOSE EdDSA key creation failed, skipping JOSE sign load test");
     }
-}
-
-/// FIPS build: Ed25519 is not FIPS-approved, nothing to add.
-#[cfg(not(feature = "non-fips"))]
-const fn push_jose_eddsa_sign_op(
-    _rt: &Runtime,
-    _client: &KmsClient,
-    _ops: &mut Vec<PreparedLoadOp>,
-) {
 }
 
 /// JOSE RSA-OAEP decrypt load ops: one replayed token (CEK cache hit when the cache is on) and
@@ -1015,7 +1010,6 @@ fn prepare_hsm_load_ops(
 /// module docs in `kmip.rs`'s "HSM-RESIDENT BENCHMARKS" section for why
 /// `cryptographic_algorithm` must be set explicitly (mirrors `ckms ec sign`'s
 /// own request construction).
-#[cfg(feature = "non-fips")]
 fn push_hsm_eddsa_sign_ops(
     rt: &Runtime,
     client: &KmsClient,
@@ -1062,18 +1056,6 @@ fn push_hsm_eddsa_sign_ops(
             eprintln!("[load] HSM {label} not available, skipping HSM sign load test");
         }
     }
-}
-
-/// FIPS build: `EdDSA` is not FIPS-approved, nothing to add.
-#[cfg(not(feature = "non-fips"))]
-const fn push_hsm_eddsa_sign_ops(
-    _rt: &Runtime,
-    _client: &KmsClient,
-    _hsm_prefix: &str,
-    _ledger: &HsmKeyLedger,
-    _run_json: bool,
-    _ops: &mut Vec<PreparedLoadOp>,
-) {
 }
 
 /// Spawn `concurrency` OS threads, each with a dedicated single-threaded tokio

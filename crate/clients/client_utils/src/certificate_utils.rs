@@ -28,90 +28,69 @@ pub enum Algorithm {
     NistP256,
     NistP384,
     NistP521,
-    #[cfg(feature = "non-fips")]
     Ed25519,
-    #[cfg(feature = "non-fips")]
     Ed448,
     #[cfg(feature = "non-fips")]
     RSA1024,
     RSA2048,
     RSA3072,
     RSA4096,
-    // PQC signing algorithms (non-FIPS only)
-    #[cfg(feature = "non-fips")]
+    // PQC signing algorithms
     #[strum(serialize = "ml-dsa-44")]
     #[value(name = "ml-dsa-44")]
     MlDsa44,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "ml-dsa-65")]
     #[value(name = "ml-dsa-65")]
     MlDsa65,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "ml-dsa-87")]
     #[value(name = "ml-dsa-87")]
     MlDsa87,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-sha2-128s")]
     #[value(name = "slh-dsa-sha2-128s")]
     SlhDsaSha2128s,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-sha2-128f")]
     #[value(name = "slh-dsa-sha2-128f")]
     SlhDsaSha2128f,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-sha2-192s")]
     #[value(name = "slh-dsa-sha2-192s")]
     SlhDsaSha2192s,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-sha2-192f")]
     #[value(name = "slh-dsa-sha2-192f")]
     SlhDsaSha2192f,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-sha2-256s")]
     #[value(name = "slh-dsa-sha2-256s")]
     SlhDsaSha2256s,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-sha2-256f")]
     #[value(name = "slh-dsa-sha2-256f")]
     SlhDsaSha2256f,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-shake-128s")]
     #[value(name = "slh-dsa-shake-128s")]
     SlhDsaShake128s,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-shake-128f")]
     #[value(name = "slh-dsa-shake-128f")]
     SlhDsaShake128f,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-shake-192s")]
     #[value(name = "slh-dsa-shake-192s")]
     SlhDsaShake192s,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-shake-192f")]
     #[value(name = "slh-dsa-shake-192f")]
     SlhDsaShake192f,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-shake-256s")]
     #[value(name = "slh-dsa-shake-256s")]
     SlhDsaShake256s,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "slh-dsa-shake-256f")]
     #[value(name = "slh-dsa-shake-256f")]
     SlhDsaShake256f,
-    // ML-KEM and hybrid KEM algorithms (subject key for CA-issued certificates, non-FIPS only)
-    #[cfg(feature = "non-fips")]
+    // ML-KEM and hybrid KEM algorithms (subject key for CA-issued certificates; X448 and ConfigurableKEM are non-FIPS only)
     #[strum(serialize = "ml-kem-512")]
     #[value(name = "ml-kem-512")]
     MlKem512,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "ml-kem-768")]
     #[value(name = "ml-kem-768")]
     MlKem768,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "ml-kem-1024")]
     #[value(name = "ml-kem-1024")]
     MlKem1024,
-    #[cfg(feature = "non-fips")]
     #[strum(serialize = "x25519-ml-kem-768")]
     #[value(name = "x25519-ml-kem-768")]
     X25519MlKem768,
@@ -314,7 +293,6 @@ pub fn build_certify_request(
                         RecommendedCurve::P521,
                     );
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::Ed25519 => {
                     ec_algorithm(
                         &mut attributes,
@@ -322,7 +300,6 @@ pub fn build_certify_request(
                         RecommendedCurve::CURVEED25519,
                     );
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::Ed448 => {
                     ec_algorithm(
                         &mut attributes,
@@ -330,80 +307,61 @@ pub fn build_certify_request(
                         RecommendedCurve::CURVEED448,
                     );
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::MlDsa44 => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_44);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::MlDsa65 => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_65);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::MlDsa87 => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLDSA_87);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaSha2128s => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_128s);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaSha2128f => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_128f);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaSha2192s => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_192s);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaSha2192f => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_192f);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaSha2256s => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_256s);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaSha2256f => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHA2_256f);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaShake128s => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_128s);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaShake128f => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_128f);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaShake192s => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_192s);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaShake192f => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_192f);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaShake256s => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_256s);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::SlhDsaShake256f => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::SLHDSA_SHAKE_256f);
                 }
                 // ML-KEM and hybrid KEM — used as subject key (must be CA-signed, not self-signed)
-                #[cfg(feature = "non-fips")]
                 Algorithm::MlKem512 => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_512);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::MlKem768 => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_768);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::MlKem1024 => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::MLKEM_1024);
                 }
-                #[cfg(feature = "non-fips")]
                 Algorithm::X25519MlKem768 => {
                     pqc_algorithm(&mut attributes, CryptographicAlgorithm::X25519MLKEM768);
                 }
@@ -542,7 +500,6 @@ fn rsa_algorithm(attributes: &mut Attributes, cryptographic_length: i32) {
     attributes.object_type = Some(ObjectType::PrivateKey);
 }
 
-#[cfg(feature = "non-fips")]
 fn pqc_algorithm(attributes: &mut Attributes, cryptographic_algorithm: CryptographicAlgorithm) {
     attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
     attributes.cryptographic_length = None;

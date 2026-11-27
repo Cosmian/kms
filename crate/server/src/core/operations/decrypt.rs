@@ -477,7 +477,6 @@ fn decrypt_single(
         | KeyFormatType::Raw => {
             // Check for KEM: if the key's algorithm is ML-KEM or hybrid KEM, perform decapsulation
             // instead of standard decryption.
-            #[cfg(feature = "non-fips")]
             {
                 let key_algo = key_block
                     .cryptographic_algorithm()

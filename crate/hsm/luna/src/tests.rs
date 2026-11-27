@@ -72,7 +72,6 @@ fn test_hsm_luna_all() -> HResult<()> {
         shared::rsa_sign_all_algorithms(&slot)?;
         shared::rsa_pss_sign_all_algorithms(&slot)?;
         shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
-        #[cfg(feature = "non-fips")]
         shared::eddsa_sign_all_curves(&slot)?;
         shared::multi_threaded_rsa(&slot, RsaOaepDigest::SHA256, cfg.threads)?;
         shared::concurrent_sign_does_not_degrade(&slot)?;

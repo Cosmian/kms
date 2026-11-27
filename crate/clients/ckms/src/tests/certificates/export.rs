@@ -34,6 +34,7 @@ use uuid::Uuid;
 
 #[cfg(feature = "non-fips")]
 use crate::tests::certificates::certify::create_self_signed_cert;
+#[cfg(feature = "non-fips")]
 use crate::tests::utils::owner_config;
 #[cfg(feature = "non-fips")]
 use crate::tests::{

@@ -1,7 +1,7 @@
 /**
  * FIPS-mode UI gating E2E tests.
  *
- * Features that do not exist in a FIPS build (OpenPGP, PQC, FPE, Anonymize, Covercrypt)
+ * Features that do not exist in a FIPS build (OpenPGP, FPE, Anonymize, Covercrypt)
  * must neither appear in the sidebar nor be reachable by typing their URL. MAC (HMAC) is
  * available in FIPS mode and must stay reachable.
  *
@@ -12,7 +12,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { UI_READY_TIMEOUT, gotoAndWait } from "./helpers";
 
 /** Top-level sidebar keys that are not available in FIPS mode. */
-const NON_FIPS_MENUS = ["pgp", "pqc", "fpe", "tokenize", "cc"];
+const NON_FIPS_MENUS = ["pgp", "fpe", "tokenize", "cc"];
 
 async function forceFipsMode(page: Page, fipsMode: boolean): Promise<void> {
     await page.route("**/server-info", async (route) => {
@@ -37,10 +37,18 @@ test.describe("FIPS mode UI gating", () => {
 
     test("non-FIPS pages are not reachable by URL when the server is in FIPS mode", async ({ page }) => {
         await forceFipsMode(page, true);
-        for (const path of ["pgp/encrypt", "pgp/keys/create", "pqc/keys/create", "fpe/encrypt", "tokenize/hash"]) {
+        for (const path of ["pgp/encrypt", "pgp/keys/create", "fpe/encrypt", "tokenize/hash"]) {
             await gotoAndWait(page, `/ui/${path}`);
             await expect(page).toHaveURL(/\/ui\/locate$/, { timeout: UI_READY_TIMEOUT });
         }
+    });
+
+    test("PQC pages available in FIPS mode", async ({ page }) => {
+        await forceFipsMode(page, true);
+        await gotoAndWait(page, "/ui/locate");
+        await expect(topMenu(page, "pqc")).toBeVisible({ timeout: UI_READY_TIMEOUT });
+        await gotoAndWait(page, "/ui/pqc/keys/create");
+        await expect(page).toHaveURL(/\/ui\/pqc\/keys\/create$/);
     });
 
     test("MAC pages stay available when the server is in FIPS mode", async ({ page }) => {

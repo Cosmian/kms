@@ -12,9 +12,9 @@ use std::{
 
 use test_kms_server::{AUTH0_TOKEN, start_default_test_kms_server_with_jwt_auth};
 
-use crate::tests::utils::{
-    ckms_bin, force_save_kms_cli_config, load_client_config, recover_cmd_logs,
-};
+#[cfg(all(feature = "non-fips", not(target_os = "windows")))]
+use crate::tests::utils::force_save_kms_cli_config;
+use crate::tests::utils::{ckms_bin, load_client_config, recover_cmd_logs};
 
 // ---------------------------------------------------------------------------
 // Ensure the PKCS#11 cdylib is built before tests run
@@ -188,12 +188,18 @@ async fn test_pkcs11_verify_fails_without_server() {
     ]);
 
     let output = recover_cmd_logs(&mut cmd);
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(
         !output.status.success(),
         "ckms pkcs11 verify should FAIL when no KMS server is running, but it succeeded.\n\
-         stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
+         stdout: {stdout}"
+    );
+    // The failure must come from the unreachable server, not from the library failing to start
+    // (a FIPS build once failed `C_GetInterfaceList` with `CKR_FUNCTION_FAILED`).
+    assert!(
+        stdout.contains("[C_GetInterfaceList/C_GetInterface] OK"),
+        "the library did not get past interface negotiation.\nstdout: {stdout}"
     );
 }
 
@@ -201,6 +207,11 @@ async fn test_pkcs11_verify_fails_without_server() {
 /// every run, because the probe deliberately does not engineer the full
 /// precondition sequence for that function (`plan.md` Decision 5/"dynamic"
 /// philosophy: report the real `CK_RV` rather than perfectly staging state).
+// The capabilities command also builds a KMS client in the CLI process, which loads the FIPS
+// module there: the FIPS-built library under test (its own OpenSSL copy) then cannot initialize
+// the same module and fails `C_GetInterfaceList` with `CKR_FUNCTION_FAILED` ("library has no
+// ciphers"). `verify` runs without a CLI client, hence works.
+#[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
 const KNOWN_FAILING_SHALLOW_PROBES: &[&str] = &[
     // Rejected: the minimal template omitted mandatory attributes.
@@ -220,6 +231,7 @@ const KNOWN_FAILING_SHALLOW_PROBES: &[&str] = &[
 /// Verify that `ckms pkcs11 capabilities` runs every FIPS-eligible mechanism
 /// (AES/RSA/ECDSA) end to end against a JWT-authenticated server and reports
 /// them all as passing.
+#[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
 #[tokio::test]
 async fn test_pkcs11_capabilities_with_jwt_auth() {
@@ -309,13 +321,10 @@ async fn test_pkcs11_capabilities_with_jwt_auth() {
         }
     }
 
-    #[cfg(feature = "non-fips")]
-    {
-        assert!(
-            stdout.contains("CKM_EDDSA"),
-            "Expected a report row for CKM_EDDSA in a non-fips build.\nstdout: {stdout}"
-        );
-    }
+    assert!(
+        stdout.contains("CKM_EDDSA"),
+        "Expected a report row for CKM_EDDSA.\nstdout: {stdout}"
+    );
 
     // Every C_* function is reported exactly once, split between the legacy
     // v2.40 ABI and v3.x extension tables.
@@ -333,6 +342,7 @@ async fn test_pkcs11_capabilities_with_jwt_auth() {
 /// skipped, N not implemented, N excluded (N total)."`) and asserts the
 /// reported total matches the known universe size for that section, per
 /// `plan.md` Decision 10's count-reconciliation invariant.
+#[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
 fn assert_section_total(stdout: &str, section_title: &str, expected_total: usize) {
     let section_start = stdout
@@ -362,6 +372,7 @@ fn assert_section_total(stdout: &str, section_title: &str, expected_total: usize
 /// Counts the number of *distinct* `CKM_*` mechanism names appearing as report
 /// rows in the "PKCS#11 mechanism coverage" section and asserts it matches the
 /// known 442-mechanism universe (`ALL_MECHANISMS` in `pkcs11_capabilities.rs`).
+#[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
 fn assert_mechanism_names_covered(stdout: &str, expected_names: usize) {
     let section_start = stdout

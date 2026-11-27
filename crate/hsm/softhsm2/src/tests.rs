@@ -70,7 +70,6 @@ fn test_hsm_softhsm2_all() -> HResult<()> {
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::rsa_pss_sign_all_algorithms(&slot)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
-    #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     // SoftHSM2 2.6.1 rejects CKM_RSA_PKCS_OAEP with explicit mechanism parameters
     // (CKR_ARGUMENTS_BAD/return code 7) regardless of the OAEP hash/MGF digest

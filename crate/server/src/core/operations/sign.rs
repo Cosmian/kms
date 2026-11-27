@@ -282,7 +282,6 @@ fn sign_message(owm: &ObjectWithMetadata, request: &Sign) -> KResult<Vec<u8>> {
     trace!("OpenSSL Private Key instantiated before signing");
 
     // ML-DSA / SLH-DSA: handle PQC signing before the classic dispatch
-    #[cfg(feature = "non-fips")]
     {
         if owm
             .resolve_key_algorithm()

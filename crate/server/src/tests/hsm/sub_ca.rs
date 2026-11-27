@@ -569,7 +569,6 @@ pub(super) async fn test_hsm_sub_ca() -> KResult<()> {
 }
 
 /// Sub-CA with an Ed25519 HSM key, signed by an RSA HSM root.
-#[cfg(feature = "non-fips")]
 pub(super) async fn test_hsm_sub_ca_ed25519() -> KResult<()> {
     let owner_name = Uuid::new_v4().to_string();
     let owner = UserId::from(owner_name.as_str());
