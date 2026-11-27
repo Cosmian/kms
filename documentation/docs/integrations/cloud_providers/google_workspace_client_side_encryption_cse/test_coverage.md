@@ -27,7 +27,7 @@ JWKS is loaded in memory. Endpoints are tested through the real Actix HTTP stack
 | `GET /google_cse/certs` | JWK content, `kid` equals the one in `create_jwt` tokens, signature verified by the production signed-token validation, failure when the public key is destroyed | none |
 | `POST /google_cse/wrap` and `/unwrap` | Round trip, `google_email` over `email`, case-insensitive email match, email mismatch, missing email, unknown signing key, garbage token, wrong `resource_name`, bad base64, truncated and tampered wrapped keys | none |
 | `POST /google_cse/digest` | Hash equals `compute_resource_key_hash` for an empty perimeter, migration `verifier` authorization token, missing email | none |
-| `POST /google_cse/privilegedwrap` and `/privilegedunwrap` | Round trip, Drive audience check, wrong `resource_name`, migration token issued by another KACLS, real loopback HTTP request from the new KACLS to the original KACLS | none |
+| `POST /google_cse/privilegedwrap` and `/privilegedunwrap` | Ordinary IdP token refused (also on `privilegedprivatekeydecrypt`), round trip for a `google_cse_privileged_users` email (case-insensitive), Drive audience check, migration token refused on a wrong `kacls_url`, a mismatched `resource_name` or on `privilegedwrap`, real loopback HTTP request from the new KACLS to the original KACLS | none |
 | `POST /google_cse/privatekeysign` | `SHA256withRSA`, `SHA512withRSA`, `SHA256withRSA/PSS`, `SHA512withRSA/PSS` with PKCS#1 and PKCS#8 keys (FIPS and non-FIPS), SHA-1 variants (non-FIPS only), `rsa_pss_salt_length`, unknown algorithm, bad digest | none |
 | `POST /google_cse/privatekeydecrypt` | PKCS#1 v1.5 and OAEP (SHA-1, SHA-256, SHA-512) with PKCS#1 and PKCS#8 keys, OAEP label, unknown algorithm, bad ciphertext, bad base64 | The end-to-end create-pair flow with a PKCS#12 certificate (`pkcs12_certify`) runs only with `--features non-fips` |
 | `POST /google_cse/privilegedprivatekeydecrypt` | Same algorithm matrix (PKCS#1 key), SPKI hash mismatch, unknown SPKI hash algorithm | PKCS#8 wrapped keys are not accepted by this endpoint |
@@ -41,7 +41,7 @@ JWKS is loaded in memory. Endpoints are tested through the real Actix HTTP stack
 | --- | --- | --- |
 | Authorization token: signature, `kid`, issuer, audience, `crit`, nested JWT, empty and malformed tokens | Covered | none |
 | Role, `resource_name` and `kacls_url` checks, audience post-check | Covered by unit tests of the extracted helpers | The helpers are compiled out of the `insecure` feature; the wiring in release builds is not run end to end |
-| Authentication token signature | Covered through the production signed-token validation on the `/certs` key | In test builds the authentication token is decoded without signature check, so HTTP tests do not verify it |
+| Authentication token signature | Covered through the production signed-token validation on the `/certs` key, which verifies the migration tokens signed by OpenSSL (`create_jwt`) | In test builds the authentication token is decoded without signature check, so HTTP tests do not verify it |
 | Token expiry (`exp`) | none | Disabled in test builds |
 | Real Google-issued tokens and Google JWKS | `routes::google_cse::jwt::tests::test_wrap_auth` | Needs the CI credentials; the only ignored server test |
 
@@ -93,6 +93,8 @@ Deliberate differences from the reference:
 - `wrapprivatekey` and `delegate` are not implemented, so they are not tested.
 - `digest` and `rewrap` always validate the authorization token, even when
   `google_cse_disable_tokens_validation` is set.
+- `google_cse_disable_tokens_validation` is refused at startup by a KMS built without the `insecure` feature: the
+  tests that set it use a test build.
 - Production-handler `rewrap` success cannot use loopback offline because its SSRF guard rejects it; injected-client migration logic is covered.
 - Real Google tokens are validated by one test, which runs only in the upstream CI.
 - In a FIPS build the SHA-1 signatures, the `key-pairs create` tests, the `ckms` binary tests and

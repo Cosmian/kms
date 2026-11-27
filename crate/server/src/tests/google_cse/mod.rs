@@ -47,7 +47,7 @@ use crate::{
     middlewares::{JwksManager, JwtConfig},
     result::{KResult, KResultHelper},
     routes::google_cse::{
-        GoogleCseConfig,
+        GoogleCseConfig, PrivilegedCaller,
         operations::{
             GOOGLE_CSE_ID, PrivateKeyDecryptRequest, PrivateKeyDecryptResponse,
             PrivateKeySignRequest, PrivateKeySignResponse, PrivilegedPrivateKeyDecryptRequest,
@@ -55,9 +55,9 @@ use crate::{
             PrivilegedWrapRequest, PrivilegedWrapResponse, UnwrapRequest, UnwrapResponse,
             WrapRequest, WrapResponse, compute_resource_key_hash, create_jwt,
         },
-        validate_cse_authentication_token,
+        validate_cse_privileged_token,
     },
-    tests::test_utils::{self, post_2_1},
+    tests::test_utils::{self, https_clap_config_opts, post_2_1, test_app_with_google_cse},
 };
 
 mod crypto_paths;
@@ -75,6 +75,24 @@ pub(crate) mod utils;
 pub(crate) const DUMMY_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.\
      eyJhdWQiOiJ1bmNoZWNrZWQiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJpc3MiOiJ1bmNoZWNrZWQifQ.\
      dW5jaGVja2Vk";
+
+/// The privileged user of [`DUMMY_TOKEN`].
+const DUMMY_TOKEN_USER: &str = "user@example.com";
+
+/// A test application whose `google_cse_privileged_users` lists the user of [`DUMMY_TOKEN`].
+pub(crate) async fn privileged_test_app()
+-> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    let mut clap_config = https_clap_config_opts(Some("http://127.0.0.1/".to_owned()));
+    clap_config.google_cse_config.privileged_users = Some(vec![DUMMY_TOKEN_USER.to_owned()]);
+    let google_cse_config = utils::google_cse_auth(None)
+        .await
+        .expect("cannot setup Google CSE auth");
+    Box::pin(test_app_with_google_cse(
+        clap_config,
+        Some(google_cse_config),
+    ))
+    .await
+}
 
 /// Read all bytes from a file
 pub(crate) fn read_bytes_from_file(file: &impl AsRef<Path>) -> KResult<Vec<u8>> {
@@ -456,7 +474,7 @@ async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
 async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = privileged_test_app().await;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -501,7 +519,7 @@ async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
+    let app = privileged_test_app().await;
 
     let path = std::env::current_dir()?;
     println!("The current directory is {}", path.display());
@@ -625,7 +643,8 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
     };
 
     let cse_config = GoogleCseConfig {
-        authentication: Arc::new(vec![JwtConfig {
+        authentication: Arc::new(vec![]),
+        migration_authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: kacls_url.to_owned(),
             issuer_namespace: None,
             jwt_audience: Some(vec!["kacls-migration".to_owned()]),
@@ -635,20 +654,20 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
         authorization: HashMap::new(),
     };
 
-    // Validate custom JWT
-    let result = validate_cse_authentication_token(
+    // Validate custom JWT: a KACLS migration token for this KACLS and resource
+    let result = validate_cse_privileged_token(
         &jwt_token,
         &Some(cse_config),
         kacls_url,
-        "admin",
-        Some(resource_name),
+        &[],
+        Some(&resource_name),
     )
     .await;
 
-    assert!(
-        result.is_ok(),
-        "Expected JWT validation to succeed, but got error: {:?}",
-        result.err()
+    assert_eq!(
+        result.unwrap(),
+        PrivilegedCaller::Migration,
+        "Expected a KACLS migration caller"
     );
 
     Ok(())
@@ -713,7 +732,8 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
 
     // Configure multiple allowed audiences, including the correct one
     let cse_config = GoogleCseConfig {
-        authentication: Arc::new(vec![JwtConfig {
+        authentication: Arc::new(vec![]),
+        migration_authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: kacls_url.to_owned(),
             issuer_namespace: None,
             jwt_audience: Some(vec!["wrong-aud".to_owned(), "kacls-migration".to_owned()]),
@@ -723,25 +743,27 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
         authorization: HashMap::new(),
     };
 
-    // Validate custom JWT
-    let result = validate_cse_authentication_token(
+    // Validate custom JWT: a KACLS migration token for this KACLS and resource
+    let result = validate_cse_privileged_token(
         &jwt_token,
         &Some(cse_config),
         kacls_url,
-        "admin",
-        Some(resource_name),
+        &[],
+        Some(&resource_name),
     )
     .await;
 
-    assert!(
-        result.is_ok(),
-        "Expected JWT validation to succeed with any-of audience match"
+    assert_eq!(
+        result.unwrap(),
+        PrivilegedCaller::Migration,
+        "Expected a KACLS migration caller"
     );
 
     Ok(())
 }
 
 #[tokio::test]
+#[cfg(not(feature = "insecure"))]
 async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
     log_init(None);
 
@@ -797,31 +819,18 @@ async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
         accept_invalid_certs: false,
     };
 
-    // Configure multiple allowed audiences, none matching token aud
-    let cse_config = GoogleCseConfig {
-        authentication: Arc::new(vec![JwtConfig {
-            jwt_issuer_uri: kacls_url.to_owned(),
-            issuer_namespace: None,
-            jwt_audience: Some(vec!["wrong1".to_owned(), "wrong2".to_owned()]),
-            jwks: Arc::new(jwks_manager),
-            accept_spiffe_subject: false,
-        }]),
-        authorization: HashMap::new(),
+    // A config whose audiences do not include the token's is refused by the production
+    // (signed) validation: authentication-token validation skips it in test builds.
+    let wrong_audience_config = JwtConfig {
+        jwt_issuer_uri: kacls_url.to_owned(),
+        issuer_namespace: None,
+        jwt_audience: Some(vec!["wrong1".to_owned(), "wrong2".to_owned()]),
+        jwks: Arc::new(jwks_manager),
+        accept_spiffe_subject: false,
     };
 
-    // Validate custom JWT should fail
-    let result = validate_cse_authentication_token(
-        &jwt_token,
-        &Some(cse_config),
-        kacls_url,
-        "admin",
-        Some(resource_name),
-    )
-    .await;
-
-    assert!(
-        result.is_err(),
-        "Expected JWT validation to fail without audience match"
-    );
+    wrong_audience_config
+        .validate_signed_token(&jwt_token, false)
+        .unwrap_err();
     Ok(())
 }

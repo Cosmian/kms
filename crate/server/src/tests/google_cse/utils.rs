@@ -96,6 +96,7 @@ pub(crate) fn sign_test_jwt<T: Serialize>(kid: &str, claims: &T, rsa: &Rsa<Priva
 pub(crate) fn local_google_cse_config(rsa: &Rsa<Private>) -> GoogleCseConfig {
     let jwks = build_jwks_manager_with_key(LOCAL_KID, rsa);
     GoogleCseConfig {
+        migration_authentication: Arc::new(vec![]),
         authentication: Arc::new(vec![JwtConfig {
             jwt_issuer_uri: LOCAL_AUTHN_ISSUER.to_owned(),
             issuer_namespace: None,
@@ -312,6 +313,38 @@ pub(crate) fn migration_authz_token(
     )
 }
 
+/// Claims of a KACLS-to-KACLS migration authentication token, as minted by `create_jwt`.
+#[derive(Serialize)]
+struct MigrationAuthnClaims<'a> {
+    iss: &'a str,
+    aud: &'a str,
+    kacls_url: &'a str,
+    resource_name: &'a str,
+    iat: usize,
+    exp: usize,
+}
+
+/// A KACLS migration authentication token minted for the KACLS `kacls_url` and `resource_name`.
+pub(crate) fn migration_authn_token(
+    rsa: &Rsa<Private>,
+    kacls_url: &str,
+    resource_name: &str,
+) -> String {
+    let (iat, exp) = now_and_expiry();
+    sign_test_jwt(
+        LOCAL_KID,
+        &MigrationAuthnClaims {
+            iss: LOCAL_AUTHN_ISSUER,
+            aud: "kacls-migration",
+            kacls_url,
+            resource_name,
+            iat,
+            exp,
+        },
+        rsa,
+    )
+}
+
 // Default Google JWT issuer URI
 pub(crate) const GOOGLE_JWT_ISSUER_URI: &str = "https://accounts.google.com";
 
@@ -380,6 +413,7 @@ pub(crate) async fn google_cse_auth(
 
     Ok(GoogleCseConfig {
         authentication: vec![jwt_config].into(),
+        migration_authentication: Arc::new(vec![]),
         authorization: google_cse::jwt_authorization_config(&jwks_manager),
     })
 }

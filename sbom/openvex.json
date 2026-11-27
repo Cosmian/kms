@@ -3,8 +3,8 @@
   "@id": "https://package.cosmian.com/kms/openvex/cosmian-kms",
   "author": "Cosmian KMS security team <tech@cosmian.com>",
   "role": "Document Creator",
-  "timestamp": "2026-11-23T14:09:08Z",
-  "version": 4,
+  "timestamp": "2026-11-25T12:48:00Z",
+  "version": 5,
   "tooling": "Hand-curated; checked by `mise run sbom:validate`. Bump version and timestamp on every change.",
   "statements": [
     {
@@ -15,7 +15,7 @@
       "products": [{ "@id": "pkg:cargo/rsa@0.9.10" }],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "Scope: rsa 0.9.10 as compiled into the Cosmian KMS server and ckms (all variants). rsa is reached only through jsonwebtoken (JWT RS* signature verification) and, in non-FIPS builds, through pgp 0.21 for OpenPGP encryption, signature verification and key parsing; all of these are public-key operations. Every RSA private-key operation (PKESK decryption, signing, key generation) is performed by OpenSSL (crate/crypto/src/crypto/openpgp/mod.rs: component_session_key, OpensslRsaSigner), so the Marvin timing side channel in rsa private-key decryption is never executed."
+      "impact_statement": "Scope: rsa 0.9.10 as compiled into the Cosmian KMS server and ckms (all variants). In the server, rsa is reached only through jsonwebtoken (JWT RS* signature verification) and, in non-FIPS builds, through pgp 0.21 for OpenPGP encryption, signature verification and key parsing; all of these are public-key operations. Every RSA private-key operation of the server (OpenPGP PKESK decryption, signing, key generation in crate/crypto/src/crypto/openpgp/mod.rs: component_session_key, OpensslRsaSigner; Google CSE KACLS migration tokens in crate/server/src/routes/google_cse/operations.rs: create_jwt) is performed by OpenSSL, so the Marvin timing side channel in rsa private-key decryption is never executed by the server. The ckms command-line client signs the RS256 JWT of a Gmail service account with rsa (crate/clients/clap/src/actions/google/gmail_client/token.rs) using a local key file: it exposes no remote timing oracle."
     },
     {
       "vulnerability": { "name": "RUSTSEC-2026-0387" },

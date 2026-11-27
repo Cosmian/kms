@@ -341,6 +341,7 @@ mod tests {
                     "[kacls_url_2]".to_owned(),
                 ]),
                 migration_key: None,
+                privileged_users: Some(vec!["[admin_email_1]".to_owned()]),
             },
             azure_ekm_config: AzureEkmConfig {
                 enable: false,
@@ -473,6 +474,7 @@ ui_oidc_logout_url = "[logout url]"
 google_cse_enable = false
 google_cse_disable_tokens_validation = false
 google_cse_incoming_url_whitelist = ["[kacls_url_1]", "[kacls_url_2]"]
+google_cse_privileged_users = ["[admin_email_1]"]
 
 [azure_ekm_config]
 azure_ekm_enable = false
