@@ -580,7 +580,7 @@ mod tests {
             "Minor version must precede patch version"
         );
         db_ensure!(
-            "5.29.0".parse::<Version>()? < "6.0.0".parse::<Version>()?,
+            "4.29.0".parse::<Version>()? < "5.0.0".parse::<Version>()?,
             "Major version ordering failed"
         );
         Ok(())
