@@ -3283,6 +3283,7 @@ mod tests {
 
         let mut config = https_clap_config();
         config.tls = crate::config::TlsConfig::default();
+        config.http.hostname = "127.0.0.1".to_owned();
         config.socket_server.start = false;
         config.ui_config.enable = true;
         config.ui_config.index_html_folder = Some(ui_dir.path().to_string_lossy().into_owned());

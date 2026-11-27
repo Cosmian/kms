@@ -1205,20 +1205,19 @@ mod tests {
                 .service(logout),
         )
         .await;
-        let request = |uri: &str| {
-            test::TestRequest::get()
-                .uri(uri)
+        let request = |req: test::TestRequest, uri: &str| {
+            req.uri(uri)
                 .insert_header((header::COOKIE, cookie.clone()))
                 .to_request()
         };
 
-        let resp = test::call_service(&app, request("/whoami")).await;
+        let resp = test::call_service(&app, request(test::TestRequest::get(), "/whoami")).await;
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp = test::call_service(&app, request("/logout")).await;
+        let resp = test::call_service(&app, request(test::TestRequest::post(), "/logout")).await;
         assert_eq!(resp.status(), StatusCode::FOUND);
 
         // A copy of the cookie kept by the browser (or an attacker) is dead server-side.
-        let resp = test::call_service(&app, request("/whoami")).await;
+        let resp = test::call_service(&app, request(test::TestRequest::get(), "/whoami")).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
