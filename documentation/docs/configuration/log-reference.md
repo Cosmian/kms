@@ -233,7 +233,6 @@ Crate path: `crate/server`
 | `trace` | `All certificates have been sorted` | `src/core/operations/validate.rs` | — | ×2 in this file |
 | `trace` | `Already an unwrapped key` | `src/core/kms/other_kms_methods.rs` | — | — |
 | `trace` | `Attribute: Object type {:?} does not have attributes (nor key block)` | `src/core/operations/attributes/add.rs` | — | — |
-| `trace` | `authentication token validated for {authentication_email}` | `src/routes/google_cse/jwt.rs` | `authentication_email` — … | — |
 | `trace` | `authorization token validated successfully` | `src/routes/google_cse/jwt.rs` | — | — |
 | `trace` | `build_pkcs12_for_private_key: {} with format: {:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `building chain from leaf certificate:  {}` | `src/core/operations/export_get.rs` | — | — |
@@ -262,7 +261,7 @@ Crate path: `crate/server`
 | `trace` | `ECB encrypt: plaintext_len={}, padding_method={padding_method:?}` | `src/core/operations/encrypt.rs` | `padding_method` — … | — |
 | `trace` | `effective RSA CP -> padding={:?} hashing={:?} mgf1={:?} label_len={}` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `encrypt result: ciphertext_len={}, tag_len={}` | `src/core/operations/encrypt.rs` | — | — |
-| `trace` | `entering` | `src/routes/google_cse/jwt.rs` | — | — |
+| `trace` | `entering` | `src/routes/google_cse/jwt.rs` | — | ×2 in this file |
 | `trace` | `Entering get_key_and_cipher` | `src/core/operations/encrypt.rs` | — | — |
 | `trace` | `Entering import KMIP operation: uid={}, object_type={}` | `src/core/operations/import.rs` | — | — |
 | `trace` | `export_get_private_key: {} for operation: {}` | `src/core/operations/export_get.rs` | — | — |
@@ -816,6 +815,8 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping and are not bound to their database row. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `info` | `bound {bound} stored objects to their row` | `src/core/wrapping/wrap.rs` | `bound` | - |
 | `warn` | `SECURITY: audit logging is disabled: KMIP (HTTP and socket) and provider requests are not recorded. Enable it with --audit-enable (KMS_AUDIT_ENABLE) for production deployments.` | `src/start_kms_server.rs` | - | Enable audit logging for production deployments, see [Audit logging](./audit-logs.md). |
+| `debug` | `KACLS migration token validation skipped: {e}` | `src/routes/google_cse/jwt.rs` | `e` | - |
+| `trace` | `authentication token validated for {email}` | `src/routes/google_cse/jwt.rs` | `email` | - |
 
 ### `cosmian_kms_server_database`
 
