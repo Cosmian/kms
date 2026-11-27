@@ -64,13 +64,21 @@ wait_for_port 127.0.0.1 8443 60
 KMS_PID=$!
 wait_for_port 127.0.0.1 9998 120
 
-CKMS_CONF="${REPO_ROOT}/test_data/configs/client/pqc_tls_owner.toml"
+ADMIN_CKMS_CONF=""
 ckms_approle() {
-  "$(get_ckms_bin)" --conf-path "${CKMS_CONF}" vault approle "$@" \
+  "$(get_ckms_bin)" --conf-path "${ADMIN_CKMS_CONF}" --accept-invalid-certs vault approle "$@" \
     --auth-verifier-url "https://localhost:8443" \
-    --admin-user admin --admin-password change_me --accept-invalid-certs
+    --admin-user admin --admin-password change_me
 }
 
+CURRENT_TEST_STEP="AppRole client config"
+ADMIN_CKMS_CONF="${WORK_DIR}/ckms-admin.toml"
+cp "${REPO_ROOT}/test_data/configs/client/pem_cert.toml" "${ADMIN_CKMS_CONF}" ||
+  print_error "cannot copy the mTLS client config fixture"
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" server_url '"https://localhost:9998"'
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" accept_invalid_certs "true"
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" tls_client_pem_cert_path "\"${TEST_DATA}/certs/admin.crt\""
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" tls_client_pem_key_path "\"${TEST_DATA}/certs/admin.key\""
 ROLE_NAME="sops-test"
 ckms_approle create-role "${ROLE_NAME}" --token-ttl 3600 --token-policies default >/dev/null
 ROLE_ID="$(ckms_approle get-role-id "${ROLE_NAME}" | tr -d '[:space:]')"
@@ -81,6 +89,10 @@ LOGIN="$(curl -sf --insecure -X POST \
 VAULT_TOKEN="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["auth"]["client_token"])' "${LOGIN}")"
 export VAULT_ADDR="https://localhost:9998" VAULT_TOKEN
 export VAULT_CACERT="${TEST_DATA}/certs/ca.crt"
+
+CURRENT_TEST_STEP="KMS API-token client config"
+CKMS_CONF="$(spire_write_api_token_conf "${VAULT_ADDR}" "${ADMIN_CKMS_CONF}")"
+export CKMS_CONF
 
 kms_transit() {
   local method="$1" path="$2" body="${3:-}"
@@ -123,7 +135,6 @@ popd >/dev/null
 print_header "SOPS OpenPGP source"
 mkdir -p "${WORK_DIR}/pgp"
 PKCS11_LIB="$(get_cosmian_pkcs11_lib)"
-export CKMS_CONF
 CURRENT_TEST_STEP="OpenPGP RSA key creation"
 PGP_RSA_JSON="$(
   COSMIAN_KMS_CLI_FORMAT=json "$(get_ckms_bin)" rsa keys create \

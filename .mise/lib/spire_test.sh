@@ -142,16 +142,29 @@ SPIRE_API_TOKEN_ID="spire-api-token"
 # Prints the path of the token conf (written next to the admin conf, removed with it).
 # Like spire_build_auth_verifier, call it as `VAR="$(...)"`: failures exit the subshell.
 spire_write_api_token_conf() {
-  local url="$1" admin_conf="$2" token token_conf
+  local url="$1" admin_conf="$2" repo_root token token_conf
   token="$(openssl rand -base64 32 | tr -d '\n')"
   "$(get_ckms_bin)" --conf-path "${admin_conf}" --accept-invalid-certs \
     sym keys create --bytes-b64 "${token}" "${SPIRE_API_TOKEN_ID}" >&2 ||
     print_error "cannot create the API-token key '${SPIRE_API_TOKEN_ID}'"
+  repo_root="$(get_repo_root)"
   token_conf="$(dirname "${admin_conf}")/ckms-api-token.toml"
-  cat >"${token_conf}" <<EOF
-[http_config]
-server_url = "${url}"
-access_token = "${token}"
-EOF
+  cp "${repo_root}/test_data/configs/client/spire_api_token.toml" "${token_conf}" ||
+    print_error "cannot copy the SPIRE API-token client config fixture"
+  _spire_set_toml_value "${token_conf}" server_url "\"${url}\""
+  _spire_set_toml_value "${token_conf}" access_token "\"${token}\""
   echo "${token_conf}"
+}
+
+_spire_set_toml_value() {
+  local file="$1" key="$2" value="$3" temp_file
+  temp_file="${file}.tmp"
+  grep -qE "^${key} *= " "${file}" ||
+    print_error "key '${key}' missing from client config fixture ${file}"
+  if ! sed -E "s|^(${key} *= *).*|\1${value}|" "${file}" >"${temp_file}"; then
+    print_error "cannot update '${key}' in client config ${file}"
+  fi
+  if ! mv "${temp_file}" "${file}"; then
+    print_error "cannot replace client config ${file}"
+  fi
 }
