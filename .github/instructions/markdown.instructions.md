@@ -17,8 +17,8 @@ applyTo: '**/*.md'
 
 ## CHANGELOG files
 
-- Branch-specific changelogs live in `CHANGELOG/<branch-name>.md` (slashes replaced by underscores) and are ephemeral.
-- The root `CHANGELOG.md` is hand-maintained at release time: `/kms-changelog consolidate <version>` merges every branch file into the `## [X.Y.Z]` entry and deletes them. Do not edit it otherwise.
+- Branch-specific changelogs live in `CHANGELOG/<branch-name>.md` (slashes replaced by underscores) and are archived into `CHANGELOG/<X.Y.Z>/` at release time.
+- The root `CHANGELOG.md` is hand-maintained at release time: `/kms-changelog consolidate <version>` merges every branch file into the `## [X.Y.Z]` entry and archives them into `CHANGELOG/<X.Y.Z>/`. Do not edit it otherwise.
 - Use the format produced by `/kms-changelog`: section headings (Features, Bug Fixes, …), bullet points per change.
 
 ## Skill and instruction documents (`.github/skills/`, `.github/instructions/`)

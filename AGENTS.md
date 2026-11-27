@@ -355,7 +355,7 @@ Run after each task, when diff > 200 lines, or before marking the last todo "com
 
 Run **`/kms-changelog`** — it reads the branch name, determines the correct file path, and guides the entry format.
 
-> Branch files (`CHANGELOG/<branch-name-with-slashes-as-underscores>.md`) are ephemeral. At release time `/kms-changelog consolidate <version>` merges them into the hand-maintained root `CHANGELOG.md` and deletes them. Outside a release, **do not edit the root `CHANGELOG.md`**.
+> Branch files (`CHANGELOG/<branch-name-with-slashes-as-underscores>.md`) are working documents. At release time `/kms-changelog consolidate <version>` merges them into the hand-maintained root `CHANGELOG.md` and archives them into `CHANGELOG/<version>/`. Outside a release, **do not edit the root `CHANGELOG.md`**.
 > The `Security` section of a branch file or of `CHANGELOG.md` lists only issues present in the previous release; a vulnerability introduced and fixed within the same release is never listed. Every Security bullet cites a `COSMIAN-YYYY-NNN` id that exists in `SECURITY.md`; anything without one goes to Bug Fixes, Build or Features.
 
 Write an entry for any user- or operator-observable change (feature, bug fix, security, behavioural change, breaking change). Skip internal-only changes (formatting, CI, test-only refactors). When in doubt, write one. See the `/kms-changelog` skill for the full criteria and entry format.
@@ -402,7 +402,7 @@ Prompts matching `.github/copilot-instructions.md` § Automatic skill routing ru
 | `/kms-test-config` | When a test/script needs a KMS or Auth Verifier config — reuse or add a complete fixture in `test_data`; `audit` finds partial inline configs |
 | `/kms-db-compat [base-ref]` | When a change touches `crate/server_database/`, `*.sql` or persisted KMIP types — upgrade/downgrade (N-1) verdict per change, SQLite proof in both directions |
 | `/ckms-subcommand-test` | **After adding any new `ckms` subcommand or flag (mandatory: no clap action without `ckms` binary tests)** — generates test file, covers happy path + errors + CO-gating, registers module, runs `cargo test -p ckms --features non-fips` |
-| `/kms-changelog` | Writing the branch CHANGELOG entry; `/kms-changelog consolidate <version>` at release time merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, then deletes them |
+| `/kms-changelog` | Writing the branch CHANGELOG entry; `/kms-changelog consolidate <version>` at release time merges `CHANGELOG/*.md` into the root `CHANGELOG.md` entry, then archives them into `CHANGELOG/<version>/` |
 | `/openapi-endpoint` | When adding a new REST endpoint (full rule 4.2 flow) |
 | `/threat-model` | Full STRIDE-A threat model or incremental update |
 | `/code-quality [path]` | Full code quality audit — duplication, patterns, Clippy, CI |

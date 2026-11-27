@@ -112,14 +112,14 @@ Invoke `/kms-release-notes <version>` (substitute the actual semver).
 This creates or updates the `## [<version>]` entry in the root `CHANGELOG.md`,
 then runs `/kms-changelog consolidate <version>` to merge the optional `Unreleased`
 notes for this release and the `CHANGELOG/*.md` entries. Consolidation verifies
-coverage before deleting the branch files. Review the entry before proceeding:
+coverage before archiving the branch files. Review the entry before proceeding:
 
 - All Breaking Changes are documented with a migration guide.
 - Security section is present if any security fix was merged.
 - No operator-visible change is missing.
 - Every Security item concerns an issue present in the previous release (nothing introduced and fixed within this release).
 - Every Security bullet cites a `COSMIAN-YYYY-NNN` id listed in `SECURITY.md`.
-- `CHANGELOG/` holds no remaining branch file.
+- `CHANGELOG/` holds no top-level branch file (all archived in `CHANGELOG/<version>/`).
 
 ## Step 10 — Go / No-Go Report
 

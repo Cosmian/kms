@@ -1,6 +1,6 @@
 ---
 name: kms-changelog
-description: 'Create or update the branch CHANGELOG entry, or consolidate all CHANGELOG/*.md branch files into the root CHANGELOG.md release entry and delete them. Use when writing a changelog entry for this branch or when preparing a release.'
+description: 'Create or update the branch CHANGELOG entry, or consolidate all CHANGELOG/*.md branch files into the root CHANGELOG.md release entry and archive them. Use when writing a changelog entry for this branch or when preparing a release.'
 ---
 
 # KMS Changelog
@@ -10,12 +10,13 @@ Two modes:
 | Mode | Command | Output |
 |------|---------|--------|
 | **Branch entry** (default) | `/kms-changelog` | Create or append to `CHANGELOG/<branch>.md` |
-| **Consolidate** (release time) | `/kms-changelog consolidate <X.Y.Z>` | Merge every `CHANGELOG/*.md` into the `## [X.Y.Z]` entry of the root `CHANGELOG.md`, then delete the branch files |
+| **Consolidate** (release time) | `/kms-changelog consolidate <X.Y.Z>` | Merge every `CHANGELOG/*.md` into the `## [X.Y.Z]` entry of the root `CHANGELOG.md`, then move the branch files to `CHANGELOG/<X.Y.Z>/` |
 
 ## Important Notes
 
-- Branch changelogs live in `CHANGELOG/<branch-name>.md` (replace `/` with `_`). They are **ephemeral working
-  documents**: every one is consumed and deleted by the consolidate mode at release time.
+- Branch changelogs live in `CHANGELOG/<branch-name>.md` (replace `/` with `_`). They are **working
+  documents** consumed at release time by the consolidate mode and archived into `CHANGELOG/<X.Y.Z>/`. Archived files
+  are never edited afterwards; `CHANGELOG/*.md` (top level only) is the set of unreleased branch files.
 - The root `CHANGELOG.md` is **hand-maintained at release time by the consolidate mode** (or `/kms-release-notes`,
   which delegates to it). Outside a release, never edit it.
 - **Security entries describe issues present in the previous release only.** `CHANGELOG/*.md` files and the root
@@ -159,7 +160,7 @@ ls CHANGELOG/*.md
 git log --oneline $(git describe --tags --abbrev=0)..HEAD
 ```
 
-Read **every** `CHANGELOG/*.md` file in full. In the root `CHANGELOG.md`, read any existing `## [Unreleased]` section and any draft for `X.Y.Z`. Keep a checklist of these sources; each must be accounted for before deleting anything. Use the `git log` PR numbers to link items and to spot merged work that has no branch file (add a bullet from the commit title only, and say so in the final report).
+Read **every** `CHANGELOG/*.md` file in full. In the root `CHANGELOG.md`, read any existing `## [Unreleased]` section and any draft for `X.Y.Z`. Keep a checklist of these sources; each must be accounted for before archiving. Use the `git log` PR numbers to link items and to spot merged work that has no branch file (add a bullet from the commit title only, and say so in the final report).
 
 ## Step C2 — Summarize and regroup
 
@@ -202,27 +203,27 @@ and list in the final report the ones that look like real vulnerabilities, so th
 
 In `CHANGELOG.md`, merge into the existing draft for `X.Y.Z`, preserving its notes and deduplicating overlaps. If there is no draft, insert `## [X.Y.Z] - YYYY-MM-DD` above the latest published release and below `## [Unreleased]` if present. Do not create an `Unreleased` heading or edit older release entries.
 
-## Step C5 — Verify coverage, then delete
+## Step C5 — Verify coverage, then archive
 
 1. Walk the checklist from Step C1: every breaking change, security item, feature and fix for this release appears in the new entry, including notes merged from the draft and `Unreleased`. After coverage and the security cross-check pass, remove only the notes carried forward from `Unreleased`; leave its heading and any remaining notes intact.
-2. Find references to the files about to be deleted and repoint them to the root entry (`CHANGELOG.md`, heading
-   `[X.Y.Z]`):
+2. Find references to the files about to be archived and repoint them to `CHANGELOG/X.Y.Z/<file>.md`:
 
    ```bash
    grep -rn "CHANGELOG/" --include=*.md --include=*.toml --include=*.yml . | grep -v "^./CHANGELOG"
    ```
 
    Keep generic mentions of the `CHANGELOG/<branch>.md` convention (CONTRIBUTING.md, skills, instructions).
-3. Delete the consolidated branch files (`CHANGELOG/.gitignore` is tracked and keeps the directory):
+3. Archive the consolidated branch files:
 
    ```bash
-   rm CHANGELOG/*.md
+   mkdir -p CHANGELOG/X.Y.Z
+   git mv CHANGELOG/*.md CHANGELOG/X.Y.Z/
    ```
 
-   Never delete when step 1 found a gap, when the Security cross-check failed, or when the user has not run the
-   consolidation on the branch that will be released. Deleted files stay in git history.
+   Never archive when step 1 found a gap, when the Security cross-check failed, or when the user has not run the
+   consolidation on the branch that will be released.
 
 ## Step C6 — Report
 
-List: source files merged, items taken from commit titles only, ADR/doc references repointed, and any claim left
+List: source files merged and archived, items taken from commit titles only, ADR/doc references repointed, and any claim left
 unverified.

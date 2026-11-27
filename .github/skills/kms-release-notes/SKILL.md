@@ -129,4 +129,4 @@ The root `CHANGELOG.md` is hand-maintained at release time.
 Run `/kms-changelog consolidate <version>`. It reads every `CHANGELOG/*.md`
 branch file, summarizes and regroups them into the themed subsections of the
 entry written above (each item exactly once), cross-checks `SECURITY.md`, and
-deletes the branch files. Do not duplicate that procedure here.
+archives the branch files into `CHANGELOG/<version>/`. Do not duplicate that procedure here.
