@@ -1,9 +1,16 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    time::Duration,
+};
 
 use cosmian_kms_client::{
     KmsClient, KmsClientConfig,
     http_client::HttpClientConfig,
-    kmip_2_1::{kmip_types::CryptographicAlgorithm, requests::symmetric_key_create_request},
+    kmip_2_1::{
+        kmip_operations::Encrypt,
+        kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
+        requests::symmetric_key_create_request,
+    },
 };
 use test_kms_server::start_default_test_kms_server;
 use tokio::net::UnixListener;
@@ -17,7 +24,7 @@ use crate::{
         key_management_service_server::KeyManagementServiceServer,
     },
     peer::allowed_peers,
-    service::KmsPluginService,
+    service::{DecryptionKeyPolicy, KmsPluginService},
 };
 
 /// Start a `KmsPluginService` gRPC server on a temp Unix socket and return
@@ -28,7 +35,7 @@ use crate::{
 )]
 async fn start_plugin_on_tmp_socket(
     kms_url: &str,
-    wrapping_key_uid: String,
+    decryption_key_policy: DecryptionKeyPolicy,
     allowed_peer_uids: Vec<u32>,
 ) -> (
     KeyManagementServiceClient<Channel>,
@@ -50,7 +57,7 @@ async fn start_plugin_on_tmp_socket(
     })
     .expect("KmsClient should build");
 
-    let service = KmsPluginService::new(kms_client, wrapping_key_uid);
+    let service = KmsPluginService::new(kms_client, decryption_key_policy);
     let listener = UnixListener::bind(&socket_path).expect("bind unix socket");
     let incoming = allowed_peers(listener, allowed_peer_uids);
 
@@ -122,7 +129,7 @@ async fn test_grpc_encrypt_decrypt_roundtrip() {
     let ctx = start_default_test_kms_server().await;
     let kms_url = ctx.owner_client_config.http_config.server_url.clone();
 
-    // Create the KEK on the KMS using the test context client.
+    // Create the current and retained KEKs on the KMS using the test context client.
     let kms_client = ctx.get_owner_client();
     let create_request = symmetric_key_create_request(
         "cosmian",
@@ -134,12 +141,23 @@ async fn test_grpc_encrypt_decrypt_roundtrip() {
         None,
     )
     .expect("create request");
-    let create_resp = kms_client.create(create_request).await.expect("create KEK");
-    let kek_uid = create_resp.unique_identifier.to_string();
+    let old_kek_uid = kms_client
+        .create(create_request.clone())
+        .await
+        .expect("create retained KEK")
+        .unique_identifier
+        .to_string();
+    let kek_uid = kms_client
+        .create(create_request)
+        .await
+        .expect("create current KEK")
+        .unique_identifier
+        .to_string();
 
     // Start the gRPC plugin server pointing at the same KMS.
+    let policy = DecryptionKeyPolicy::new(kek_uid.clone(), BTreeSet::from([old_kek_uid.clone()]));
     let (mut plugin_client, socket_path, server_handle) =
-        start_plugin_on_tmp_socket(&kms_url, kek_uid.clone(), vec![current_uid()]).await;
+        start_plugin_on_tmp_socket(&kms_url, policy, vec![current_uid()]).await;
 
     // ── Status ────────────────────────────────────────────────────────────
     let status = plugin_client
@@ -185,7 +203,39 @@ async fn test_grpc_encrypt_decrypt_roundtrip() {
 
     assert_eq!(dec_resp.plaintext, dek, "decrypted DEK must match original");
 
-    // ── Key-id mismatch is rejected ───────────────────────────────────────
+    // ── Retained KEKs continue to decrypt data after rotation ──────────────
+    let old_dek = b"old-kek-dek-0123456789ABCDEF".to_vec();
+    let old_encrypted = kms_client
+        .encrypt(Encrypt {
+            unique_identifier: Some(UniqueIdentifier::TextString(old_kek_uid.clone())),
+            data: Some(old_dek.clone().into()),
+            ..Default::default()
+        })
+        .await
+        .expect("encrypt with retained KEK");
+    let mut old_annotations = HashMap::new();
+    if let Some(iv) = old_encrypted.i_v_counter_nonce {
+        old_annotations.insert("iv.k8s-kms.cosmian.com".to_owned(), iv.to_vec());
+    }
+    if let Some(tag) = old_encrypted.authenticated_encryption_tag {
+        old_annotations.insert("aead-tag.k8s-kms.cosmian.com".to_owned(), tag.to_vec());
+    }
+    let old_decrypted = plugin_client
+        .decrypt(DecryptRequest {
+            ciphertext: old_encrypted
+                .data
+                .expect("retained-key ciphertext")
+                .to_vec(),
+            uid: "test-uid-old-dek".to_owned(),
+            key_id: old_kek_uid,
+            annotations: old_annotations,
+        })
+        .await
+        .expect("retained KEK must remain decryptable")
+        .into_inner();
+    assert_eq!(old_decrypted.plaintext, old_dek);
+
+    // ── Unconfigured key IDs are rejected by the plugin over its socket ────
     let bad_dec = plugin_client
         .decrypt(DecryptRequest {
             ciphertext: b"garbage".to_vec(),
@@ -193,8 +243,9 @@ async fn test_grpc_encrypt_decrypt_roundtrip() {
             key_id: "wrong-key-id".to_owned(),
             annotations: HashMap::new(),
         })
-        .await;
-    assert!(bad_dec.is_err(), "wrong key_id must be rejected");
+        .await
+        .expect_err("unconfigured key ID must be rejected");
+    assert_eq!(bad_dec.code(), tonic::Code::PermissionDenied);
 
     // Cleanup
     server_handle.abort();
@@ -211,7 +262,7 @@ async fn test_grpc_rejects_peer_not_in_allowed_peer_uids() {
 
     let (mut plugin_client, socket_path, server_handle) = start_plugin_on_tmp_socket(
         &kms_url,
-        "any-kek".to_owned(),
+        DecryptionKeyPolicy::new("any-kek".to_owned(), BTreeSet::new()),
         vec![current_uid().wrapping_add(1)],
     )
     .await;

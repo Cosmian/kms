@@ -5,7 +5,10 @@
 //!   kms.cosmian.com/secret-uids: "<uid1>:<filename1>,<uid2>:<filename2>"
 //!   kms.cosmian.com/secrets-dir: "/var/run/cosmian-secrets"  (optional)
 
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use axum::{Json, Router, extract::State, routing::post};
 use axum_server::tls_rustls::RustlsConfig;
@@ -14,7 +17,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{info, warn};
 
-use crate::{config::WebhookConfig, error::OperatorError};
+use crate::{
+    config::{OperatorConfig, WebhookConfig},
+    error::OperatorError,
+};
 
 const ANNO_INJECT: &str = "kms.cosmian.com/inject";
 const ANNO_SECRET_UIDS: &str = "kms.cosmian.com/secret-uids";
@@ -32,6 +38,8 @@ struct AdmissionReview {
 #[derive(Debug, Deserialize)]
 struct AdmissionRequest {
     uid: String,
+    #[serde(default)]
+    namespace: String,
     object: Value,
 }
 
@@ -63,18 +71,19 @@ struct WebhookState {
     /// embedded in the Pod spec as a literal value.
     kms_api_token_secret_ref: Option<(String, String)>,
     injector_image: String,
+    allowed_uids_by_namespace: BTreeMap<String, BTreeSet<String>>,
 }
 
-pub async fn run(
-    config: &WebhookConfig,
-    kms_url: &str,
-    api_token_secret_ref: Option<(&str, &str)>,
-) -> Result<(), OperatorError> {
+pub async fn run(config: &OperatorConfig) -> Result<(), OperatorError> {
     let state = Arc::new(WebhookState {
-        kms_server_url: kms_url.to_owned(),
-        kms_api_token_secret_ref: api_token_secret_ref
-            .map(|(name, key)| (name.to_owned(), key.to_owned())),
-        injector_image: config.injector_image.clone(),
+        kms_server_url: config.kms.server_url.clone(),
+        kms_api_token_secret_ref: config
+            .kms
+            .api_token_secret_ref
+            .as_ref()
+            .map(|secret_ref| (secret_ref.name.clone(), secret_ref.key.clone())),
+        injector_image: config.webhook.injector_image.clone(),
+        allowed_uids_by_namespace: config.allowed_uids_by_namespace.clone(),
     });
 
     let app = Router::new()
@@ -82,10 +91,10 @@ pub async fn run(
         .route("/healthz", axum::routing::get(|| async { "ok" }))
         .with_state(state);
 
-    let tls = load_or_generate_tls(config).await?;
-    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.port));
+    let tls = load_or_generate_tls(&config.webhook).await?;
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.webhook.port));
     info!(
-        port = config.port,
+        port = config.webhook.port,
         "starting admission webhook HTTPS server"
     );
     axum_server::bind_rustls(addr, tls)
@@ -106,7 +115,7 @@ async fn mutate_handler(
         .to_owned();
     let api_version = body.api_version.clone();
     let resp = body.request.map_or_else(
-        || allow_response(&api_version, &uid),
+        || deny_response(&api_version, &uid, "admission request is missing"),
         |req| match mutate(&req, &state) {
             Ok(r) => r,
             Err(e) => {
@@ -169,6 +178,32 @@ fn mutate(
                 "{ANNO_INJECT}=true but {ANNO_SECRET_UIDS} is missing"
             ))
         })?;
+
+    for entry in secret_uids_raw
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        let (kms_uid, _) = crate::parse_uid_entry(entry)?;
+        if crate::controller::check_secret_access(
+            &state.allowed_uids_by_namespace,
+            &req.namespace,
+            kms_uid,
+        )
+        .is_err()
+        {
+            let message = format!(
+                "KMS UID '{kms_uid}' is not allowlisted for namespace '{}'",
+                req.namespace
+            );
+            warn!(
+                namespace = %req.namespace,
+                kms_uid,
+                "pod injection denied by namespace UID allowlist"
+            );
+            return Ok(deny_response("admission.k8s.io/v1", &req.uid, &message));
+        }
+    }
 
     let secrets_dir = annotations
         .and_then(|a| a.get(ANNO_SECRETS_DIR))
@@ -334,9 +369,14 @@ async fn generate_self_signed_tls() -> Result<RustlsConfig, OperatorError> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
     use serde_json::{Value, json};
 
-    use super::{ANNO_SECRETS_DIR, DEFAULT_SECRETS_DIR, WebhookState, build_patches};
+    use super::{
+        ANNO_INJECT, ANNO_SECRETS_DIR, AdmissionRequest, AdmissionReview, DEFAULT_SECRETS_DIR,
+        WebhookState, build_patches, mutate_handler,
+    };
 
     fn make_state(with_token_secret: bool) -> WebhookState {
         WebhookState {
@@ -347,7 +387,121 @@ mod tests {
                 None
             },
             injector_image: "cosmian/kms-injector:latest".to_owned(),
+            allowed_uids_by_namespace: BTreeMap::from([(
+                "team-a".to_owned(),
+                BTreeSet::from(["uid1".to_owned(), "uid2".to_owned()]),
+            )]),
         }
+    }
+
+    fn make_request(namespace: &str, secret_uids: &str) -> super::AdmissionRequest {
+        super::AdmissionRequest {
+            uid: "request-uid".to_owned(),
+            namespace: namespace.to_owned(),
+            object: json!({
+                "metadata": {
+                    "annotations": {
+                        "kms.cosmian.com/inject": "true",
+                        "kms.cosmian.com/secret-uids": secret_uids
+                    }
+                },
+                "spec": { "containers": [] }
+            }),
+        }
+    }
+
+    #[test]
+    fn injection_rejects_uid_not_allowlisted_for_pod_namespace() {
+        let response = super::mutate(
+            &make_request("team-b", "uid1:secret.txt"),
+            &make_state(false),
+        )
+        .expect("policy rejection should be an admission response");
+
+        assert!(!response.response.allowed);
+        assert!(response.response.patch.is_none());
+    }
+
+    #[test]
+    fn injection_rejects_all_uids_when_any_uid_is_not_allowlisted() {
+        let response = super::mutate(
+            &make_request("team-a", "uid1:allowed.txt,uid-outside:secret.txt"),
+            &make_state(false),
+        )
+        .expect("policy rejection should be an admission response");
+
+        assert!(!response.response.allowed);
+        assert!(response.response.patch.is_none());
+    }
+
+    #[test]
+    fn injection_rejects_missing_pod_namespace() {
+        let response = super::mutate(&make_request("", "uid1:secret.txt"), &make_state(false))
+            .expect("policy rejection should be an admission response");
+
+        assert!(!response.response.allowed);
+        assert!(response.response.patch.is_none());
+    }
+
+    #[test]
+    fn injection_rejects_request_without_namespace_field() {
+        let request: AdmissionRequest = serde_json::from_value(json!({
+            "uid": "request-uid",
+            "object": {
+                "metadata": {
+                    "annotations": {
+                        "kms.cosmian.com/inject": "true",
+                        "kms.cosmian.com/secret-uids": "uid1:secret.txt"
+                    }
+                },
+                "spec": { "containers": [] }
+            }
+        }))
+        .expect("missing namespace should deserialize as empty");
+        let response =
+            super::mutate(&request, &make_state(false)).expect("policy denial should be returned");
+
+        assert!(!response.response.allowed);
+        assert!(response.response.patch.is_none());
+    }
+
+    #[test]
+    fn injection_allows_uid_allowlisted_for_pod_namespace() {
+        let response = super::mutate(
+            &make_request("team-a", "uid1:secret.txt"),
+            &make_state(false),
+        )
+        .expect("allowlisted UID should produce an admission response");
+
+        assert!(response.response.allowed);
+        assert!(response.response.patch.is_some());
+    }
+
+    #[tokio::test]
+    async fn malformed_injection_is_denied_instead_of_passed_through() {
+        let response = mutate_handler(
+            axum::extract::State(std::sync::Arc::new(make_state(false))),
+            axum::Json(AdmissionReview {
+                api_version: "admission.k8s.io/v1".to_owned(),
+                request: Some(AdmissionRequest {
+                    uid: "request-uid".to_owned(),
+                    namespace: "team-a".to_owned(),
+                    object: json!({
+                        "metadata": {
+                            "annotations": {
+                                ANNO_INJECT: "true"
+                            }
+                        },
+                        "spec": { "containers": [] }
+                    }),
+                }),
+            }),
+        )
+        .await
+        .0;
+
+        assert!(!response.response.allowed);
+        assert!(response.response.status.is_some());
     }
 
     /// Returns the init-container `Value` from the patches list.

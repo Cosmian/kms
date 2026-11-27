@@ -4,8 +4,10 @@ use std::os::unix::fs::PermissionsExt as _;
 use clap::Parser;
 use cosmian_kms_client::{KmsClient, KmsClientConfig, http_client::HttpClientConfig};
 use cosmian_kms_k8s_plugin::{
-    config::PluginConfig, kmsv2::key_management_service_server::KeyManagementServiceServer,
-    peer::allowed_peers, service::KmsPluginService,
+    config::PluginConfig,
+    kmsv2::key_management_service_server::KeyManagementServiceServer,
+    peer::allowed_peers,
+    service::{DecryptionKeyPolicy, KmsPluginService},
 };
 use tokio::net::UnixListener;
 use tonic::transport::Server;
@@ -75,7 +77,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..KmsClientConfig::default()
     })?;
 
-    let service = KmsPluginService::new(kms_client, settings.wrapping_key_uid);
+    let decryption_key_policy = DecryptionKeyPolicy::new(
+        settings.wrapping_key_uid,
+        settings.allowed_decryption_key_ids,
+    );
+    let service = KmsPluginService::new(kms_client, decryption_key_policy);
 
     // Ensure socket directory exists.
     let socket_path = settings.socket_path;

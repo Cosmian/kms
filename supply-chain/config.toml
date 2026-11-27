@@ -773,13 +773,33 @@ criteria = "safe-to-deploy"
 version = "4.2.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.kube]]
+version = "4.2.1"
+criteria = "safe-to-deploy"
+notes = "Required by the Kubernetes CSI provider and operator integrations — unaudited, pending review"
+
 [[exemptions.kube-client]]
+version = "4.2.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.kube-client]]
+version = "4.2.1"
+criteria = "safe-to-deploy"
+notes = "Required by the Kubernetes CSI provider and operator integrations — unaudited, pending review"
+
+[[exemptions.kube-core]]
 version = "4.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.kube-core]]
 version = "4.2.1"
 criteria = "safe-to-deploy"
+notes = "Required by the Kubernetes CSI provider and operator integrations — unaudited, pending review"
+
+[[exemptions.kube-derive]]
+version = "4.2.1"
+criteria = "safe-to-deploy"
+notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual audit, tracked as backlog per issue #1265"
 
 [[exemptions.kube-derive]]
 version = "4.2.1"
@@ -789,6 +809,11 @@ notes = "priority: build-time code (sys/proc-macro/build.rs) — needs manual au
 [[exemptions.kube-runtime]]
 version = "4.2.1"
 criteria = "safe-to-deploy"
+
+[[exemptions.kube-runtime]]
+version = "4.2.1"
+criteria = "safe-to-deploy"
+notes = "Required by the Kubernetes CSI provider and operator integrations — unaudited, pending review"
 
 [[exemptions.language-tags]]
 version = "0.3.2"

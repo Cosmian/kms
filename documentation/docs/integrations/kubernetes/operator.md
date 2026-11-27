@@ -144,6 +144,12 @@ must verify it belongs to the intended `KMSSecret` and either add the matching o
 delete it after backing up any unrelated data so the operator can recreate it. Kubernetes also
 garbage-collects the managed Secret when its owning `KMSSecret` is deleted.
 
+For Pods with `kms.cosmian.com/inject: "true"`, the admission webhook applies the same
+`allowed_uids_by_namespace` check to every UID in `kms.cosmian.com/secret-uids` for the Pod's
+namespace (taken from the admission request) and denies the Pod if parsing fails or any UID is
+not allowed. Configure `api_token_secret_ref` with a namespace-local Secret holding a KMS token
+restricted to that namespace's allowlisted UIDs.
+
 ---
 
 ## `KMSSecret` CRD reference

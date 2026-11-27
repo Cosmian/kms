@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use cosmian_kms_client::{
     KmsClient,
@@ -34,18 +34,41 @@ const ANNOTATION_AEAD_TAG: &str = "aead-tag.k8s-kms.cosmian.com";
 /// construction time via `wrapping_key_uid`.
 pub struct KmsPluginService {
     client: KmsClient,
-    wrapping_key_uid: String,
+    decryption_key_policy: DecryptionKeyPolicy,
+}
+
+/// KEK UIDs that kube-apiserver is permitted to use for decrypting stored data.
+pub struct DecryptionKeyPolicy {
+    current_key_uid: String,
+    allowed_decryption_key_ids: BTreeSet<String>,
+}
+
+impl DecryptionKeyPolicy {
+    /// Create a policy that always permits the current KEK and explicitly listed older KEKs.
+    #[must_use]
+    pub const fn new(
+        current_key_uid: String,
+        allowed_decryption_key_ids: BTreeSet<String>,
+    ) -> Self {
+        Self {
+            current_key_uid,
+            allowed_decryption_key_ids,
+        }
+    }
+
+    fn allows(&self, key_uid: &str) -> bool {
+        key_uid == self.current_key_uid || self.allowed_decryption_key_ids.contains(key_uid)
+    }
 }
 
 impl KmsPluginService {
-    /// Create a new service backed by `client`, using `wrapping_key_uid` as the
-    /// KEK for all wrap/unwrap operations.
+    /// Create a service backed by `client` and the configured KEK decryption policy.
     // KmsClient wraps a reqwest::Client which is not const-constructible.
     #[must_use]
-    pub const fn new(client: KmsClient, wrapping_key_uid: String) -> Self {
+    pub const fn new(client: KmsClient, decryption_key_policy: DecryptionKeyPolicy) -> Self {
         Self {
             client,
-            wrapping_key_uid,
+            decryption_key_policy,
         }
     }
 }
@@ -64,9 +87,9 @@ impl KeyManagementService for KmsPluginService {
         let reply = StatusResponse {
             version: "v2".to_owned(),
             healthz: "ok".to_owned(),
-            key_id: self.wrapping_key_uid.clone(),
+            key_id: self.decryption_key_policy.current_key_uid.clone(),
         };
-        info!(key_id = %self.wrapping_key_uid, "Status polled");
+        info!(key_id = %self.decryption_key_policy.current_key_uid, "Status polled");
         Ok(Response::new(reply))
     }
 
@@ -84,7 +107,9 @@ impl KeyManagementService for KmsPluginService {
         debug!(uid = %req.uid, "Encrypt request received");
 
         let kmip_request = Encrypt {
-            unique_identifier: Some(UniqueIdentifier::TextString(self.wrapping_key_uid.clone())),
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                self.decryption_key_policy.current_key_uid.clone(),
+            )),
             data: Some(req.plaintext.into()),
             ..Default::default()
         };
@@ -107,11 +132,15 @@ impl KeyManagementService for KmsPluginService {
             annotations.insert(ANNOTATION_AEAD_TAG.to_owned(), tag.to_vec());
         }
 
-        info!(uid = %req.uid, key_id = %self.wrapping_key_uid, "DEK wrapped successfully");
+        info!(
+            uid = %req.uid,
+            key_id = %self.decryption_key_policy.current_key_uid,
+            "DEK wrapped successfully"
+        );
 
         Ok(Response::new(EncryptResponse {
             ciphertext: ciphertext.to_vec(),
-            key_id: self.wrapping_key_uid.clone(),
+            key_id: self.decryption_key_policy.current_key_uid.clone(),
             annotations,
         }))
     }
@@ -126,6 +155,11 @@ impl KeyManagementService for KmsPluginService {
     ) -> Result<Response<DecryptResponse>, Status> {
         let req = request.into_inner();
         debug!(uid = %req.uid, key_id = %req.key_id, "Decrypt request received");
+        if !self.decryption_key_policy.allows(&req.key_id) {
+            return Err(Status::permission_denied(
+                "key_id is not an allowed current or retained KEK",
+            ));
+        }
 
         let iv = req.annotations.get(ANNOTATION_IV).cloned();
         let tag = req.annotations.get(ANNOTATION_AEAD_TAG).cloned();
@@ -177,6 +211,13 @@ mod tests {
         .expect("client should build")
     }
 
+    fn key_policy(current: &str, previous: &[&str]) -> DecryptionKeyPolicy {
+        DecryptionKeyPolicy::new(
+            current.to_owned(),
+            previous.iter().map(|uid| (*uid).to_owned()).collect(),
+        )
+    }
+
     /// Verify that Decrypt uses `req.key_id` (not `wrapping_key_uid`) so that
     /// secrets encrypted with an old KEK remain decryptable after key rotation.
     /// When `req.key_id` differs from `wrapping_key_uid` the call must still
@@ -184,7 +225,10 @@ mod tests {
     #[tokio::test]
     async fn test_decrypt_uses_request_key_id() {
         // Simulate post-rotation: plugin is configured with a new key …
-        let svc = KmsPluginService::new(make_test_client(), "new-key-uid".to_owned());
+        let svc = KmsPluginService::new(
+            make_test_client(),
+            key_policy("new-key-uid", &["old-key-uid"]),
+        );
 
         // … but the secret in etcd was encrypted with the old key.
         let req = Request::new(DecryptRequest {
@@ -211,7 +255,7 @@ mod tests {
     #[tokio::test]
     async fn test_status_returns_correct_fields() {
         let uid = "my-wrapping-key-uid".to_owned();
-        let svc = KmsPluginService::new(make_test_client(), uid.clone());
+        let svc = KmsPluginService::new(make_test_client(), key_policy(&uid, &[]));
 
         let resp = svc
             .status(Request::new(StatusRequest {}))
@@ -223,18 +267,27 @@ mod tests {
         assert_eq!(inner.healthz, "ok");
         assert_eq!(inner.key_id, uid);
     }
+
+    #[test]
+    fn decryption_policy_allows_current_and_retained_keys_only() {
+        let policy = key_policy("current-key", &["old-key"]);
+
+        assert!(policy.allows("current-key"));
+        assert!(policy.allows("old-key"));
+        assert!(!policy.allows("unconfigured-key"));
+    }
 }
 
 #[cfg(test)]
 mod characterization_tests {
     //! Characterization tests for `KmsPluginService::new` and the Encrypt entry point.
 
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
 
     use cosmian_kms_client::{KmsClient, KmsClientConfig, http_client::HttpClientConfig};
     use tonic::{Code, Request};
 
-    use super::KmsPluginService;
+    use super::{DecryptionKeyPolicy, KmsPluginService};
     use crate::kmsv2::{
         DecryptRequest, EncryptRequest, StatusRequest,
         key_management_service_server::KeyManagementService,
@@ -249,7 +302,10 @@ mod characterization_tests {
             ..KmsClientConfig::default()
         })
         .unwrap();
-        KmsPluginService::new(client, wrapping_key_uid.to_owned())
+        KmsPluginService::new(
+            client,
+            DecryptionKeyPolicy::new(wrapping_key_uid.to_owned(), BTreeSet::new()),
+        )
     }
 
     #[tokio::test]
@@ -282,11 +338,25 @@ mod characterization_tests {
             .decrypt(Request::new(DecryptRequest {
                 ciphertext: vec![1, 2, 3],
                 uid: "uid".to_owned(),
-                key_id: "kek-0".to_owned(),
+                key_id: "kek-1".to_owned(),
                 annotations: HashMap::new(),
             }))
             .await
             .unwrap_err();
         assert_eq!(status.code(), Code::Internal);
+    }
+
+    #[tokio::test]
+    async fn characterization_plugin_service_rejects_unconfigured_decryption_key() {
+        let status = service("kek-1")
+            .decrypt(Request::new(DecryptRequest {
+                ciphertext: vec![1, 2, 3],
+                uid: "uid".to_owned(),
+                key_id: "unconfigured-key".to_owned(),
+                annotations: HashMap::new(),
+            }))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), Code::PermissionDenied);
     }
 }

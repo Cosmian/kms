@@ -175,6 +175,12 @@ cosmian_kms:
   # UID of the AES-256-GCM wrapping key (KEK) stored in the KMS
   wrapping_key_uid: "YOUR_KEK_UID"
 
+  # Older KEK UIDs that still have ciphertext in etcd
+  allowed_decryption_key_ids: []
+
+  # owner_only (0600) or owner_and_group (0660)
+  socket_access: owner_only
+
   # Unix socket path exposed to the kube-apiserver
   socket_path: "/var/run/kubernetes-kms-plugin/kms.sock"
 
@@ -200,12 +206,18 @@ The plugin reads the kernel peer credentials (`SO_PEERCRED`) of every connection
 and disconnects peers whose UID is not in `allowed_peer_uids`, logging
 `rejected KMS plugin peer` with the peer `uid` and `gid`. This keeps any other local process,
 for example one that obtained write access to the socket directory, from using the KEK to
-decrypt data. The `key_id` sent by kube-apiserver still selects the KEK on `Decrypt`, so
-decrypting data encrypted with an older KEK after rotation works as before.
+decrypt data.
 
 !!! warning "Upgrading"
     Plugin configurations written for earlier releases must add `allowed_peer_uids`, and
     `socket_gid` when they allow a non-root UID, otherwise the plugin does not start.
+
+### Decryption key policy
+
+The configured `wrapping_key_uid` is always permitted. A `Decrypt` request whose `key_id` is not the
+wrapping key is rejected before any KMS call unless that UID is listed in
+`allowed_decryption_key_ids`. After a KEK rotation, add the previous KEK UIDs there for as long as
+etcd contains ciphertext encrypted with them, before deploying the new configuration.
 
 ### KMS reachability
 
@@ -416,7 +428,7 @@ For each **Encrypt** call the plugin:
 
 For each **Decrypt** call:
 
-1. The plugin uses the `key_id` provided by kube-apiserver (stored alongside the ciphertext in etcd) to select the KEK for the KMIP `Decrypt` call. This supports decrypting data encrypted with an older KEK after key rotation.
+1. The plugin uses the `key_id` provided by kube-apiserver (stored alongside the ciphertext in etcd) to select the KEK for the KMIP `Decrypt` call. The UID must be the configured wrapping key or an entry in `allowed_decryption_key_ids`, preserving decryption across rotation without allowing arbitrary KMS object IDs.
 2. It extracts the IV and AEAD tag from annotations.
 3. It sends a KMIP `Decrypt` request to the KMS and returns the plaintext.
 
@@ -457,7 +469,7 @@ For each **Decrypt** call:
 
 ```bash
 kubectl create secret generic kms-test \
-  --from-literal=password=supersecret \
+  --from-literal=password='<PASSWORD>' \
   -n default
 ```
 
@@ -547,7 +559,7 @@ It is **not** available via `minikube ssh` or as a system binary on most distrib
 
 - The Unix socket uses mode `0660` and a configurable group; `SO_PEERCRED` still rejects every UID not listed in `allowed_peer_uids`.
 - The `config.yaml` must be readable only by the plugin process (mode `0600`).
-- The KEK should be created with restricted access controls in the KMS.
+- Restrict the plugin's KMS identity to the wrapping key and explicitly retained KEKs.
 - Rotate the KEK regularly and re-encrypt Secrets after rotation with:
 
   ```bash

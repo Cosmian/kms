@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::Deserialize;
 
 /// Top-level structure of the plugin YAML configuration file.
@@ -11,6 +13,7 @@ use serde::Deserialize;
 ///   tls_key: /etc/kubernetes-kms-plugin/client.key
 ///   ca_cert: /etc/kubernetes-kms-plugin/ca.crt
 ///   wrapping_key_uid: "550e8400-e29b-41d4-a716-446655440000"
+///   allowed_decryption_key_ids: []
 ///   socket_path: /var/run/kubernetes-kms-plugin/kms.sock
 ///   allowed_peer_uids: [65532]
 ///   socket_gid: 65532
@@ -47,6 +50,10 @@ pub struct KmsPluginSettings {
     /// UID of the KMS wrapping key (KEK) to use for Encrypt/Decrypt operations.
     /// This corresponds to the `key_id` returned to `kube-apiserver`.
     pub wrapping_key_uid: String,
+
+    /// Older KEK UIDs that may still decrypt ciphertext stored by kube-apiserver.
+    #[serde(default)]
+    pub allowed_decryption_key_ids: BTreeSet<String>,
 
     /// Filesystem path of the Unix domain socket the plugin listens on.
     #[serde(default = "default_socket_path")]
@@ -109,6 +116,8 @@ cosmian_kms:
   tls_key: /etc/client.key
   ca_cert: /etc/ca.crt
   wrapping_key_uid: 550e8400-e29b-41d4-a716-446655440000
+  allowed_decryption_key_ids:
+    - old-kek-uid
   socket_path: /var/run/kubernetes-kms-plugin.sock
   allowed_peer_uids: [65532, 0]
   socket_gid: 65532
@@ -119,6 +128,11 @@ cosmian_kms:
         assert_eq!(
             cfg.cosmian_kms.wrapping_key_uid,
             "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert!(
+            cfg.cosmian_kms
+                .allowed_decryption_key_ids
+                .contains("old-kek-uid")
         );
         assert_eq!(
             cfg.cosmian_kms.socket_path,
@@ -140,6 +154,7 @@ cosmian_kms:
         assert!(cfg.cosmian_kms.api_key.is_none());
         assert!(cfg.cosmian_kms.tls_cert.is_none());
         assert!(cfg.cosmian_kms.ca_cert.is_none());
+        assert!(cfg.cosmian_kms.allowed_decryption_key_ids.is_empty());
     }
 
     #[test]

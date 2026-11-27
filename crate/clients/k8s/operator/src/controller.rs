@@ -44,7 +44,7 @@ const MANAGED_BY_VALUE: &str = "cosmian-kms-operator";
 
 /// Refuse a KMS UID that is not allowlisted for `namespace` (confused-deputy guard: the
 /// operator's KMS credentials must not be usable by any tenant to read any key).
-fn check_secret_access(
+pub(crate) fn check_secret_access(
     policy: &BTreeMap<String, BTreeSet<String>>,
     namespace: &str,
     uid: &str,
