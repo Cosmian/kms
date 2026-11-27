@@ -88,6 +88,14 @@ set_toml_value "${KMS_TOML}" tls_key_file "\"${CERTS_DIR}/kms.key\""
 set_toml_value "${KMS_TOML}" clients_ca_cert_file "\"${CERTS_DIR}/ca.crt\""
 set_toml_value "${KMS_TOML}" socket_server_port "${KMIP_PORT}"
 
+# The cert.toml fixture sets google_cse_disable_tokens_validation, which a KMS built without
+# the `insecure` feature refuses to start with.
+if [[ "${VARIANT}" == "non-fips" ]]; then
+  FEATURES_FLAG=(--features "non-fips,insecure")
+else
+  FEATURES_FLAG=(--features insecure)
+fi
+
 print_status "Building KMS server..."
 kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 # The fixture sets no rust_log, so the server takes RUST_LOG; ansi_colors defaults to false.
