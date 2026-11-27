@@ -98,6 +98,20 @@ impl FromStr for Version {
     }
 }
 
+/// Builds of this release made before its version was renamed stamped databases with an unreleased
+/// version; the 5.30.0 server reads that stamp as its own version and rewrites it after startup.
+/// Only 5.30.0 does this, so a later server still refuses a database from a newer release.
+fn parse_recorded_version(recorded: &str, target: Version) -> DbResult<Version> {
+    let version = recorded.parse::<Version>()?;
+    Ok(
+        if version == Version(6, 0, 0) && target == Version(5, 30, 0) {
+            target
+        } else {
+            version
+        },
+    )
+}
+
 fn newer_database_error(recorded: &str, target: &str) -> DbError {
     db_error!(
         "Database version {recorded} is newer than this KMS server version {target}: \
@@ -311,7 +325,7 @@ pub(crate) trait Migrate: DbParameters {
                 baseline
             }
         };
-        let recorded_version = recorded.parse::<Version>()?;
+        let recorded_version = parse_recorded_version(recorded, target_version)?;
         if recorded_version > target_version {
             return Err(newer_database_error(recorded, target));
         }
@@ -337,7 +351,7 @@ pub(crate) trait Migrate: DbParameters {
         let result = async {
             let target_version = target.parse::<Version>()?;
             if let Some(recorded) = self.get_db_version().await? {
-                let recorded_version = recorded.parse::<Version>()?;
+                let recorded_version = parse_recorded_version(&recorded, target_version)?;
                 if !clear_database {
                     if recorded_version > target_version {
                         return Err(newer_database_error(&recorded, target));
@@ -544,6 +558,27 @@ mod tests {
         db_ensure!(
             database.get_db_state().await? == Some(DbState::Ready),
             "The resumed migration must finish ready"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_pre_rename_stamp_is_accepted_only_by_5_30_0() -> DbResult<()> {
+        let database = InMemoryMigrationBackend::default();
+        database.set_db_version("6.0.0").await?;
+        database.set_db_state(DbState::Ready).await?;
+        database.bootstrap(false, "5.30.0").await?;
+        db_ensure!(
+            database.get_db_version().await?.as_deref() == Some("5.30.0"),
+            "The pre-rename stamp must be rewritten to 5.30.0"
+        );
+
+        let database = InMemoryMigrationBackend::default();
+        database.set_db_version("6.0.0").await?;
+        database.set_db_state(DbState::Ready).await?;
+        db_ensure!(
+            database.bootstrap(false, "5.30.1").await.is_err(),
+            "Any other server must still refuse a newer database"
         );
         Ok(())
     }
