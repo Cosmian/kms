@@ -194,7 +194,7 @@ Errors common to EST and SCEP are listed on the
 | --- | --- |
 | `404` on `/scep` | SCEP is disabled. Set `scep_enabled = true` and restart. |
 | `badRequest` reply | The request was refused: the CSR breaks the template (name, SAN, key size, EKU, extension), the challenge is wrong, or the message was replayed. The reply never says which (it would be an oracle); the server log does. |
-| HTTP `500` "Internal Server Error (request id: …)" | The CA certificate or key cannot be used by the enrollment service (missing `certify` grant, key not `Active`); search the server log for the request id (also returned in the `X-Request-Id` header): it names the object and the reason. |
+| HTTP `500` "the enrollment CA is not available" | The CA certificate or key cannot be used by the enrollment service (missing `certify` grant, key not `Active`); the server log names the object and the reason. |
 | HTTP `400` on `PKIOperation`, or a `badRequest` reply that the server log ties to the envelope algorithm | The client ignores `GetCACaps`: a SHA-1 or MD5 signature is refused before any processing (`400`), and a DES, 3DES or RC2 envelope is refused with `badRequest` (counted as a failed attempt). Use a client that negotiates `AES` and `SHA-256`. |
 | A renewal or enrollment is refused right after a successful identical one | The message was replayed (same signer, transaction ID and sender nonce, or the same encrypted request): generate a fresh nonce and re-encrypt for every message. |
 | HTTP `429` / `503` | Too many failed attempts from this address, or too many enrollments in progress; wait for `Retry-After`. |
