@@ -38,7 +38,7 @@ Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<n
 
 A leaf that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. In CI (`CI=true`) the local probes (`nix`, `docker`, `cmd`, `file`, Kubernetes) are not evaluated, so the leaf runs and fails on its own, and a missing secret of an upstream leaf calls `print_error` before the skip, so a green upstream leg proves its leaves ran. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` leaves; `run_test_leaves` returns 1 if any leaf failed, and a failing leaf never stops the others.
 
-Tasks that no group `_default` lists are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `pki:scep-apple`, `db:upgrade-sqlite`), helpers called by leaves (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
+Tasks that no group `_default` lists are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `k8s:hsm`, `pki:scep-apple`, `db:upgrade`), helpers called by leaves (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
 
 ### Leaf prologue
 
@@ -95,7 +95,7 @@ All DB tests follow the same pattern: enter Nix shell (FIPS OpenSSL) → run `ca
 |------|---------|-------|-------|
 | `sqlite` | SQLite (file) | yes | Default. Also tests workspace binaries on CI. |
 | `psql` | PostgreSQL | yes | Includes pg-failover test (docker compose stop pg1). Starts `postgres-mtls` for the `sslmode` TLS tests. Runs `test_db_postgresql_state_event_merge` (lifecycle event-log merge and startup reconcile). |
-| `mysql` | MySQL | yes | CI: non-FIPS on pull requests, both variants otherwise. |
+| `mysql` | MySQL | yes | CI: non-FIPS on pull requests, both variants otherwise. Starts `mysql-mtls` for the `ssl-mode` TLS tests (`test_mysql_tls_*`; non-FIPS also runs `test_db_mysql_mtls_connection`). |
 | `mariadb` | MariaDB | yes | — |
 | `percona` | Percona XtraDB | yes | — |
 | `redis` | Redis + Findex | **no** | Non-FIPS only. |
@@ -1621,7 +1621,7 @@ sequenceDiagram
 
 ## 11. Kubernetes E2E Tests
 
-**Tasks:** `test:k8s:plugin`, `test:k8s:plugin-mtls`, `test:k8s:operator`, `test:k8s:csi-provider`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`, `test:k8s:helm`
+**Tasks:** `test:k8s:plugin`, `test:k8s:plugin-mtls`, `test:k8s:operator`, `test:k8s:csi-provider`, `test:k8s:hsm` (plus `test:k8s:helm` and the `test:k8s:*-image` smoke tasks documented in [Section 13](#13-docker-helm--packaging))
 
 ### `test:k8s`
 
@@ -1830,6 +1830,66 @@ sequenceDiagram
 
 ---
 
+### `test:k8s:hsm`
+
+**Description:** Deploys the KMS on Minikube with a live Trustway Proteccio or Crypt2pay HSM using the exact client-image `Dockerfile`, Helm `values.yaml` and (for Crypt2pay) `PersistentVolumeClaim` blocks extracted from the `## Kubernetes (Helm chart)` section of `documentation/docs/hsm_support/<model>.md`, so the test fails whenever the documented deployment steps drift. Not part of `test:k8s` (`_default`) because it requires live HSM hardware.
+
+- **Flags:** `-m --model <proteccio|crypt2pay>` (required), `-v --variant <fips|non-fips>` (default `fips`), `--image-tag <tag>` (`KMS_IMAGE_TAG`, default chart `appVersion`), `--local-image <repository>:<tag>` (`KMS_LOCAL_IMAGE`, loads from the local Docker daemon into Minikube with `image.pullPolicy=Never`; mutually exclusive with `--image-tag`).
+- **Prerequisites:** vendor library and configuration installed by `.github/reusable_scripts/prepare_<model>.sh`, plus `PROTECCIO_PASSWORD`/`PROTECCIO_SLOT` or `CRYPT2PAY_PASSWORD` (and `OVPN_CONF` when Crypt2pay is reachable only over OpenVPN; locally `~/.cosmian/<model>.sh` is sourced when present). Image-loading unit checks run without a cluster or HSM via `python3 .mise/scripts/test/k8s/test_k8s_hsm_images.py`.
+- **Checks:** (1) builds the vendor client image in Minikube, creates config/password Secrets and installs `charts/cosmian-kms` (`ghcr.io/cosmian/kms-fips` with FIPS `/version` assertion or `ghcr.io/cosmian/kms`); (2) creates an `hsm::<slot>::…` AES key via `ckms` in the KMS pod and round-trips AES-GCM (non-FIPS) or AES-CBC plus expected AES-GCM rejection (FIPS); (3) on Crypt2pay, deletes the pod and decrypts again through the PVC-persisted objects directory; (4) destroys the HSM key even on failure.
+- The FIPS test expects GCM rejection because these vendor clients do not supply the required HSM-generated IV; the CBC round trip checks deployment only and is not an application encryption recommendation.
+- **In CI:** runs in the `test-k8s-hsm` job of `.github/workflows/packaging-docker.yml` (`--local-image` from `nix-docker-image`). It shares each HSM's concurrency group with the `hsm:*` legs of `.github/workflows/test_all.yml`.
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph HostK8sHsm["Host / CI runner"]
+        Guide["HSM Helm guide<br/>proteccio.md /<br/>crypt2pay.md"]
+        VendorLib["Vendor PKCS#11<br/>/lib and /etc"]
+    end
+
+    subgraph MinikubeHsm["Minikube cluster"]
+        ClientImg["Vendor client<br/>init image"]
+        KmsHsmPod["KMS Pod<br/>Helm chart + PVC"]
+    end
+
+    subgraph LiveHsm["Live Hardware HSM"]
+        HsmBox["Proteccio or<br/>Crypt2pay HSM"]
+    end
+
+    Guide --> ClientImg
+    Guide --> KmsHsmPod
+    VendorLib --> ClientImg
+    ClientImg --> KmsHsmPod
+    KmsHsmPod --> HsmBox
+```
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Task as test:k8s:hsm
+    participant Doc as HSM doc guide
+    participant Cluster as Minikube + Helm
+    participant Pod as KMS Pod + ckms
+    participant HSM as Live HSM
+
+    Task->>Doc: extract Dockerfile, values, PVC
+    Task->>Cluster: build client image + load KMS image
+    Task->>Cluster: create Secrets + helm upgrade --install
+    Pod->>HSM: connect via PKCS#11 (OpenVPN if needed)
+    Task->>Pod: ckms create AES key + encrypt/decrypt
+    Pod->>HSM: PKCS#11 crypto round-trip
+    HSM-->>Pod: ciphertext / plaintext
+    alt Crypt2pay persistence check
+        Task->>Cluster: delete pod, wait ready, decrypt again
+    end
+    Task->>Pod: destroy HSM test key + helm uninstall
+```
+
+---
+
 ## 12. Web UI & WASM
 
 **Tasks:** `test:ui:standard`, `test:ui:auth`, `test:ui:oidc`, `test:ui:saml`, `test:ui:wasm`
@@ -1837,6 +1897,8 @@ sequenceDiagram
 **Orchestrator:** `test:ui` runs the five suites above, each on its own (they are also separate CI legs). The auth and SAML suites are non-FIPS only (the auth-verifier is not FIPS-aware) and are skipped when the `authentication` submodule is absent; the SAML suite also needs a running Docker daemon; the OIDC suite needs Auth0 secrets and skips cleanly without them.
 
 **Auth Verifier login:** `test:ui:auth` loads the paired `test_data/configs/auth_verifier/ui_auth.toml` and `test_data/configs/server/auth/ui_auth.toml` fixtures. It uses the Auth Verifier admin API to provision realm `kms` and user `kms-user` (`change_me`, test only), then exercises UI and Rust login flows as that non-admin user. Admin-realm tokens are never used to authenticate to KMS.
+
+**Windows standard E2E:** `test_ui.ps1` disables the embedded UI for the test KMS. Vite serves the UI and exercises the fallback menu when `/ui/config` is absent, regardless of local KMS installations.
 
 **SAML single sign-on:** `test:ui:saml` (also run by `test:ui`; also available standalone; needs Docker with Docker Hub access, Nix, and the `authentication` submodule). It starts Keycloak (SAML IdP) and nginx in Docker on one HTTPS origin (`https://localhost:8443`) with `.mise/scripts/test/ui/saml_sso/stack.sh`, runs the Auth Verifier SAML build (SAML SP) on the host with `cargo run -p auth_verifier --features saml` inside the authentication repo's own `nix-shell` (it provides xmlsec; the first run builds it and takes several minutes), runs the KMS on the host, and drives the whole browser flow with Playwright (`ui/tests/e2e-saml/`). It checks the IdP login, the `_ea_` cookie attributes, KMIP calls authenticated by the cookie (owner = SAML user), the content-type CSRF guard, rejection of another realm's session, and logout revocation. Fixed host ports: 8443, 8444, 9443, 9998.
 
@@ -1909,7 +1971,7 @@ sequenceDiagram
 
 ## 13. Docker, Helm & Packaging
 
-**Tasks:** `test:pkg:docker`, `test:upgrade-db`, `test:db:upgrade-sqlite`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
+**Tasks:** `test:pkg:docker`, `test:db:upgrade`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
 The Kubernetes image and live-HSM smoke deployments also explicitly set `kms.insecureAllowUnauthenticated=true`; the image and chart do not opt in by default. The Alpine package smoke script ([`test_alpine_musl.sh`](../../scripts/test/pkg/test_alpine_musl.sh)) passes `KMS_INSECURE_ALLOW_UNAUTHENTICATED=true` to its temporary container, whose published port is loopback-only.
 
@@ -2025,6 +2087,57 @@ sequenceDiagram
 
 ---
 
+### `test:k8s:kms-image`
+
+**Description:** KMS server Docker image smoke test in a live Minikube pod (`test-k8s-kms-pod` job in `.github/workflows/packaging-docker.yml` across `{fips, non-fips} × {amd64, arm64}`). Regression guard for issue `#1132` (missing `/etc` files when running under the Helm chart's non-root security context).
+
+- **Flags & env:** `-v --variant <fips|non-fips>` (default `fips`); requires `DOCKER_IMAGE_NAME` (an image already loaded in the host Docker daemon, saved to a tarball and loaded into Minikube).
+- **Checks:** (1) one-shot `/etc` validation pod asserting `/etc/passwd`, `/etc/group`, `/etc/nsswitch.conf`, `/etc/ssl/certs/ca-bundle.crt` and `/etc/cosmian` exist; (2) full `charts/cosmian-kms` deployment with `runAsNonRoot` (UID `1000`) and `readOnlyRootFilesystem`; (3) HTTP `/version` probe over `kubectl port-forward`.
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Task as test:k8s:kms-image
+    participant Cluster as Minikube cluster
+    participant Pod as Check + Helm KMS Pod
+
+    Task->>Cluster: docker save + minikube image load
+    Task->>Pod: run kms-etc-check pod (/etc files)
+    Pod-->>Task: Succeeded
+    Task->>Cluster: helm upgrade --install charts/cosmian-kms
+    Cluster->>Pod: start non-root KMS pod
+    Task->>Pod: port-forward + GET /version
+    Pod-->>Task: HTTP 200
+    Task->>Cluster: delete check pod + k8s_teardown
+```
+
+---
+
+### `test:k8s:operator-image` and `test:k8s:csi-provider-image`
+
+**Description:** Standalone Minikube pod smoke tests for the Nix-built Kubernetes Operator (`result-k8s-operator-image` → `cosmian-kms-operator`, CI job `k8s-operator-image`) and Secrets Store CSI Provider (`result-k8s-csi-provider-image` → `cosmian-kms-csi-provider`, CI job `k8s-csi-provider-image`) images in `.github/workflows/packaging-docker.yml` (`amd64` and `arm64`). Each task builds its Nix image tarball when `result-k8s-*-image` is absent, loads it into Minikube with `imagePullPolicy=Never`, runs a one-shot pod invoking `--help`, asserts clean container termination, and deletes the pod.
+
+#### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Task as k8s:*-image task
+    participant Nix as build:k8s-*-image
+    participant Cluster as Minikube cluster
+    participant Pod as Smoke-test Pod
+
+    alt result-k8s-*-image absent
+        Task->>Nix: build Nix image tarball
+    end
+    Task->>Cluster: minikube image load tarball
+    Task->>Pod: kubectl run --image-pull-policy=Never -- --help
+    Pod-->>Task: phase Succeeded
+    Task->>Cluster: kubectl delete pod
+```
+
+---
+
 ## 14. Miscellaneous
 
 ### `dev:vectors-rekey`
@@ -2116,12 +2229,19 @@ sequenceDiagram
 
 ---
 
-### `test:upgrade-db` and `test:db:upgrade-sqlite`
+### `test:db:upgrade`
 
-**Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification.
+**Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification, across SQLite, PostgreSQL, MySQL and (in `non-fips` mode) Redis-findex. One gate process per backend runs in parallel.
 
-- `test:db:upgrade-sqlite` runs two local KMS binaries (`--old-kms` and `--new-kms`) against a SQLite directory.
-- `test:upgrade-db` runs published release Docker images (`ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) against the candidate image (`--new-image` / `DOCKER_IMAGE_NAME`) across SQLite, PostgreSQL, MySQL, and (in `non-fips` mode) Redis-findex. When `--old-version nightly` is used, it tests `5.20.0`, the latest release (`N-1`), and 2 deterministic round-robin middle releases.
+- Default: every release >= 5.9.0 (Docker images `ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) is upgraded to this branch's cargo-built server (`--old-version all`). `--old-version nightly` tests `5.9.0`, the latest release (`N-1`) and 2 deterministic round-robin middle releases.
+- `--new-image` (or `DOCKER_IMAGE_NAME`) replaces the branch build by a candidate Docker image.
+- `--old-kms <path>` replaces the release images by one local binary (>= 5.17.0); with `--new-kms` this is the SQLite upgrade/downgrade proof of `/kms-db-compat`.
+- 4 phases per cell: seed the old server, verify on the candidate (plus mutation), verify after a candidate restart, verify the untouched cold backup with the old server.
+- With `ckms` (always, in the task), each cell also creates an AES-256 key encryption key (`upgrade-gate-kek`) on the old server, restarts it with that KEK configured (the `key_encryption_key` positional argument) and fills it again (`populate-kek`), so those objects are wrapped at rest. The candidate, its restart and the restore-phase old server all run with the same KEK, and verify those objects; the candidate also creates KEK-wrapped objects (`populate-new`). Exporting a wrapped private key in a requested format is refused by every release, so those Get/Export calls are recorded as SKIP.
+- Release images before 5.17.0 only accept a PKCS#12 server identity; Redis releases before 5.29.0 may leave a Findex tag that the stored record lost, which `populate_db.sh verify --legacy-locate` tolerates.
+- Redis-findex databases written before 5.12.0 are refused by design and skipped.
+- `.mise/scripts/test/db/populate_db.sh` (bash + `ckms` + curl) fills each old DB with every object kind and operation and re-verifies it; per-version coverage lands in `coverage-<backend>[-new].tsv`.
+- CI: the `db:upgrade` leg (`ci-paths.toml`) runs every release on schedule, tag and dispatch only, never on PRs; the `packaging-docker.yml` image gate runs `--new-image ... --old-version nightly`.
 
 Each cell seeds the database through `/kmip/2_1` and `/access/grant` over mTLS. `verify_db_upgrade.py seed` uses the same recipes for the deterministic `mig_*`/`bulk_*` set and seeded-random `rnd_*` layer, validates the old server, and writes one snapshot containing attributes, user tags, material digests, grants, Locate results, ciphertexts, signatures, and explicit optional-feature skips. `verify` checks the candidate and its restart; post-upgrade canary data is added to that snapshot without changing the pre-upgrade expectations. The old server then checks the untouched cold backup, including the canary's absence.
 

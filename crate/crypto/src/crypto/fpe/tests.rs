@@ -237,6 +237,33 @@ fn test_kmip_fpe_text_roundtrip() -> Result<(), FPEError> {
 }
 
 #[test]
+fn test_kmip_fpe_rejects_oversized_input() -> Result<(), FPEError> {
+    let key = [0_u8; 32];
+    let long_data = "1".repeat(4097);
+    let long_tweak = [0_u8; 4097];
+
+    for result in [
+        encrypt_fpe(&key, long_data.as_bytes(), Some(b"numeric"), None),
+        encrypt_fpe(&key, b"1234567890", Some(b"numeric"), Some(&long_tweak)),
+        decrypt_fpe(&key, long_data.as_bytes(), Some(b"numeric"), None),
+        decrypt_fpe(&key, b"1234567890", Some(b"numeric"), Some(&long_tweak)),
+    ] {
+        assert!(
+            matches!(result, Err(FPEError::OutOfBounds(_))),
+            "{result:?}"
+        );
+    }
+
+    let at_limit = "1".repeat(4096);
+    let ciphertext = encrypt_fpe(&key, at_limit.as_bytes(), Some(b"numeric"), None)?;
+    assert_eq!(
+        decrypt_fpe(&key, &ciphertext, Some(b"numeric"), None)?,
+        at_limit.as_bytes()
+    );
+    Ok(())
+}
+
+#[test]
 fn test_kmip_fpe_integer_roundtrip() -> Result<(), FPEError> {
     let key = [0_u8; 32];
     let tweak = b"integer tweak";

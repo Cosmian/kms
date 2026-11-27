@@ -529,6 +529,11 @@ fn normalized_pg_authority(url: &str) -> String {
 
 /// Represents the server parameters.
 impl ServerParams {
+    /// Whether the HTTP server mounts the Google CSE routes.
+    pub(crate) const fn google_cse_routes_enabled(&self) -> bool {
+        self.google_cse.enable && self.kms_public_url.is_some()
+    }
+
     /// Resolves the audit backend selection from the raw config.
     ///
     /// Backend selection is config-time only: `--audit-postgres-url` set → `PostgreSQL`;

@@ -263,12 +263,9 @@ pub enum SigningAlgorithm {
         hashing_algorithm: HashingAlgorithm,
         prehashed: bool,
     },
-    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, no pre-hashing). Non-FIPS: mirrors
-    /// the gating of `Ed25519` signing in `crate::crypto::elliptic_curves::sign` (issue #1157).
-    #[cfg(feature = "non-fips")]
+    /// `CKM_EDDSA` over an Ed25519 private key (pure `EdDSA`, no pre-hashing; issue #1157).
     Ed25519,
-    /// `CKM_EDDSA` over an Ed448 private key. Non-FIPS: see `Ed25519` above.
-    #[cfg(feature = "non-fips")]
+    /// `CKM_EDDSA` over an Ed448 private key.
     Ed448,
 }
 
@@ -457,9 +454,7 @@ impl SigningAlgorithm {
 
     /// `EdDSA` is selected by `cryptographic_algorithm` alone: KMIP has no
     /// `DigitalSignatureAlgorithm` variant for Ed25519/Ed448, and `EdDSA` never takes a separate
-    /// hashing algorithm or padding method. Non-FIPS: mirrors the software `EdDSA` signing
-    /// gating (issue #1157).
-    #[cfg(feature = "non-fips")]
+    /// hashing algorithm or padding method.
     fn eddsa_from_algorithm(
         algorithm: Option<CryptographicAlgorithm>,
         input_is_digest: bool,
@@ -476,15 +471,6 @@ impl SigningAlgorithm {
         } else {
             Ok(eddsa)
         })
-    }
-
-    /// `EdDSA` HSM signing is not available in FIPS builds.
-    #[cfg(not(feature = "non-fips"))]
-    const fn eddsa_from_algorithm(
-        _algorithm: Option<CryptographicAlgorithm>,
-        _input_is_digest: bool,
-    ) -> Option<Result<Self, InterfaceError>> {
-        None
     }
 
     fn default_for_key(
@@ -511,7 +497,6 @@ impl SigningAlgorithm {
                     hashing_algorithm: HashingAlgorithm::SHA512,
                     prehashed: input_is_digest,
                 }),
-                #[cfg(feature = "non-fips")]
                 Some(crate::EcCurve::Ed25519) => {
                     if input_is_digest {
                         Err(InterfaceError::InvalidRequest(
@@ -522,7 +507,6 @@ impl SigningAlgorithm {
                         Ok(Self::Ed25519)
                     }
                 }
-                #[cfg(feature = "non-fips")]
                 Some(crate::EcCurve::Ed448) => {
                     if input_is_digest {
                         Err(InterfaceError::InvalidRequest(
@@ -1201,7 +1185,6 @@ mod tests {
     /// HSM-delegated `EdDSA` signing (issue #1157). `EdDSA` has no `DigitalSignatureAlgorithm`
     /// variant in KMIP 2.1: it is resolved from `CryptographicAlgorithm::Ed25519`/`Ed448` alone,
     /// with no accompanying `hashing_algorithm`/`padding_method` (unlike RSA/ECDSA above).
-    #[cfg(feature = "non-fips")]
     #[test]
     fn from_kmip_ed25519_resolves_via_cryptographic_algorithm_alone() {
         let params = params_with(
@@ -1224,7 +1207,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn from_kmip_ed448_resolves_via_cryptographic_algorithm_alone() {
         let params = params_with(None, Some(CryptographicAlgorithm::Ed448), None, None, None);
@@ -1241,7 +1223,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn from_kmip_rejects_prehashed_eddsa() {
         let params = params_with(
@@ -1262,7 +1243,6 @@ mod tests {
         assert!(matches!(err, InterfaceError::InvalidRequest(_)));
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn from_kmip_none_defaults_to_eddsa_for_ed25519_keys() {
         assert_eq!(

@@ -405,7 +405,6 @@ fn verify_message(
     );
 
     // ML-DSA: check the key's algorithm; if PQC, use ml_dsa_verify directly
-    #[cfg(feature = "non-fips")]
     {
         if owm
             .resolve_key_algorithm()

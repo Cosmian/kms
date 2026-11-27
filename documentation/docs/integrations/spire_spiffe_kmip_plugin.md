@@ -574,4 +574,4 @@ socket_server_hostname = "0.0.0.0"
   JSON TTLV client library for Eviden KMS
 - [`ovh/kmip-go`](https://github.com/ovh/kmip-go) — the Go KMIP client library used
   by the SPIRE plugin (binary TTLV / TCP)
-- KMIP 2.1 specification — `crate/kmip/src/` (local copy)
+- [KMIP 2.1 specification (OASIS)](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html) — also in the `kmip/` git submodule (`kmip/v2.1/kmip-spec-v2.1-os.html`)

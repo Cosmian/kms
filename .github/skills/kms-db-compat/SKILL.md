@@ -68,9 +68,9 @@ git worktree add "../kms-$PREV" "$PREV"
 cargo build --manifest-path "../kms-$PREV/Cargo.toml" -p cosmian_kms_server -p ckms
 cargo build -p cosmian_kms_server -p ckms
 # upgrade: previous release -> this branch
-mise run test:db:upgrade-sqlite --old-kms "../kms-$PREV/target/debug/cosmian_kms" --old-ckms "../kms-$PREV/target/debug/ckms" --new-kms target/debug/cosmian_kms --ckms target/debug/ckms
+mise run test:db:upgrade --backend sqlite --old-kms "../kms-$PREV/target/debug/cosmian_kms" --new-kms target/debug/cosmian_kms --ckms target/debug/ckms
 # downgrade: this branch seeds, previous release opens the copy
-mise run test:db:upgrade-sqlite --old-kms target/debug/cosmian_kms --old-ckms target/debug/ckms --new-kms "../kms-$PREV/target/debug/cosmian_kms" --ckms "../kms-$PREV/target/debug/ckms"
+mise run test:db:upgrade --backend sqlite --old-kms target/debug/cosmian_kms --new-kms "../kms-$PREV/target/debug/cosmian_kms" --ckms "../kms-$PREV/target/debug/ckms"
 git worktree remove "../kms-$PREV"
 ```
 

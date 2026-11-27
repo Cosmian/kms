@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
   "version": 1,
-  "serialNumber": "urn:uuid:75816f5e-e7e1-463e-81ec-ebf6b87484c5",
+  "serialNumber": "urn:uuid:9175f048-9ded-499f-a646-81f623ec82e8",
   "metadata": {
-    "timestamp": "2026-11-26T09:06:56.842812+00:00",
+    "timestamp": "2026-11-27T11:08:54.244325+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -24,7 +24,7 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/fg1s06najj292qhqwvls8a36pnxpyigl-cosmian-kms-cli-5.29.0.drv",
+      "bom-ref": "/nix/store/c4rm624jr5v757x2pf1arlcv7ka6n2w9-cosmian-kms-cli-5.29.0.drv",
       "name": "cosmian-kms-cli",
       "version": "5.29.0",
       "purl": "pkg:nix/cosmian-kms-cli@5.29.0",
@@ -32,11 +32,11 @@
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/1y23sw42h8vnvm4j6pdwgk96nflfg6zk-cosmian-kms-cli-5.29.0"
+          "value": "/nix/store/r7z3b8d7by9r896jg6b8wn2fdvz9d021-cosmian-kms-cli-5.29.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/fg1s06najj292qhqwvls8a36pnxpyigl-cosmian-kms-cli-5.29.0.drv"
+          "value": "/nix/store/c4rm624jr5v757x2pf1arlcv7ka6n2w9-cosmian-kms-cli-5.29.0.drv"
         }
       ]
     }
@@ -22239,17 +22239,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/knip@6.45.1",
+      "bom-ref": "pkg:npm/knip@6.46.1",
       "name": "knip",
-      "version": "6.45.1",
-      "purl": "pkg:npm/knip@6.45.1",
+      "version": "6.46.1",
+      "purl": "pkg:npm/knip@6.46.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:knip:knip:6.45.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:knip:knip:6.46.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -23961,59 +23961,59 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/react-router@7.18.5",
+      "bom-ref": "pkg:npm/react-router@7.18.6",
       "name": "react-router",
-      "version": "7.18.5",
-      "purl": "pkg:npm/react-router@7.18.5",
+      "version": "7.18.6",
+      "purl": "pkg:npm/react-router@7.18.6",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:shopify:react-router:7.18.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:shopify:react-router:7.18.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "bom-ref": "pkg:npm/react-router@7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
       "name": "react-router",
-      "version": "7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
-      "purl": "pkg:npm/react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "version": "7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "purl": "pkg:npm/react-router@7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:shopify:react-router:7.18.5_react-dom_19.3.1_react_19.3.1___react_19.3.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:shopify:react-router:7.18.6_react-dom_19.3.1_react_19.3.1___react_19.3.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/react-router-dom@7.18.5",
+      "bom-ref": "pkg:npm/react-router-dom@7.18.6",
       "name": "react-router-dom",
-      "version": "7.18.5",
-      "purl": "pkg:npm/react-router-dom@7.18.5",
+      "version": "7.18.6",
+      "purl": "pkg:npm/react-router-dom@7.18.6",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:react-router-dom:react-router-dom:7.18.5:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:react-router-dom:react-router-dom:7.18.6:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/react-router-dom@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "bom-ref": "pkg:npm/react-router-dom@7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
       "name": "react-router-dom",
-      "version": "7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
-      "purl": "pkg:npm/react-router-dom@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "version": "7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
+      "purl": "pkg:npm/react-router-dom@7.18.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:react-router-dom:react-router-dom:7.18.5_react-dom_19.3.1_react_19.3.1___react_19.3.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:react-router-dom:react-router-dom:7.18.6_react-dom_19.3.1_react_19.3.1___react_19.3.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24395,17 +24395,17 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/tinybench@6.2.3",
+      "bom-ref": "pkg:npm/tinybench@6.2.4",
       "name": "tinybench",
-      "version": "6.2.3",
-      "purl": "pkg:npm/tinybench@6.2.3",
+      "version": "6.2.4",
+      "purl": "pkg:npm/tinybench@6.2.4",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "no-nvd-entry"
         }
       ],
-      "cpe": "cpe:2.3:a:tinybench:tinybench:6.2.3:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:tinybench:tinybench:6.2.4:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24703,31 +24703,31 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vitest@5.1.0",
+      "bom-ref": "pkg:npm/vitest@5.1.1",
       "name": "vitest",
-      "version": "5.1.0",
-      "purl": "pkg:npm/vitest@5.1.0",
+      "version": "5.1.1",
+      "purl": "pkg:npm/vitest@5.1.1",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.1.0:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.1.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vitest@5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
+      "bom-ref": "pkg:npm/vitest@5.1.1(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
       "name": "vitest",
-      "version": "5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
-      "purl": "pkg:npm/vitest@5.1.0(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
+      "version": "5.1.1(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
+      "purl": "pkg:npm/vitest@5.1.1(@types/node@25.9.9)(jsdom@26.1.0)(vite@7.3.8(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))",
       "properties": [
         {
           "name": "cosmian:sbom:cpe_match",
           "value": "verified-vendor-product"
         }
       ],
-      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.1.0__types_node_25.9.9__jsdom_26.1.0__vite_7.3.8__types_node_25.9.9__jiti_2.7.0__lightningcss_1.33.0__yaml_2.9.1:*:*:*:*:*:*:*"
+      "cpe": "cpe:2.3:a:vitest.dev:vitest:5.1.1__types_node_25.9.9__jsdom_26.1.0__vite_7.3.8__types_node_25.9.9__jiti_2.7.0__lightningcss_1.33.0__yaml_2.9.1:*:*:*:*:*:*:*"
     },
     {
       "type": "library",
@@ -24928,7 +24928,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/fg1s06najj292qhqwvls8a36pnxpyigl-cosmian-kms-cli-5.29.0.drv"
+      "ref": "/nix/store/c4rm624jr5v757x2pf1arlcv7ka6n2w9-cosmian-kms-cli-5.29.0.drv"
     }
   ],
   "vulnerabilities": []

@@ -159,10 +159,7 @@ ls CHANGELOG/*.md
 git log --oneline $(git describe --tags --abbrev=0)..HEAD
 ```
 
-Read **every** `CHANGELOG/*.md` file in full, plus the `## [Unreleased]` content and any existing `## [X.Y.Z]` entry
-of the root `CHANGELOG.md`. Keep a checklist of the source files; each must be accounted for before deleting anything.
-Use the `git log` PR numbers to link items and to spot merged work that has no branch file (add a bullet from the
-commit title only, and say so in the final report).
+Read **every** `CHANGELOG/*.md` file in full. In the root `CHANGELOG.md`, read any existing `## [Unreleased]` section and any draft for `X.Y.Z`. Keep a checklist of these sources; each must be accounted for before deleting anything. Use the `git log` PR numbers to link items and to spot merged work that has no branch file (add a bullet from the commit title only, and say so in the final report).
 
 ## Step C2 — Summarize and regroup
 
@@ -183,8 +180,7 @@ commit title only, and say so in the final report).
 - Summarize: one bullet per user- or operator-observable change, imperative verb, type/flag/crate names, PR/issue link.
   Drop benchmark numbers, per-test names, step-by-step investigation notes and internal file paths that do not affect
   observable behaviour. Compress Refactor to one sentence per area and Testing to categories.
-- Do not invent facts: every claim must come from a branch file, the Unreleased section or a commit; mark anything
-  unverified in the final report.
+- Do not invent facts: every claim must come from a branch file, the `Unreleased` section, an existing draft release entry, or a commit; mark anything unverified in the final report.
 
 ## Step C3 — Security cross-check
 
@@ -204,14 +200,11 @@ and list in the final report the ones that look like real vulnerabilities, so th
 
 ## Step C4 — Write the root entry
 
-In `CHANGELOG.md`, replace the content between `## [Unreleased]` and the previous `## [A.B.C]` heading with an empty
-`## [Unreleased]` line followed by the `## [X.Y.Z] - YYYY-MM-DD` entry. If an `## [X.Y.Z]` entry already exists, merge
-into it instead of adding a second heading. Do not touch older entries.
+In `CHANGELOG.md`, merge into the existing draft for `X.Y.Z`, preserving its notes and deduplicating overlaps. If there is no draft, insert `## [X.Y.Z] - YYYY-MM-DD` above the latest published release and below `## [Unreleased]` if present. Do not create an `Unreleased` heading or edit older release entries.
 
 ## Step C5 — Verify coverage, then delete
 
-1. Walk the checklist from Step C1: every source file's breaking changes, security items, features and fixes appear in
-   the new entry. If a file has content that does not fit, add it before continuing.
+1. Walk the checklist from Step C1: every breaking change, security item, feature and fix for this release appears in the new entry, including notes merged from the draft and `Unreleased`. After coverage and the security cross-check pass, remove only the notes carried forward from `Unreleased`; leave its heading and any remaining notes intact.
 2. Find references to the files about to be deleted and repoint them to the root entry (`CHANGELOG.md`, heading
    `[X.Y.Z]`):
 

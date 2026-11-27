@@ -35,8 +35,8 @@ use crate::{
 };
 
 /// Map an `EcCurve` (HSM interface curve enum) to the corresponding KMIP `RecommendedCurve`.
-/// FIPS-approved NIST prime curves are always covered; the Edwards/Montgomery curves added for
-/// `EdDSA`/X25519 HSM delegation (issue #1157) require the `non-fips` feature.
+/// FIPS-approved NIST prime curves and the Edwards curves (`EdDSA`) are always covered; the
+/// secp256k1/secp192k1 and Montgomery (X25519 ECDH, issue #1157) curves require `non-fips`.
 const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
     match curve {
         EcCurve::P224 => RecommendedCurve::P224,
@@ -47,9 +47,7 @@ const fn ec_curve_to_recommended_curve(curve: EcCurve) -> RecommendedCurve {
         EcCurve::Secp256k1 => RecommendedCurve::SECP256K1,
         #[cfg(feature = "non-fips")]
         EcCurve::Secp192k1 => RecommendedCurve::SECP192K1,
-        #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => RecommendedCurve::CURVEED25519,
-        #[cfg(feature = "non-fips")]
         EcCurve::Ed448 => RecommendedCurve::CURVEED448,
         #[cfg(feature = "non-fips")]
         EcCurve::X25519 => RecommendedCurve::CURVE25519,
@@ -63,9 +61,7 @@ const fn ec_curve_to_algorithm(curve: EcCurve) -> CryptographicAlgorithm {
         EcCurve::Secp256k1 => CryptographicAlgorithm::EC,
         #[cfg(feature = "non-fips")]
         EcCurve::Secp192k1 => CryptographicAlgorithm::EC,
-        #[cfg(feature = "non-fips")]
         EcCurve::Ed25519 => CryptographicAlgorithm::Ed25519,
-        #[cfg(feature = "non-fips")]
         EcCurve::Ed448 => CryptographicAlgorithm::Ed448,
         #[cfg(feature = "non-fips")]
         EcCurve::X25519 => CryptographicAlgorithm::ECDH,
@@ -334,7 +330,7 @@ impl ObjectsStore for HsmStore {
                 usize::try_from(*key_length).map_err(|e| {
                     InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                 })?,
-                attributes.sensitive.unwrap_or(false),
+                attributes.sensitive.unwrap_or(true),
                 tags,
             )
             .await?;
@@ -476,14 +472,12 @@ impl ObjectsStore for HsmStore {
             let default_key_length = match algorithm {
                 HsmKeypairAlgorithm::RSA => 2048,
                 HsmKeypairAlgorithm::EC => 256,
+                HsmKeypairAlgorithm::Ed25519 => 256,
+                HsmKeypairAlgorithm::Ed448 => 456,
                 #[cfg(feature = "non-fips")]
-                HsmKeypairAlgorithm::Secp256k1
-                | HsmKeypairAlgorithm::Ed25519
-                | HsmKeypairAlgorithm::X25519 => 256,
+                HsmKeypairAlgorithm::Secp256k1 | HsmKeypairAlgorithm::X25519 => 256,
                 #[cfg(feature = "non-fips")]
                 HsmKeypairAlgorithm::Secp192k1 => 192,
-                #[cfg(feature = "non-fips")]
-                HsmKeypairAlgorithm::Ed448 => 456,
             };
             // PKCS#11 generates both key objects from one shared tag set. Include both
             // system tags so private and public provider discovery can find the pair.
@@ -505,7 +499,7 @@ impl ObjectsStore for HsmStore {
                     .map_err(|e| {
                         InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                     })?,
-                    attributes.sensitive.unwrap_or_default(),
+                    attributes.sensitive.unwrap_or(true),
                     &tags,
                 )
                 .await?;
@@ -541,7 +535,8 @@ impl ObjectsStore for HsmStore {
             _ => None,
         }) {
             #[cfg(not(feature = "non-fips"))]
-            const SUPPORTED: &str = "RSA and elliptic-curve (EC/ECDSA/ECDH) key pairs";
+            const SUPPORTED: &str =
+                "RSA and elliptic-curve (EC/ECDSA/ECDH, Ed25519, Ed448) key pairs";
             #[cfg(feature = "non-fips")]
             const SUPPORTED: &str = "RSA and elliptic-curve (EC/ECDSA/ECDH, secp256k1, secp192k1, \
                                      Ed25519, Ed448, X25519) key pairs";
@@ -1777,6 +1772,8 @@ const fn hsm_keypair_algorithm(attributes: &Attributes) -> Option<HsmKeypairAlgo
             | CryptographicAlgorithm::ECDH
             | CryptographicAlgorithm::ECDSA,
         ) => Some(HsmKeypairAlgorithm::EC),
+        Some(CryptographicAlgorithm::Ed25519) => Some(HsmKeypairAlgorithm::Ed25519),
+        Some(CryptographicAlgorithm::Ed448) => Some(HsmKeypairAlgorithm::Ed448),
         _ => None,
     }
 }
@@ -2175,7 +2172,6 @@ mod tests {
     use cosmian_kmip::kmip_2_1::{
         kmip_data_structures::{KeyMaterial as KmipKeyMaterial, KeyValue},
         kmip_objects::Object,
-        kmip_types::KeyFormatType,
     };
     use cosmian_kmip::{
         kmip_0::kmip_types::CryptographicUsageMask,
@@ -2184,8 +2180,8 @@ mod tests {
             kmip_attributes::Attributes,
             kmip_objects::ObjectType,
             kmip_types::{
-                CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm, Name,
-                NameType, RecommendedCurve,
+                CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+                KeyFormatType, Name, NameType, RecommendedCurve,
             },
         },
     };
@@ -2195,13 +2191,11 @@ mod tests {
         build_sensitive_stub_attributes, build_sensitive_stub_object, check_basic_compatibility,
         to_object_with_metadata, usage_mask_from_flags,
     };
-    #[cfg(feature = "non-fips")]
-    use crate::EcPrivateKeyMaterial;
     use crate::{
-        CryptoAlgorithm, CryptoOracle, EcCurve, FindOptions, HSM, HashingAlgorithm,
-        HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-        InterfaceError, InterfaceResult, KeyMaterial, KeyMetadata, KeyType, MacAlgorithm,
-        MacKeyMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
+        CryptoAlgorithm, CryptoOracle, EcCurve, EcPrivateKeyMaterial, FindOptions, HSM,
+        HashingAlgorithm, HsmKeyAlgorithm, HsmKeyPairIds, HsmKeypairAlgorithm, HsmObject,
+        HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial, KeyMetadata, KeyType,
+        MacAlgorithm, MacKeyMetadata, ObjectsStore, SigningAlgorithm, SigningKeyMetadata, UserId,
         crypto_oracle::{EncryptedContent, KeyUsageFlags},
         hsm::HsmStore,
     };
@@ -2925,7 +2919,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn test_hsm_object_filter_accepts_eddsa_filters() {
         for algorithm in [
@@ -3002,7 +2995,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn test_to_object_with_metadata_preserves_eddsa_algorithm() {
         let hsm_object = HsmObject::new(
@@ -3567,9 +3559,8 @@ mod characterization_tests {
         );
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
-    fn characterization_build_find_attributes_meta_non_fips_curves() {
+    fn characterization_build_find_attributes_meta_eddsa_curves() {
         let ed = find_attrs(
             &Some(metadata(KeyType::EcPrivateKey, 256, Some(EcCurve::Ed25519))),
             HsmObjectFilter::Any,
@@ -3579,7 +3570,11 @@ mod characterization_tests {
             Some(CryptographicAlgorithm::Ed25519)
         );
         assert_eq!(recommended_curve(&ed), Some(RecommendedCurve::CURVEED25519));
+    }
 
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn characterization_build_find_attributes_meta_non_fips_curves() {
         let x = find_attrs(
             &Some(metadata(KeyType::EcPublicKey, 256, Some(EcCurve::X25519))),
             HsmObjectFilter::Any,

@@ -551,7 +551,7 @@ est_require_client_cert = true
 
 [scep]
 scep_enabled = false
-scep_allow_renewal_without_challenge = true
+scep_allow_renewal_without_challenge = false
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

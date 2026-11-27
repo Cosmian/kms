@@ -5,7 +5,7 @@
  *   • symmetric  — /ui/sym/keys/rekey
  *   • rsa        — /ui/rsa/keys/rekey
  *   • ec         — /ui/ec/keys/rekey
- *   • pqc        — /ui/pqc/keys/rekey  (skipped in FIPS mode)
+ *   • pqc        — /ui/pqc/keys/rekey
  *
  * For each variant the tests verify:
  *   1. Page renders (heading + submit button visible)
@@ -23,8 +23,6 @@ import {
     gotoAndWait,
     submitAndWaitForResponse,
 } from "./helpers";
-
-const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
 
 // ── Symmetric key ────────────────────────────────────────────────────────────
 
@@ -117,11 +115,9 @@ test.describe("ObjectsReKey — EC", () => {
     });
 });
 
-// ── PQC key pair (non-FIPS only) ─────────────────────────────────────────────
+// ── PQC key pair ─────────────────────────────────────────────────────────────
 
 test.describe("ObjectsReKey — PQC", () => {
-    test.skip(FIPS_MODE, "Post-quantum algorithms are not available in FIPS mode");
-
     test("renders the PQC re-key form", async ({ page }) => {
         await gotoAndWait(page, "/ui/pqc/keys/rekey");
         await expect(page.getByRole("heading", { name: /Re-Key a Post-Quantum key pair/i })).toBeVisible({

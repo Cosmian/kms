@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+#MISE description="Upgrade a DB written by every release >= 5.9.0 (Docker images, or --old-kms) to this branch's server (cargo build) or --new-image, then verify, restart and restore"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-b --backend <backend>" env="BACKEND" help="Database backend" default="all" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "redis" "all"
+#USAGE }
+#USAGE flag "--old-version <version>" env="OLD_VERSION" help="'all', 'nightly' (5.9.0, N-1, 2 rotating), or comma-separated versions" default="all"
+#USAGE flag "--old-kms <path>" env="OLD_KMS" help="Old server as a local binary (>= 5.17.0) instead of release images"
+#USAGE flag "--new-image <image>" env="DOCKER_IMAGE_NAME" help="Candidate Docker image (default: cargo-built branch server)"
+#USAGE flag "--new-kms <path>" env="NEW_KMS" help="Candidate server binary (default: cargo-built branch server)"
+#USAGE flag "--ckms <path>" env="CKMS_BIN" help="ckms for populate_db.sh (default: cargo-built branch ckms)"
+#USAGE flag "--seed <seed>" env="SEED" help="Deterministic seed (default: current epoch, printed)"
+#USAGE flag "--random-count <count>" env="RANDOM_COUNT" help="Number of random recipes per version" default="10"
+#USAGE flag "--rotation-index <index>" env="ROTATION_INDEX" help="Override the daily rotation of --old-version nightly"
+#USAGE flag "--artifacts-dir <dir>" env="ARTIFACTS_DIR" help="Coverage reports, per-backend logs and failure artifacts"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/kms_build.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_build.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+REPO_ROOT="$(get_repo_root "${MISE_CONFIG_ROOT}")"
+GATE="${REPO_ROOT}/.mise/scripts/test/db/run_db_upgrade_gate.sh"
+
+new_image="${usage_new_image:-}"
+new_kms="${usage_new_kms:-}"
+ckms="${usage_ckms:-}"
+[ -z "${new_image}" ] || [ -z "${new_kms}" ] || print_error "Pass at most one of --new-image or --new-kms."
+
+# Build the branch once; the gate runs the binaries directly (no cargo lock contention).
+explicit_new_kms="${new_kms:+1}"
+if [ -z "${new_image}" ] && [ -z "${new_kms}" ]; then
+  # shellcheck disable=SC2119
+  kms_build_server
+  new_kms="$(get_kms_bin)"
+fi
+if [ -z "${ckms}" ]; then
+  # shellcheck disable=SC2119
+  kms_build_cli
+  ckms="$(get_ckms_bin)"
+fi
+
+# One seed for every backend process, so replay commands are valid.
+seed="${usage_seed:-$(date +%s)}"
+out="${usage_artifacts_dir:-${REPO_ROOT}/target/db-upgrade-gate/${VARIANT}}"
+mkdir -p "${out}"
+
+case "${usage_backend:-all}" in
+  all)
+    backends=(sqlite postgresql mysql)
+    [ "${VARIANT}" != "non-fips" ] || backends+=(redis)
+    ;;
+  redis)
+    [ "${VARIANT}" = "non-fips" ] || print_error "Redis-findex is only supported in non-fips mode."
+    backends=(redis)
+    ;;
+  *) backends=("${usage_backend}") ;;
+esac
+
+args=(--variant "${VARIANT}" --old-version "${usage_old_version:-all}" --seed "${seed}"
+  --random-count "${usage_random_count:-10}" --rotation-index "${usage_rotation_index:-}"
+  --artifacts-dir "${out}" --ckms "${ckms}")
+[ -z "${usage_old_kms:-}" ] || args+=(--old-kms "${usage_old_kms}")
+if [ -n "${new_image}" ]; then args+=(--new-image "${new_image}"); else args+=(--new-kms "${new_kms}"); fi
+[ -z "${explicit_new_kms}" ] || args+=(--explicit-new-kms 1)
+
+if [ "${#backends[@]}" -eq 1 ]; then
+  exec bash "${GATE}" --backend "${backends[0]}" "${args[@]}"
+fi
+
+# One gate process per backend (own containers, network and work dir via $$), in parallel.
+pids=()
+for b in "${backends[@]}"; do
+  bash "${GATE}" --backend "${b}" "${args[@]}" >"${out}/gate-${b}.log" 2>&1 &
+  pids+=($!)
+done
+failed=()
+for i in "${!pids[@]}"; do
+  wait "${pids[$i]}" || failed+=("${backends[$i]}")
+done
+for b in "${backends[@]}"; do
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    echo "::group::upgrade gate log: ${b}"
+    cat "${out}/gate-${b}.log"
+    echo "::endgroup::"
+  else
+    print_header "upgrade gate log: ${b}"
+    cat "${out}/gate-${b}.log"
+  fi
+done
+if [ "${#failed[@]}" -gt 0 ]; then
+  print_warning "upgrade gate failed on: ${failed[*]}"
+  exit 1
+fi
+print_success "Database upgrade gate passed on: ${backends[*]} (${VARIANT})"

@@ -246,7 +246,31 @@ async fn test_pqc_hybrid_kem_ckms() -> CosmianResult<()> {
     let owner_conf_path = owner_config(ctx);
 
     test_kem(&owner_conf_path, "PQC X25519MLKEM768", "x25519-ml-kem-768")?;
+
+    Ok(())
+}
+
+// X448MLKEM1024 is not served by the OpenSSL FIPS provider.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_pqc_x448_ml_kem_1024_ckms() -> CosmianResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let owner_conf_path = owner_config(ctx);
+
     test_kem(&owner_conf_path, "PQC X448MLKEM1024", "x448-ml-kem-1024")?;
+
+    Ok(())
+}
+
+/// In a FIPS build the `x448-ml-kem-1024` value is not offered by the CLI.
+#[cfg(not(feature = "non-fips"))]
+#[tokio::test]
+async fn test_pqc_x448_ml_kem_1024_is_rejected_in_fips() -> CosmianResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let owner_conf_path = owner_config(ctx);
+
+    let err = create_pqc_key_pair(&owner_conf_path, "x448-ml-kem-1024", &[]).unwrap_err();
+    assert!(err.to_string().contains("x448-ml-kem-1024"), "{err}");
 
     Ok(())
 }
@@ -320,6 +344,8 @@ async fn test_pqc_slh_dsa_ckms() -> CosmianResult<()> {
     Ok(())
 }
 
+// ConfigurableKEM (Covercrypt software KEM) is outside the validated module.
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_pqc_configurable_hybrid_kem_ckms() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;

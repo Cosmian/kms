@@ -223,6 +223,7 @@ impl Migrate for RedisWithFindex {
             MigrationStep::CertificateSerialTagBackfill => {
                 Box::pin(self.backfill_certificate_serial_tags()).await
             }
+            MigrationStep::StoredStateSync => Box::pin(self.sync_stored_state()).await,
         }
     }
 }

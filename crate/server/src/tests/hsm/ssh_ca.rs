@@ -71,24 +71,29 @@ async fn create_hsm_ca(
     sensitive: bool,
 ) -> KResult<String> {
     let sk_uid = as_hsm_uid!(slot, Uuid::new_v4());
-    let operation = match kind {
-        CaKind::Rsa => Operation::CreateKeyPair(Box::new(create_rsa_key_pair_request(
+    let mut request = match kind {
+        CaKind::Rsa => create_rsa_key_pair_request(
             VENDOR_ID_COSMIAN,
             Some(UniqueIdentifier::TextString(sk_uid.clone())),
             EMPTY_TAGS,
             3072,
             sensitive,
             None,
-        )?)),
-        CaKind::EcP256 => Operation::CreateKeyPair(Box::new(create_ec_key_pair_request(
+        )?,
+        CaKind::EcP256 => create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
             Some(UniqueIdentifier::TextString(sk_uid.clone())),
             EMPTY_TAGS,
             RecommendedCurve::P256,
             sensitive,
             None,
-        )?)),
+        )?,
     };
+    // HSM keys are sensitive unless the request says otherwise
+    if let Some(private_key_attributes) = request.private_key_attributes.as_mut() {
+        private_key_attributes.sensitive = Some(sensitive);
+    }
+    let operation = Operation::CreateKeyPair(Box::new(request));
     let response = send_message(kms.clone(), ADMIN, vec![operation]).await?;
     let Operation::CreateKeyPairResponse(_) = &response[0] else {
         return Err(KmsError::ServerError(

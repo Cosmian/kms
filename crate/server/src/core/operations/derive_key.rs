@@ -62,9 +62,12 @@ use crate::{
 
 // Default constants for key derivation
 const DEFAULT_PBKDF2_ITERATIONS: i32 = 600_000; // OWASP recommendation for PBKDF2 with SHA-256
-/// Upper bound on the client-supplied PBKDF2 iteration count (a few seconds of CPU):
-/// the derivation runs synchronously, so larger values would pin a worker thread.
+/// Upper bound on the PBKDF2 work: iteration count × output blocks (a few seconds of CPU on the
+/// blocking pool).
 const MAX_PBKDF2_ITERATIONS: u32 = 10_000_000;
+/// Bounds of the derived object length, as `Create` bounds a symmetric key (8..=8192 bits).
+const MIN_DERIVED_KEY_BITS: i32 = 8;
+const MAX_DERIVED_KEY_BITS: i32 = 8192;
 
 pub(crate) async fn derive_key(
     kms: &KMS,
@@ -251,9 +254,18 @@ async fn derive_key_symmetric(
     let cryptographic_length_bits = request.attributes.cryptographic_length.ok_or_else(|| {
         KmsError::InvalidRequest("DeriveKey: Cryptographic Length must be specified".to_owned())
     })?;
-    let cryptographic_length = usize::try_from(cryptographic_length_bits).map_err(|_e| {
+    if !(MIN_DERIVED_KEY_BITS..=MAX_DERIVED_KEY_BITS).contains(&cryptographic_length_bits) {
+        kms_bail!(KmsError::Kmip21Error(
+            ErrorReason::Invalid_Attribute_Value,
+            format!(
+                "DeriveKey: invalid Cryptographic Length {cryptographic_length_bits} bits: must be \
+                 between {MIN_DERIVED_KEY_BITS} and {MAX_DERIVED_KEY_BITS}"
+            )
+        ));
+    }
+    let cryptographic_length = usize::try_from(cryptographic_length_bits / 8).map_err(|_e| {
         KmsError::InvalidRequest("DeriveKey: Invalid cryptographic length".to_owned())
-    })? / 8;
+    })?;
 
     if request.object_type == ObjectType::SymmetricKey
         && request.attributes.cryptographic_algorithm.is_none()
@@ -293,13 +305,24 @@ async fn derive_key_symmetric(
                     ))
                 })?;
 
-            derive_pbkdf2(
+            let blocks = u64::try_from(
+                cryptographic_length.div_ceil(get_message_digest(hashing_algorithm)?.size()),
+            )
+            .unwrap_or(u64::MAX);
+            if u64::from(iterations_u32).saturating_mul(blocks) > u64::from(MAX_PBKDF2_ITERATIONS) {
+                kms_bail!(KmsError::InvalidRequest(format!(
+                    "Invalid iteration count {iterations}: iteration count × {blocks} output \
+                     blocks exceeds {MAX_PBKDF2_ITERATIONS}"
+                )));
+            }
+            derive_pbkdf2_blocking(
                 base_key_bytes,
                 salt,
                 iterations_u32,
                 cryptographic_length,
                 hashing_algorithm,
-            )?
+            )
+            .await?
         }
         DerivationMethod::HKDF => {
             let salt = request
@@ -1045,6 +1068,24 @@ fn derive_pbkdf2(
     Ok(output)
 }
 
+/// [`derive_pbkdf2`] on the blocking pool: PBKDF2 is CPU-bound for seconds and must not pin the
+/// HTTP worker.
+async fn derive_pbkdf2_blocking(
+    key: &[u8],
+    salt: &[u8],
+    iterations: u32,
+    length: usize,
+    hashing_algorithm: HashingAlgorithm,
+) -> KResult<Zeroizing<Vec<u8>>> {
+    let key = Zeroizing::new(key.to_vec());
+    let salt = salt.to_vec();
+    tokio::task::spawn_blocking(move || {
+        derive_pbkdf2(&key, &salt, iterations, length, hashing_algorithm)
+    })
+    .await
+    .map_err(|e| KmsError::Default(format!("PBKDF2 derivation task failed: {e}")))?
+}
+
 /// HKDF key derivation using OpenSSL's native HKDF implementation
 ///
 /// Returns the derived key wrapped in [`Zeroizing`] so the bytes are scrubbed
@@ -1104,7 +1145,30 @@ mod tests {
         kat_vectors::{hkdf_vectors, pbkdf2_vectors},
     };
 
-    use super::{derive_hkdf, derive_pbkdf2};
+    use super::{HashingAlgorithm, derive_hkdf, derive_pbkdf2, derive_pbkdf2_blocking};
+
+    /// PBKDF2 runs on the blocking pool: the async runtime keeps scheduling other tasks while
+    /// it computes (see `runtime_turns_during`).
+    #[tokio::test]
+    async fn test_derive_pbkdf2_runs_off_the_async_worker() {
+        use crate::tests::test_utils::{
+            MIN_RUNTIME_TURNS_DURING_OFFLOADED_WORK, runtime_turns_during,
+        };
+
+        let (dk, turns) = runtime_turns_during(derive_pbkdf2_blocking(
+            &[7; 32],
+            &[9; 16],
+            10_000_000,
+            32,
+            HashingAlgorithm::SHA256,
+        ))
+        .await;
+        assert_eq!(dk.expect("PBKDF2 must succeed").len(), 32);
+        assert!(
+            turns >= MIN_RUNTIME_TURNS_DURING_OFFLOADED_WORK,
+            "PBKDF2 blocked the runtime: the probe got only {turns} turns"
+        );
+    }
 
     /// `derive_hkdf` against the Wycheproof / OpenSSL HKDF vectors.
     #[test]

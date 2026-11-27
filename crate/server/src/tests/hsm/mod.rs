@@ -15,7 +15,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             ResponseMessageBatchItemVersioned,
         },
         kmip_types::{
-            ProtocolVersion, ResultStatusEnumeration, RevocationReason, RevocationReasonCode,
+            CryptographicUsageMask, ProtocolVersion, ResultStatusEnumeration, RevocationReason,
+            RevocationReasonCode,
         },
     },
     kmip_2_1::{
@@ -49,12 +50,10 @@ use crate::{
 
 #[cfg(feature = "non-fips")]
 mod ec_dek;
-#[cfg(feature = "non-fips")]
 mod eddsa_sign;
 mod export_key_bytes;
 mod fake_hsm_authz;
 mod fake_hsm_rotation;
-#[cfg(feature = "non-fips")]
 mod hybrid_kem_dek;
 mod issues;
 mod jose_decrypt;
@@ -85,6 +84,10 @@ async fn test_hsm_all() {
     Box::pin(export_key_bytes::test_hsm_export_key_bytes())
         .await
         .unwrap();
+    info!("HSM: default_key_is_sensitive");
+    Box::pin(export_key_bytes::test_hsm_default_key_is_sensitive())
+        .await
+        .unwrap();
     info!("HSM: non_extractable_key_bytes");
     Box::pin(non_extractable_key_bytes::test_hsm_non_extractable_key_bytes())
         .await
@@ -108,23 +111,21 @@ async fn test_hsm_all() {
     {
         info!("HSM: wrapped_ec_dek");
         Box::pin(ec_dek::test_wrapped_ec_dek()).await.unwrap();
-        info!("HSM: eddsa_sign");
-        Box::pin(eddsa_sign::test_hsm_eddsa_sign()).await.unwrap();
-        info!("HSM: hybrid_kem_lifecycle");
-        Box::pin(hybrid_kem_dek::test_hybrid_kem_lifecycle())
-            .await
-            .unwrap();
-        info!("HSM: hybrid_kem_ttlv_wrapped_import");
-        Box::pin(hybrid_kem_dek::test_ttlv_wrapped_kem_import())
-            .await
-            .unwrap();
-        info!("HSM: hybrid_kem_client_wrapped_import");
-        Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
-            .await
-            .unwrap();
-        info!("HSM: sub_ca_ed25519 (CSR, certify and CRL with an Ed25519 HSM key)");
-        Box::pin(sub_ca::test_hsm_sub_ca_ed25519()).await.unwrap();
     }
+    info!("HSM: eddsa_sign");
+    Box::pin(eddsa_sign::test_hsm_eddsa_sign()).await.unwrap();
+    info!("HSM: hybrid_kem_lifecycle");
+    Box::pin(hybrid_kem_dek::test_hybrid_kem_lifecycle())
+        .await
+        .unwrap();
+    info!("HSM: hybrid_kem_ttlv_wrapped_import");
+    Box::pin(hybrid_kem_dek::test_ttlv_wrapped_kem_import())
+        .await
+        .unwrap();
+    info!("HSM: hybrid_kem_client_wrapped_import");
+    Box::pin(hybrid_kem_dek::test_client_wrapped_kem_import())
+        .await
+        .unwrap();
 
     info!("HSM: non_admin_kek_wrapping (issue #761)");
     Box::pin(issues::test_non_admin_kek_wrapping())
@@ -150,7 +151,7 @@ async fn test_hsm_all() {
     // hash-and-sign `CKM_ECDSA_SHA*` / `CKM_SHA*_RSA_PKCS` forms).
     if hsm_rejects_raw_signing_mechanisms() {
         info!(
-            "HSM: sub_ca and sub_ca_ec skipped (the token rejects raw CKM_RSA_PKCS and CKM_ECDSA in FIPS mode)"
+            "HSM: sub_ca, sub_ca_ec and sub_ca_ed25519 skipped (the token rejects raw CKM_RSA_PKCS and CKM_ECDSA in FIPS mode)"
         );
     } else {
         info!("HSM: sub_ca (CSR, certify and CRL with a non-extractable key)");
@@ -158,6 +159,10 @@ async fn test_hsm_all() {
 
         info!("HSM: sub_ca_ec (ECDSA P-256 and P-384 HSM sub-CA: CSR, certify and CRL)");
         Box::pin(sub_ca::test_hsm_sub_ca_ec()).await.unwrap();
+
+        // The Ed25519 sub-CA is certified by the same RSA HSM root.
+        info!("HSM: sub_ca_ed25519 (CSR, certify and CRL with an Ed25519 HSM key)");
+        Box::pin(sub_ca::test_hsm_sub_ca_ed25519()).await.unwrap();
     }
 
     // Windows has no OpenSSH `sshd` (the test authenticates against a real `sshd -i`): a
@@ -286,10 +291,10 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 
 async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
-    // sensitive = false so that export-based tests can retrieve the key material;
-    // HSM tests that specifically exercise non-extractable keys create their own
-    // sensitive key directly.
-    let create_request = symmetric_key_create_request(
+    // Sensitive=false so that export-based tests can retrieve the key material (HSM keys are
+    // sensitive by default); HSM tests that specifically exercise non-extractable keys
+    // create their own sensitive key directly.
+    let mut create_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
@@ -298,6 +303,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
         false,
         None,
     )?;
+    create_request.attributes.sensitive = Some(false);
     let response = send_message(
         kms.clone(),
         owner,
@@ -316,7 +322,7 @@ async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<(
 
 async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
-    let create_request = create_rsa_key_pair_request(
+    let mut create_request = create_rsa_key_pair_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         EMPTY_TAGS,
@@ -324,6 +330,9 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
         false,
         None,
     )?;
+    if let Some(private_key_attributes) = create_request.private_key_attributes.as_mut() {
+        private_key_attributes.sensitive = Some(false);
+    }
     let response = send_message(
         kms.clone(),
         owner,
@@ -378,12 +387,16 @@ async fn import_object(
     object_id: &str,
     object: &Object,
     object_type: ObjectType,
+    // FIPS builds give an imported key no mask of its own: a wrapped object carries its
+    // attributes encrypted, so the caller states the mask when it must be usable.
+    usage_mask: Option<CryptographicUsageMask>,
 ) -> KResult<UniqueIdentifier> {
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(object_id.to_owned()),
         object_type,
         attributes: Attributes {
             object_type: Some(object_type),
+            cryptographic_usage_mask: usage_mask,
             ..Default::default()
         },
         replace_existing: None,

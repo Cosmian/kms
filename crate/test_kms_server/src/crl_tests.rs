@@ -1,11 +1,17 @@
 use cosmian_kms_client::{
     KmsClient,
-    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    cosmian_kmip::time_normalize,
+    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode, State},
     kmip_2_1::{
         KmipOperation,
         extra::VENDOR_ID_COSMIAN,
-        kmip_operations::{Destroy, GetAttributes, Revoke},
-        kmip_types::{LinkType, RecommendedCurve, UniqueIdentifier, ValidityIndicator},
+        kmip_attributes::Attributes,
+        kmip_objects::ObjectType,
+        kmip_operations::{Destroy, Encrypt, Export, GetAttributes, Import, Revoke},
+        kmip_types::{
+            KeyFormatType, LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
+            ValidityIndicator,
+        },
         requests::{build_validate_certificate_request, create_ec_key_pair_request},
     },
     reexport::{
@@ -19,7 +25,8 @@ use openssl::x509::X509Crl;
 use x509_parser::prelude::FromDer as _;
 
 use crate::{
-    init_test_logging, start_default_test_kms_server, start_default_test_kms_server_with_cert_auth,
+    TestClientOptions, init_test_logging, start_default_test_kms_server,
+    start_default_test_kms_server_with_cert_auth, start_test_server_with_patch, test_config_path,
 };
 
 // ── RFC 5280 CRL test helpers ─────────────────────────────────────────────────
@@ -1119,4 +1126,270 @@ async fn test_crl_invalid_format_returns_400() {
     );
 
     resources.cleanup(&client).await;
+}
+
+/// Test: `validity_days` above 365 is refused (HTTP 422) and the server keeps serving.
+#[tokio::test]
+async fn test_crl_rejects_out_of_range_validity_days_live() {
+    init_test_logging();
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let ca_cert_id = create_named_ca(&client, "ValidityBound-CA", &mut resources).await;
+
+    for days in ["4294967295", "366"] {
+        client
+            .get_bytes(
+                &format!("/certificates/{ca_cert_id}/crl"),
+                Some(&[("format", "der"), ("validity_days", days)]),
+            )
+            .await
+            .expect_err("validity_days above 365 must be rejected");
+    }
+
+    // The server is still alive and serves a valid CRL.
+    fetch_crl_der(&client, &ca_cert_id, 7).await;
+
+    resources.cleanup(&client).await;
+}
+
+/// Re-import the DER of `leaf_id` as a new certificate linked to `ca_id`, as a client
+/// importing a third-party certificate with its issuer does. Returns the new UID.
+async fn reimport_cert_with_issuer(client: &KmsClient, leaf_id: &str, ca_id: &str) -> String {
+    let object = client
+        .export(Export::new(
+            UniqueIdentifier::TextString(leaf_id.to_owned()),
+            false,
+            None,
+            Some(KeyFormatType::X509),
+        ))
+        .await
+        .expect("export of the leaf should succeed")
+        .object;
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::Certificate),
+        // as `ckms certificates import` does: the CRL check only applies to Active imports
+        activation_date: Some(time_normalize().expect("time_normalize")),
+        ..Attributes::default()
+    };
+    attributes.set_link(
+        LinkType::CertificateLink,
+        LinkedObjectIdentifier::TextString(ca_id.to_owned()),
+    );
+    client
+        .import(Import {
+            unique_identifier: UniqueIdentifier::TextString(String::new()),
+            object_type: ObjectType::Certificate,
+            replace_existing: None,
+            key_wrap_type: None,
+            attributes,
+            object,
+        })
+        .await
+        .expect("import should succeed")
+        .unique_identifier
+        .to_string()
+}
+
+/// Regression test for #1461: importing a revoked leaf (HTTP CDP) together with its issuer
+/// link must verify the CRL signature against the issuer and set the state to `Compromised`.
+/// The unrevoked control leaf stays `Active`.
+#[tokio::test]
+async fn test_import_revoked_leaf_with_issuer_link_is_compromised() {
+    init_test_logging();
+    let ctx = start_self_cdp_test_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let ca_id = create_named_ca(&client, "CA-Import-Revoked-1461", &mut resources).await;
+    let revoked_leaf = issue_cert(&client, &ca_id, "revoked-leaf-1461", &mut resources).await;
+    let good_leaf = issue_cert(&client, &ca_id, "good-leaf-1461", &mut resources).await;
+    revoke_cert(&client, &revoked_leaf, RevocationReasonCode::KeyCompromise).await;
+
+    for (leaf_id, expected_state) in [
+        (&revoked_leaf, State::Compromised),
+        (&good_leaf, State::Active),
+    ] {
+        let imported_id = reimport_cert_with_issuer(&client, leaf_id, &ca_id).await;
+        resources.track(imported_id.clone());
+        assert_ne!(&imported_id, leaf_id, "import must create a new object");
+
+        let state = client
+            .get_attributes(GetAttributes::from(imported_id.as_str()))
+            .await
+            .expect("GetAttributes should succeed")
+            .attributes
+            .state;
+        assert_eq!(state, Some(expected_state), "state of the imported leaf");
+
+        if expected_state == State::Compromised {
+            // (EC encryption itself is non-FIPS only: the state check must come first)
+            let err = client
+                .encrypt(Encrypt {
+                    unique_identifier: Some(UniqueIdentifier::TextString(imported_id)),
+                    data: Some(b"1461".to_vec().into()),
+                    ..Encrypt::default()
+                })
+                .await
+                .expect_err("a compromised certificate must not encrypt")
+                .to_string();
+            assert!(err.contains("Wrong_Key_Lifecycle_State"), "{err}");
+        }
+    }
+
+    resources.cleanup(&client).await;
+    ctx.stop_server().await.expect("server should stop");
+}
+
+/// Start a server whose `kms_public_url` points at itself: the CRL distribution point injected
+/// in issued certificates is `kms_public_url`, and the shared test servers advertise a fixed,
+/// unreachable port.
+async fn start_self_cdp_test_server() -> crate::TestsContext {
+    start_test_server_with_patch(
+        &test_config_path("auth/plain.toml"),
+        |config| config.kms_public_url = Some(format!("http://127.0.0.1:{}", config.http.port)),
+        TestClientOptions::default(),
+    )
+    .await
+    .expect("test server should start")
+}
+
+/// Create an intermediate CA issued by `root_id` (its CDP is injected by the server).
+async fn create_intermediate_ca(
+    client: &KmsClient,
+    root_id: &str,
+    cn: &str,
+    res: &mut TestResources,
+) -> String {
+    let certify = build_certify_request(
+        VENDOR_ID_COSMIAN,
+        &CertifyRequestParams {
+            certificate_id: None,
+            source: CertificationSource::GenerateKeyPair {
+                subject_name: format!("CN={cn},O=Cosmian"),
+                algorithm: Algorithm::NistP256,
+            },
+            issuer_private_key_id: None,
+            issuer_certificate_id: Some(root_id.to_owned()),
+            number_of_days: 365,
+            certificate_extensions: Some(
+                b"[ v3_ca ]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,crlSign\n"
+                    .to_vec(),
+            ),
+            tags: vec![],
+        },
+    )
+    .unwrap();
+    let cert_id = client
+        .certify(certify)
+        .await
+        .unwrap()
+        .unique_identifier
+        .to_string();
+    res.track(cert_id.clone());
+    cert_id
+}
+
+/// Regression test for #1461: a leaf issued by an intermediate CA is imported with a link to
+/// the intermediate only; the intermediate's CRL is signed by the root, so the CRL check must
+/// walk the stored `CertificateLink` chain up to the root.
+#[tokio::test]
+async fn test_import_revoked_leaf_issued_by_intermediate_is_compromised() {
+    init_test_logging();
+    let ctx = start_self_cdp_test_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let root_id = create_named_ca(&client, "Root-Import-Revoked-1461", &mut resources).await;
+    let inter_id = create_intermediate_ca(
+        &client,
+        &root_id,
+        "Inter-Import-Revoked-1461",
+        &mut resources,
+    )
+    .await;
+    let linked_root = client
+        .get_attributes(GetAttributes::from(inter_id.as_str()))
+        .await
+        .expect("GetAttributes should succeed")
+        .attributes
+        .get_link(LinkType::CertificateLink)
+        .map(|l| l.to_string());
+    assert_eq!(linked_root.as_deref(), Some(root_id.as_str()));
+
+    let revoked_leaf = issue_cert(
+        &client,
+        &inter_id,
+        "revoked-leaf-chain-1461",
+        &mut resources,
+    )
+    .await;
+    let good_leaf = issue_cert(&client, &inter_id, "good-leaf-chain-1461", &mut resources).await;
+    revoke_cert(&client, &revoked_leaf, RevocationReasonCode::KeyCompromise).await;
+    // The root has revoked nothing: its CRL URL answers 404 during the chain check, which
+    // must not mark the imported leaf Compromised (see the dedicated test below).
+
+    for (leaf_id, expected_state) in [
+        (&revoked_leaf, State::Compromised),
+        (&good_leaf, State::Active),
+    ] {
+        let imported_id = reimport_cert_with_issuer(&client, leaf_id, &inter_id).await;
+        resources.track(imported_id.clone());
+        let state = client
+            .get_attributes(GetAttributes::from(imported_id.as_str()))
+            .await
+            .expect("GetAttributes should succeed")
+            .attributes
+            .state;
+        assert_eq!(state, Some(expected_state), "state of the imported leaf");
+
+        if expected_state == State::Compromised {
+            let err = client
+                .encrypt(Encrypt {
+                    unique_identifier: Some(UniqueIdentifier::TextString(imported_id)),
+                    data: Some(b"1461".to_vec().into()),
+                    ..Encrypt::default()
+                })
+                .await
+                .expect_err("a compromised certificate must not encrypt")
+                .to_string();
+            assert!(err.contains("Wrong_Key_Lifecycle_State"), "{err}");
+        }
+    }
+
+    resources.cleanup(&client).await;
+    ctx.stop_server().await.expect("server should stop");
+}
+
+/// Regression test for #1461: a good leaf imported with a link to an intermediate must stay
+/// `Active` although the root's CRL has never been published (nothing revoked: HTTP 404).
+#[tokio::test]
+async fn test_import_good_leaf_with_unpublished_root_crl_stays_active() {
+    init_test_logging();
+    let ctx = start_self_cdp_test_server().await;
+    let client = ctx.get_owner_client();
+    let mut resources = TestResources::new();
+
+    let root_id = create_named_ca(&client, "Root-NoCrl-1461", &mut resources).await;
+    let inter_id =
+        create_intermediate_ca(&client, &root_id, "Inter-NoCrl-1461", &mut resources).await;
+    let good_leaf = issue_cert(&client, &inter_id, "good-leaf-nocrl-1461", &mut resources).await;
+
+    let imported_id = reimport_cert_with_issuer(&client, &good_leaf, &inter_id).await;
+    resources.track(imported_id.clone());
+    let state = client
+        .get_attributes(GetAttributes::from(imported_id.as_str()))
+        .await
+        .expect("GetAttributes should succeed")
+        .attributes
+        .state;
+    assert_eq!(
+        state,
+        Some(State::Active),
+        "state of the imported good leaf"
+    );
+
+    resources.cleanup(&client).await;
+    ctx.stop_server().await.expect("server should stop");
 }

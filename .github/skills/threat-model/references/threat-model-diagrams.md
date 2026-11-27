@@ -51,19 +51,19 @@ flowchart LR
 
     subgraph Internet["Internet (Untrusted)"]
         Browser["Browser / ckms CLI"]:::untrusted
-        CloudProvider["Cloud Provider\n(AWS XKS / Azure EKM)"]:::untrusted
+        CloudProvider["Cloud Provider<br/>(AWS XKS / Azure EKM)"]:::untrusted
     end
 
     subgraph KMSServer["KMS Server (Trusted)"]
-        HTTP["Actix-web\nHTTP Layer"]:::trusted
-        Auth["Auth Middleware\n(JWT / mTLS / API token)"]:::trusted
+        HTTP["Actix-web<br/>HTTP Layer"]:::trusted
+        Auth["Auth Middleware<br/>(JWT / mTLS / API token)"]:::trusted
         Dispatcher["KMIP Dispatcher"]:::trusted
-        Core["KMS Core\n(Operations)"]:::trusted
-        Crypto["Crypto Oracles\n(OpenSSL FIPS)"]:::trusted
+        Core["KMS Core<br/>(Operations)"]:::trusted
+        Crypto["Crypto Oracles<br/>(OpenSSL 3.1.2 FIPS)"]:::trusted
     end
 
-    DB[("Database\n(SQLite / PostgreSQL)")]:::datastore
-    HSM{{"HSM\n(PKCS#11)"}}:::hsm
+    DB[("Database<br/>(SQLite / PostgreSQL)")]:::datastore
+    HSM{{"HSM<br/>(PKCS#11)"}}:::hsm
 
     Browser -.->|"HTTPS + KMIP/JSON"| HTTP
     CloudProvider -.->|"HTTPS + provider auth"| HTTP
@@ -83,14 +83,14 @@ flowchart TD
     classDef trusted fill:#d4edda,stroke:#008800
     classDef datastore fill:#cce5ff,stroke:#0066cc
 
-    Client["Client\n(TTLV request)"]:::untrusted
-    TLS["TLS Termination\ncrate/server/src/routes/kmip.rs"]:::trusted
-    AuthMW["Auth Middleware Stack\n(LIFO: Cors→JWT→mTLS→ApiToken→EnsureAuth)"]:::trusted
-    Deser["TTLV Deserializer\ncrate/kmip/src/"]:::trusted
-    Dispatch["Dispatcher\ndispatch.rs"]:::trusted
-    OpHandler["Operation Handler\noperations/<op>.rs"]:::trusted
-    ACL["Access Control Check\ncrate/access/"]:::trusted
-    CryptoOp["Crypto Operation\ncrate/crypto/src/"]:::trusted
+    Client["Client<br/>(TTLV request)"]:::untrusted
+    TLS["TLS & HTTP Route<br/>routes/kmip/handlers.rs"]:::trusted
+    AuthMW["Middleware Stack (LIFO)<br/>Cors → AuditMiddleware<br/>→ wrap_native_auth<br/>→ ensure_auth_middleware"]:::trusted
+    Deser["TTLV Deserializer<br/>crate/kmip/src/"]:::trusted
+    Dispatch["Dispatcher<br/>dispatch.rs"]:::trusted
+    OpHandler["Operation Handler<br/>core/operations/"]:::trusted
+    ACL["Access Control Check<br/>crate/access/"]:::trusted
+    CryptoOp["Crypto Operation<br/>crate/crypto/src/"]:::trusted
     DB[("Database")]:::datastore
 
     Client -->|"POST /kmip/2_1"| TLS
@@ -105,6 +105,11 @@ flowchart TD
     DB -->|"key blob"| CryptoOp
     CryptoOp -->|"KMIP response"| Client
 ```
+
+KMIP HTTP handlers live in `crate/server/src/routes/kmip/handlers.rs` (`kmip_2_1_json`, `kmip`) and are mounted on `default_scope` in `crate/server/src/start_kms_server.rs`:
+
+- Outer `.wrap()` (runs first on ingress, LIFO): `Cors` → `AuditMiddleware`.
+- Inner `wrap_native_auth` (ingress execution order): `vault_token_optional_middleware` → `tls_auth_fn` → `jwt_auth_middleware` → `AuthVerifier` → `api_token_middleware` → `SessionAuth` → `ensure_auth_middleware`.
 
 ## Pre-Render Checklist
 

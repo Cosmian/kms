@@ -203,13 +203,33 @@ pub struct KmipAllowlistsConfig {
     pub mask_generators: Option<Vec<MaskGenerator>>,
 }
 
+/// Default-allowlisted algorithms that only exist in non-FIPS builds.
+#[cfg(feature = "non-fips")]
+fn non_fips_only_algorithms() -> Vec<CryptographicAlgorithm> {
+    vec![
+        CryptographicAlgorithm::ChaCha20Poly1305,
+        // ECIES fixed internal KDF/hash for standard curves uses SHAKE128/SHAKE256:
+        // when policy is enforced, ECIES is denied unless they are allowlisted.
+        CryptographicAlgorithm::SHAKE128,
+        CryptographicAlgorithm::SHAKE256,
+        // Configurable KEM (PQC/hybrid KEM selection at runtime).
+        CryptographicAlgorithm::ConfigurableKEM,
+        CryptographicAlgorithm::X448MLKEM1024,
+    ]
+}
+
+/// FIPS builds have no extra default-allowlisted algorithm.
+#[cfg(not(feature = "non-fips"))]
+const fn non_fips_only_algorithms() -> Vec<CryptographicAlgorithm> {
+    Vec::new()
+}
+
 impl KmipAllowlistsConfig {
     /// Conservative allowlists aligned with ANSSI/NIST/FIPS guidance.
     /// Used when `policy_id = "DEFAULT"`.
     #[must_use]
     pub fn conservative() -> Self {
-        #[cfg(feature = "non-fips")]
-        let algorithms = vec![
+        let mut algorithms = vec![
             // AES: the default symmetric primitive for encryption/wrapping (widest KMIP support).
             CryptographicAlgorithm::AES,
             // RSA/ECC: primary asymmetric primitives for key wrapping and signatures.
@@ -223,43 +243,20 @@ impl KmipAllowlistsConfig {
             CryptographicAlgorithm::HMACSHA256,
             CryptographicAlgorithm::HMACSHA384,
             CryptographicAlgorithm::HMACSHA512,
-            // Documented non-FIPS schemes (documentation/docs/algorithms.md).
-            CryptographicAlgorithm::ChaCha20Poly1305,
+            // EdDSA (FIPS 186-5).
             CryptographicAlgorithm::Ed25519,
-            // ECIES fixed internal KDF/hash for standard curves uses SHAKE128.
-            // When policy is enforced, ECIES is denied unless SHAKE128 is allowlisted.
-            CryptographicAlgorithm::SHAKE128,
-            // Standard curves P-384/P-521 use SHAKE256 internally.
-            // In strict mode (when the exact curve is not known), ECIES requires both SHAKE128 and SHAKE256.
-            CryptographicAlgorithm::SHAKE256,
-            // Configurable KEM (PQC/hybrid KEM selection at runtime).
-            CryptographicAlgorithm::ConfigurableKEM,
-            // ML-KEM (post-quantum lattice-based KEM) variants used as the inner algorithm
-            // inside ConfigurableKEM requests.
+            // ML-KEM (FIPS 203) variants, also used as the inner algorithm of hybrid KEM requests.
             CryptographicAlgorithm::MLKEM_512,
             CryptographicAlgorithm::MLKEM_768,
             CryptographicAlgorithm::MLKEM_1024,
-            // Native hybrid KEM groups (classical ECDH + ML-KEM).
+            // Native hybrid KEM group (classical ECDH + ML-KEM).
             CryptographicAlgorithm::X25519MLKEM768,
-            CryptographicAlgorithm::X448MLKEM1024,
-            // ML-DSA (post-quantum lattice-based signature) variants.
+            // ML-DSA (FIPS 204) variants.
             CryptographicAlgorithm::MLDSA_44,
             CryptographicAlgorithm::MLDSA_65,
             CryptographicAlgorithm::MLDSA_87,
         ];
-
-        #[cfg(not(feature = "non-fips"))]
-        let algorithms = vec![
-            // Conservative baseline: keep defaults to common profiles.
-            CryptographicAlgorithm::AES,
-            CryptographicAlgorithm::RSA,
-            CryptographicAlgorithm::ECDSA,
-            CryptographicAlgorithm::ECDH,
-            CryptographicAlgorithm::EC,
-            CryptographicAlgorithm::HMACSHA256,
-            CryptographicAlgorithm::HMACSHA384,
-            CryptographicAlgorithm::HMACSHA512,
-        ];
+        algorithms.extend(non_fips_only_algorithms());
 
         let signature_algorithms = vec![
             // X.509 / CMS interoperability: the most common RSA signature OIDs.

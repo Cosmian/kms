@@ -44,7 +44,7 @@ These are the semantic invariants the agent must treat as always-true unless the
 ## Protocol
 
 - `POST /kmip/2_1` with empty body returns 422, not 404 or 500
-- Unknown KMIP operations return `RouteNotFound` / `Unsupported_Operation`
+- Unknown KMIP operations return `KmsError::RouteNotFound` (mapped to `ErrorReason::Operation_Not_Supported` in KMIP batch responses)
 - KMIP responses always include `ProtocolVersion`, `TimeStamp`, `BatchCount`
 - Enterprise endpoints conform to vendor specs (AWS SigV4, Azure mTLS, Google JWT)
 
@@ -62,7 +62,7 @@ These are the semantic invariants the agent must treat as always-true unless the
 
 - `POST /v1/crypto/keys` with key material fields (`k`, `d`) imports; without them, generates. The two code paths must not be confused.
 - `DELETE /v1/crypto/keys/{kid}` must revoke-then-destroy. Using a deleted key in any subsequent `/v1/crypto/*` call must fail with `404 Not Found`.
-- JWE decryption failures must return the same `{"error":"DecryptionFailed","description":"Decryption failed"}` regardless of root cause, per RFC 7516 §11.5.
+- JWE decryption failures must return the same `{"error":"decryption_failed","description":"Decryption failed"}` regardless of root cause, per RFC 7516 §11.5.
 - `POST /v1/crypto/sign` must return a detached JWS protected header and signature; the payload must **not** appear in the response.
 - `POST /v1/crypto/verify` must use the `kid` in the protected header, not an independently supplied one. A `kid` pointing to a different key type than the `alg` must fail.
 - `/.well-known/jwks.json` returns `404` when `jwks_endpoint_enabled = false`.

@@ -36,7 +36,7 @@ use openssl::x509::X509Req;
 use super::subject::{KeyPairData, Subject};
 use crate::{
     core::{
-        KMS, operations::create_key_pair::generate_key_pair,
+        KMS, operations::create_key_pair::spawn_generate_key_pair,
         retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle,
     },
     error::KmsError,
@@ -138,8 +138,27 @@ fn cryptographic_usage_mask_private_key(
         CryptographicAlgorithm::ECDH => FIPS_PRIVATE_ECC_MASK_ECDH,
         CryptographicAlgorithm::ECDSA
         | CryptographicAlgorithm::Ed25519
-        | CryptographicAlgorithm::Ed448 => FIPS_PRIVATE_ECC_MASK_SIGN,
+        | CryptographicAlgorithm::Ed448
+        | CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87
+        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => FIPS_PRIVATE_ECC_MASK_SIGN,
         CryptographicAlgorithm::EC => FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Decrypt,
         c => kms_bail!(KmsError::InvalidRequest(format!(
             "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
         ))),
@@ -155,10 +174,29 @@ fn cryptographic_usage_mask_public_key(
         CryptographicAlgorithm::ECDH => FIPS_PUBLIC_ECC_MASK_ECDH,
         CryptographicAlgorithm::ECDSA
         | CryptographicAlgorithm::Ed25519
-        | CryptographicAlgorithm::Ed448 => FIPS_PUBLIC_ECC_MASK_SIGN,
+        | CryptographicAlgorithm::Ed448
+        | CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87
+        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => FIPS_PUBLIC_ECC_MASK_SIGN,
         CryptographicAlgorithm::EC => FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768 => CryptographicUsageMask::Encrypt,
         c => kms_bail!(KmsError::InvalidRequest(format!(
-            "Cryptographic algorithm not supported for private key in FIPS mode: {c}"
+            "Cryptographic algorithm not supported for public key in FIPS mode: {c}"
         ))),
     })
 }
@@ -348,13 +386,13 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> 
         public_key_attributes: public_attributes,
     };
     info!("Creating key pair for certification - private key: {sk_uid}, public key: {pk_uid}");
-    let key_pair = generate_key_pair(
-        kms.vendor_id(),
+    let key_pair = spawn_generate_key_pair(
+        kms,
         create_key_pair_request,
-        &sk_uid.to_string(),
-        &pk_uid.to_string(),
-        &kms.rng,
-    )?;
+        sk_uid.to_string(),
+        pk_uid.to_string(),
+    )
+    .await?;
     info!("Key pair created for certification");
 
     let certificate_id = attributes.unique_identifier.clone().unwrap_or_default();

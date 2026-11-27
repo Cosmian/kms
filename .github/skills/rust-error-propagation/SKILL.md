@@ -30,7 +30,7 @@ Scan every `match` / `if let` on a `Result`:
 let uid = match kms.database.retrieve_object(&id).await {
     Ok(Some(owm)) => owm.uid(),
     Ok(None) => return Err(KmsError::ItemNotFound(...)),
-    Err(e) => return Err(KmsError::DatabaseError(e.to_string())),
+    Err(e) => return Err(KmsError::Database(e)),
 };
 
 // ✅ idiomatic — ? propagates, .ok_or_else enriches
@@ -84,6 +84,6 @@ Rank findings by severity:
 
 ## Step 4 — KMS-specific rules
 
-- **`KmsError` discriminants**: Prefer the crate's error macro (`kms_error!`) over ad-hoc `format!` + `KmsError::ServerError(...)` — it captures file/line.
-- **`SpireApiError`**: Always embed the original error message when converting from `KmsError`; the existing `From<KmsError> for SpireApiError` impl does this for `Unauthorized`/`NotSupported`/`InternalError` variants.
+- **`KmsError` discriminants**: Prefer the crate's error macros (`kms_error!` / `kms_bail!`) over ad-hoc `KmsError::ServerError(format!(...))` boilerplate.
+- **`SpireApiError`**: Always embed the original error message when converting from `KmsError`; the existing `From<KmsError> for SpireApiError` impl (`crate/server/src/routes/spire/error.rs`) maps `KmsError::Unauthorized` to `Forbidden`, `KmsError::NotSupported` to `BadRequest`, and all other variants to `SpireApiError::InternalError`.
 - **External crate errors** (`openssl`, `reqwest`, `base64`): Map to domain errors at the boundary; never let raw external errors leak through the public API.

@@ -171,15 +171,18 @@ async fn sign_data(kms: &Arc<KMS>, user: &str, uid: &str, data: &[u8]) -> KResul
 /// `create_sym_key` already uses `sensitive = false`; this helper is a thin wrapper that
 /// makes the intent explicit for export-based permission tests.
 async fn create_aes_key_non_sensitive(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
-    let create_request = symmetric_key_create_request(
+    let mut create_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
         CryptographicAlgorithm::AES,
         EMPTY_TAGS,
-        false, // sensitive = false → CKA_SENSITIVE = false, key material is extractable
+        false,
         None,
     )?;
+    // Sensitive=false → CKA_SENSITIVE = false, key material is extractable (HSM keys are
+    // sensitive by default)
+    create_request.attributes.sensitive = Some(false);
     let response = send_message(
         kms.clone(),
         owner,

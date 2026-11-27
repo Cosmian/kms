@@ -44,7 +44,7 @@ use cosmian_kms_server_database::reexport::{
         verify_delegated_responder_authorization, verify_issuer_hashes_match_ca,
     },
 };
-use cosmian_logger::{debug, info};
+use cosmian_logger::{debug, error, info};
 use openssl::{sha::sha256, x509::X509};
 use time::OffsetDateTime;
 use tokio::sync::{RwLock, Semaphore};
@@ -354,10 +354,19 @@ fn handle_ocsp_request<'a>(kms: &'a KMS, request_der: &'a [u8]) -> OcspResponseF
                 .iter()
                 .map(|q| q.serial_hex.to_ascii_uppercase())
                 .collect();
-            Box::pin(find_ca_issued_certificates(
+            // A lookup failure must never be reported as good/unknown/revoked:
+            // answer `tryLater` (RFC 6960 §2.3) and cache nothing.
+            match Box::pin(find_ca_issued_certificates(
                 kms, &ca_owm, &ca_cert, &serials,
             ))
-            .await?
+            .await
+            {
+                Ok(records) => records,
+                Err(e) => {
+                    error!("OCSP certificate status lookup failed: {e}");
+                    return Ok(build_try_later_response());
+                }
+            }
         };
         let entries: Vec<OcspStatusEntry> = queries
             .iter()
@@ -730,6 +739,21 @@ fn build_malformed_request_response() -> HttpResponse {
         .body(MALFORMED_REQUEST_DER.to_vec())
 }
 
+/// Return an OCSP `tryLater` error response (minimal DER).
+///
+/// Per RFC 6960 §2.3 the responder returns `tryLater` when it cannot answer
+/// right now (e.g. the certificate store is unavailable). Like `malformedRequest`
+/// it is an unsigned, top-level `OCSPResponse` sent as HTTP 200.
+///
+/// DER: `OCSPResponse { responseStatus: tryLater (3) }`
+/// = `SEQUENCE { ENUM { 3 } }` = `30 03 0a 01 03`
+fn build_try_later_response() -> HttpResponse {
+    static TRY_LATER_DER: &[u8] = &[0x30, 0x03, 0x0a, 0x01, 0x03];
+    HttpResponse::Ok()
+        .content_type(CT_OCSP_RESPONSE)
+        .body(TRY_LATER_DER.to_vec())
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -779,9 +803,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_malformed_request_response_content_type_and_status() {
-        let resp = build_malformed_request_response();
+    /// An unsigned OCSP error status is HTTP 200 with an `application/ocsp-response` body.
+    fn assert_ocsp_ok_response(resp: &HttpResponse) {
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
         assert_eq!(
             resp.headers()
@@ -789,6 +812,22 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some(CT_OCSP_RESPONSE)
         );
+    }
+
+    #[test]
+    fn test_malformed_request_response_content_type_and_status() {
+        assert_ocsp_ok_response(&build_malformed_request_response());
+    }
+
+    #[tokio::test]
+    async fn test_try_later_response_bytes() {
+        let resp = build_try_later_response();
+        assert_ocsp_ok_response(&resp);
+        let body = actix_web::body::to_bytes(resp.into_body())
+            .await
+            .map(|b| b.to_vec())
+            .unwrap_or_default();
+        assert_eq!(body, [0x30, 0x03, 0x0a, 0x01, 0x03]);
     }
 
     #[test]

@@ -37,10 +37,10 @@ Certificates and their associated private keys can be exported in:
 
 ## Post-quantum algorithms
 
-!!! note "Non-FIPS build required"
-    PQC algorithms (ML-DSA, SLH-DSA, ML-KEM) are only available in the **non-FIPS** build
-    (`--features non-fips`). The FIPS build restricts algorithms to those approved under
-    the FIPS 140-3 boundary.
+!!! note "FIPS and non-FIPS builds"
+    PQC algorithms (ML-DSA, SLH-DSA, ML-KEM) are available in the FIPS and the non-FIPS builds: the
+    FIPS build serves them from the OpenSSL FIPS provider 3.5.9. `X448MLKEM1024` and `ConfigurableKEM`
+    are only available in the **non-FIPS** build (`--features non-fips`).
 
 ### Algorithm identifiers (OIDs)
 

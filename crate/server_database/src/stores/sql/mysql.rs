@@ -31,7 +31,7 @@ use crate::{
     stores::{
         migrate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
-            wait_for_migration_lock,
+            synced_state_json, wait_for_migration_lock,
         },
         mysql_queries,
         sql::{
@@ -50,6 +50,16 @@ use crate::{
 
 // Deadlock handling parameters for MySQL (ER_LOCK_DEADLOCK = 1213)
 const MYSQL_DEADLOCK_MAX_RETRIES: u32 = 6;
+
+/// `SslOpts` of the `VERIFY_CA`/`VERIFY_IDENTITY` modes: with `ssl-ca`, that CA is the only trust
+/// anchor (the system CA store is not consulted).
+fn verify_ssl_opts(ca_path: Option<&str>) -> SslOpts {
+    ca_path.map_or_else(SslOpts::default, |ca_path| {
+        SslOpts::default()
+            .with_root_certs(vec![PathBuf::from(ca_path).into()])
+            .with_disable_built_in_roots(true)
+    })
+}
 
 fn validate_client_identity_parameters(
     identity_path: Option<&str>,
@@ -252,14 +262,12 @@ impl MySqlPool {
                             .with_danger_accept_invalid_certs(true)
                             .with_danger_skip_domain_validation(true);
                     } else {
-                        // Load CA certificate for server verification (ssl-ca) for VERIFY modes
-                        if let Some(ca_path) = query_params
-                            .get("ssl-ca")
-                            .or_else(|| query_params.get("ssl_ca"))
-                        {
-                            ssl_opts = ssl_opts
-                                .with_root_certs(vec![PathBuf::from(ca_path.as_ref()).into()]);
-                        }
+                        ssl_opts = verify_ssl_opts(
+                            query_params
+                                .get("ssl-ca")
+                                .or_else(|| query_params.get("ssl_ca"))
+                                .map(AsRef::as_ref),
+                        );
                     }
 
                     ssl_opts = configure_client_identity(
@@ -340,6 +348,36 @@ impl MySqlPool {
                     "wrapping_key_id backfill: skipping object {id} that failed to \
                      deserialize: {e}"
                 ),
+            }
+        }
+        Ok(())
+    }
+
+    /// Same autocommit shape as the wrapping-key backfill; the sync is idempotent.
+    async fn sync_stored_state(&self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let update_sql = get_mysql_query!("update-object-state-json");
+        let rows: Vec<(String, String, Value, String, String)> = conn
+            .query(get_mysql_query!("select-objects-state-sync"))
+            .await
+            .map_err(DbError::from)?;
+        for (id, object_json, attributes, state, attributes_text) in rows {
+            if let Some((object, synced)) =
+                synced_state_json(&id, &state, &object_json, attributes.clone())
+            {
+                conn.exec_drop(
+                    update_sql,
+                    (
+                        object,
+                        synced.to_string(),
+                        &id,
+                        &object_json,
+                        &attributes_text,
+                        &state,
+                    ),
+                )
+                .await
+                .map_err(DbError::from)?;
             }
         }
         Ok(())
@@ -961,6 +999,18 @@ impl ObjectsStore for MySqlPool {
         Ok(out)
     }
 
+    async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        let sql = get_mysql_query!("select-ids-wrapped-by");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
+        conn.exec(sql, (wrapping_key_uid,))
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))
+    }
+
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,
@@ -1260,6 +1310,17 @@ impl Migrate for MySqlPool {
             DbError::DatabaseError("Missing SQL query: purge-orphan-gcm-invocations".to_owned())
         })?;
         conn.query_drop(purge_sql).await.map_err(DbError::from)?;
+        // Erase the sealed record of ceremony activations revoked by an older KMS.
+        let tombstone_sql = queries
+            .get("tombstone-revoked-crypto-officer-activations")
+            .ok_or_else(|| {
+                DbError::DatabaseError(
+                    "Missing SQL query: tombstone-revoked-crypto-officer-activations".to_owned(),
+                )
+            })?;
+        conn.query_drop(tombstone_sql)
+            .await
+            .map_err(DbError::from)?;
 
         // Add wrapping_key_id column if not present.
         // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
@@ -1363,6 +1424,7 @@ impl Migrate for MySqlPool {
             MigrationStep::CertificateSerialTagBackfill => {
                 self.backfill_certificate_serial_tags().await
             }
+            MigrationStep::StoredStateSync => self.sync_stored_state().await,
         }
     }
 }
@@ -2334,6 +2396,20 @@ pub(super) async fn atomic_(
 mod tests {
     use super::*;
 
+    #[test]
+    fn verify_ssl_opts_pins_the_configured_ca() {
+        let opts = verify_ssl_opts(Some("/etc/kms/mysql-ca.pem"));
+        assert!(opts.disable_built_in_roots());
+        assert_eq!(opts.root_certs().len(), 1);
+    }
+
+    #[test]
+    fn verify_ssl_opts_without_ca_keeps_system_roots() {
+        let opts = verify_ssl_opts(None);
+        assert!(!opts.disable_built_in_roots());
+        assert_eq!(opts.root_certs(), []);
+    }
+
     /// `RELEASE_LOCK` returns NULL when the named lock no longer exists. That used to panic in the
     /// row conversion (killing the cron thread); it must be reported as an error.
     // docker run --name mysql --env MYSQL_DATABASE=kms --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
@@ -2406,6 +2482,150 @@ mod tests {
             .release()
             .await
             .expect("release");
+    }
+
+    // ---- Live TLS tests: `mysql-mtls` from docker-compose.yml (`--require-secure-transport`,
+    // server certificate CN=mysql without SAN) ----
+
+    fn mtls_mysql_url() -> &'static str {
+        option_env!("KMS_MYSQL_MTLS_URL").unwrap_or("mysql://kms:kms@127.0.0.1:3309/kms")
+    }
+
+    fn test_cert(relative: &str) -> String {
+        format!(
+            "{}/../../test_data/certificates/{relative}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    }
+
+    /// The mTLS server URL with `params` appended as query pairs.
+    fn mysql_tls_url(params: &[(&str, &str)]) -> DbResult<String> {
+        let mut url =
+            Url::parse(mtls_mysql_url()).map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        url.query_pairs_mut().extend_pairs(params);
+        Ok(url.into())
+    }
+
+    /// Opens a pool through `MySqlPool::instantiate` and reports the `Ssl_cipher` of the session
+    /// (empty when the session is not encrypted).
+    async fn mysql_session_cipher(url: &str) -> Result<String, String> {
+        let pool = MySqlPool::instantiate(url, false, Some(1))
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut conn = pool.pool.get_conn().await.map_err(|e| e.to_string())?;
+        let row: Option<(String, String)> = conn
+            .query_first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(row.map(|(_, cipher)| cipher).unwrap_or_default())
+    }
+
+    /// Each case is `(label, url, expected_message)`: `None` expects an encrypted session,
+    /// `Some(fragment)` expects a refusal whose message contains `fragment`.
+    async fn assert_mysql_tls_outcomes(cases: Vec<(&str, String, Option<&str>)>) -> DbResult<()> {
+        let url =
+            Url::parse(mtls_mysql_url()).map_err(|e| DbError::DatabaseError(e.to_string()))?;
+        let address = format!(
+            "{}:{}",
+            url.host_str().unwrap_or("127.0.0.1"),
+            url.port().unwrap_or(3306)
+        );
+        // A server that is down must fail the test loudly, not count as a "refusal".
+        tokio::net::TcpStream::connect(&address)
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("mysql-mtls is not reachable at {address}: {e}"))
+            })?;
+
+        let mut mismatches = Vec::new();
+        for (label, url, expected) in cases {
+            let outcome = mysql_session_cipher(&url).await;
+            let as_expected = match (&outcome, expected) {
+                (Ok(cipher), None) => !cipher.is_empty(),
+                (Err(message), Some(fragment)) => message.contains(fragment),
+                _ => false,
+            };
+            if !as_expected {
+                mismatches.push(format!("{label}: expected {expected:?}, got {outcome:?}"));
+            }
+        }
+        if mismatches.is_empty() {
+            return Ok(());
+        }
+        Err(DbError::DatabaseError(mismatches.join("\n")))
+    }
+
+    type TlsCase = (&'static str, String, Option<&'static str>);
+
+    /// Refusals that do not depend on the client's ability to present a certificate.
+    fn server_refusal_cases() -> DbResult<Vec<TlsCase>> {
+        Ok(vec![(
+            "DISABLED vs a server requiring secure transport",
+            mysql_tls_url(&[("ssl-mode", "DISABLED")])?,
+            Some("insecure transport"),
+        )])
+    }
+
+    /// ssl-mode matrix against a server that requires TLS. There is no `VERIFY_CA` + right CA
+    /// success case: the test server certificate (CN=mysql, no SAN) cannot match the host the
+    /// tests connect to, and verification includes the host name.
+    #[cfg(feature = "non-fips")]
+    #[ignore = "Requires the `mysql-mtls` docker-compose service (mise run test:db:mysql)"]
+    #[tokio::test]
+    async fn test_mysql_tls_sslmode_matrix() -> DbResult<()> {
+        let wrong_ca = test_cert("chain/root/ca/certs/ca.cert.pem");
+        let identity = test_cert("client_server/db/mysql-client.p12");
+        let with_identity = |mode: &'static str, ca: Option<&str>| {
+            let mut params = vec![
+                ("ssl-mode", mode),
+                ("ssl-client-identity", identity.as_str()),
+                ("ssl-client-identity-password", "password"),
+            ];
+            if let Some(ca) = ca {
+                params.push(("ssl-ca", ca));
+            }
+            mysql_tls_url(&params)
+        };
+
+        let mut cases = server_refusal_cases()?;
+        cases.extend([
+            (
+                "REQUIRED + client certificate",
+                with_identity("REQUIRED", None)?,
+                None,
+            ),
+            (
+                "VERIFY_CA + wrong CA",
+                with_identity("VERIFY_CA", Some(&wrong_ca))?,
+                Some("TLS error"),
+            ),
+            (
+                "VERIFY_CA without ssl-ca: the test CA is not a system root",
+                with_identity("VERIFY_CA", None)?,
+                Some("TLS error"),
+            ),
+        ]);
+        assert_mysql_tls_outcomes(cases).await
+    }
+
+    /// FIPS builds cannot load the PKCS#12 client identity, so a server that requires a client
+    /// certificate is unreachable: the refusals must still be explicit.
+    #[cfg(not(feature = "non-fips"))]
+    #[ignore = "Requires the `mysql-mtls` docker-compose service (mise run test:db:mysql)"]
+    #[tokio::test]
+    async fn test_mysql_tls_sslmode_matrix() -> DbResult<()> {
+        let identity = test_cert("client_server/db/mysql-client.p12");
+        let mut cases = server_refusal_cases()?;
+        cases.push((
+            "REQUIRED + PKCS#12 client certificate",
+            mysql_tls_url(&[
+                ("ssl-mode", "REQUIRED"),
+                ("ssl-client-identity", &identity),
+                ("ssl-client-identity-password", "password"),
+            ])?,
+            Some("prohibited in FIPS mode"),
+        ));
+        assert_mysql_tls_outcomes(cases).await
     }
 
     #[test]

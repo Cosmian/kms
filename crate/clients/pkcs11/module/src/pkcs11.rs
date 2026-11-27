@@ -26,6 +26,7 @@
 use std::{
     cmp,
     mem::size_of,
+    panic::{AssertUnwindSafe, catch_unwind},
     slice,
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -73,6 +74,26 @@ pub const SLOT_ID: CK_SLOT_ID = 1;
 
 pub(crate) static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
+static FAULTED: AtomicBool = AtomicBool::new(false);
+
+/// Contains unwinding panics and permanently rejects work after one occurs.
+/// Captured state and the panic payload are abandoned, not dropped or reused;
+/// already-admitted calls can have partial effects. Aborts and invalid pointers remain fatal.
+pub fn ffi_guard(operation: impl FnOnce() -> CK_RV) -> CK_RV {
+    if FAULTED.load(Ordering::SeqCst) {
+        return pkcs11_sys::CKR_GENERAL_ERROR;
+    }
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(CKR_OK) if FAULTED.load(Ordering::SeqCst) => pkcs11_sys::CKR_GENERAL_ERROR,
+        Ok(result) => result,
+        Err(payload) => {
+            FAULTED.store(true, Ordering::SeqCst);
+            std::mem::forget(payload);
+            pkcs11_sys::CKR_GENERAL_ERROR
+        }
+    }
+}
+
 pub(crate) fn result_to_rv<F>(name: &str, f: F) -> CK_RV
 where
     F: FnOnce() -> ModuleResult<()>,
@@ -89,10 +110,13 @@ where
 #[macro_export]
 macro_rules! cryptoki_fn {
     (fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
-        #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $name($($arg: $type),*) -> CK_RV {
-            result_to_rv(stringify!($name), || $body)
+        pub extern "C" fn $name($($arg: $type),*) -> pkcs11_sys::CK_RV {
+            #[tracing::instrument(level = tracing::Level::TRACE, ret)]
+            fn $name(($($arg,)*): ($($type,)*)) -> pkcs11_sys::CK_RV {
+                $crate::pkcs11::result_to_rv(stringify!($name), || $body)
+            }
+            $crate::pkcs11::ffi_guard(|| $name(($($arg,)*)))
         }
     };
     (unsafe fn $name:ident ( $($arg:ident : $type:ty),* $(,)?) $body:block) => {
@@ -101,11 +125,16 @@ macro_rules! cryptoki_fn {
         /// # Safety
         ///
         /// Pointer arguments must satisfy the contract of the PKCS#11 function of the same name.
-        #[tracing::instrument(level = tracing::Level::TRACE, ret)]
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn $name($($arg: $type),*) -> pkcs11_sys::CK_RV {
-            use $crate::pkcs11::result_to_rv;
-            result_to_rv(stringify!($name), || $body)
+            #[tracing::instrument(level = tracing::Level::TRACE, ret)]
+            unsafe fn $name(($($arg,)*): ($($type,)*)) -> pkcs11_sys::CK_RV {
+                $crate::pkcs11::result_to_rv(stringify!($name), || $body)
+            }
+            $crate::pkcs11::ffi_guard(|| {
+                // SAFETY: the caller supplies the PKCS#11 operation's required pointer preconditions.
+                unsafe { $name(($($arg,)*)) }
+            })
         }
     };
 }

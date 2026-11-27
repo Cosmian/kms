@@ -1,9 +1,11 @@
 use std::{str::FromStr, time::Duration};
 
 use async_trait::async_trait;
-use cosmian_kmip::kmip_2_1::{
-    extra::tagging::SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, kmip_objects::Object,
+use cosmian_kmip::{
+    kmip_0::kmip_types::State,
+    kmip_2_1::{extra::tagging::SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX, kmip_objects::Object},
 };
+use cosmian_kms_interfaces::ObjectWithMetadata;
 use cosmian_logger::reexport::tracing;
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +24,9 @@ pub(crate) const WRAPPING_KEY_BACKFILL_PARAM: &str = "wrapping_key_id_backfilled
 /// Completion marker for the one-time certificate `_serial=<HEX>` tag backfill.
 pub(crate) const CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM: &str = "certificate_serial_tag_backfilled";
 
+/// Completion marker for the one-time sync of the stored JSON `State` with the lifecycle column.
+pub(crate) const STORED_STATE_SYNC_PARAM: &str = "stored_state_synced";
+
 /// Maximum time a starting instance waits for another instance's migration lock.
 pub(crate) const MIGRATION_LOCK_TIMEOUT: Duration = Duration::from_mins(31);
 const MIGRATION_LOCK_POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -36,13 +41,17 @@ pub(crate) enum MigrationStep {
     WrappingKeyIdBackfill,
     /// Add serial lookup tags to certificates created before that tag existed.
     CertificateSerialTagBackfill,
+    /// Write the state clients already see (lifecycle column, `PreActive` deferring to the
+    /// attributes) into the stored attribute and embedded-attribute JSON.
+    StoredStateSync,
 }
 
 /// Strictly ascending release boundaries; adding a step also requires backend and scenario tests.
-pub(crate) const MIGRATION_STEPS: [MigrationStep; 3] = [
+pub(crate) const MIGRATION_STEPS: [MigrationStep; 4] = [
     MigrationStep::AttributesJsonb,
     MigrationStep::WrappingKeyIdBackfill,
     MigrationStep::CertificateSerialTagBackfill,
+    MigrationStep::StoredStateSync,
     // Adding a new migration step starts here.
 ];
 
@@ -52,6 +61,7 @@ impl MigrationStep {
             Self::AttributesJsonb => "5.15.0",
             Self::WrappingKeyIdBackfill => "5.25.0",
             Self::CertificateSerialTagBackfill => "5.29.0",
+            Self::StoredStateSync => "5.30.0",
         }
     }
 
@@ -60,6 +70,7 @@ impl MigrationStep {
             Self::AttributesJsonb => ATTRIBUTES_JSONB_PARAM,
             Self::WrappingKeyIdBackfill => WRAPPING_KEY_BACKFILL_PARAM,
             Self::CertificateSerialTagBackfill => CERTIFICATE_SERIAL_TAG_BACKFILL_PARAM,
+            Self::StoredStateSync => STORED_STATE_SYNC_PARAM,
         }
     }
 }
@@ -135,6 +146,74 @@ pub(crate) fn certificate_serial_tag(uid: &str, object: &Object) -> Option<Strin
         return None;
     };
     Some(format!("{SYSTEM_TAG_CERTIFICATE_SERIAL_PREFIX}{hex}"))
+}
+
+fn set_state_json(map: &mut serde_json::Value, state: &serde_json::Value) -> bool {
+    match map.as_object_mut() {
+        Some(map) if map.get("State") != Some(state) => {
+            map.insert("State".to_owned(), state.clone());
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Write the state the read path reports for `column` into the stored `attributes` JSON and, when
+/// present, the key block's embedded attributes. Edits JSON values in place so no other byte of
+/// the stored documents changes. A destroyed object payload is pinned by the stores (MySQL
+/// `update-object-with-object`, the `PostgreSQL` state trigger), so only `attributes` change then.
+/// Returns whether anything changed.
+pub(crate) fn sync_state_json(
+    column: State,
+    object: &mut serde_json::Value,
+    attributes: &mut serde_json::Value,
+) -> bool {
+    let attributes_state = attributes
+        .get("State")
+        .and_then(|state| serde_json::from_value::<State>(state.clone()).ok());
+    let state = ObjectWithMetadata::stored_state_precedence(column, attributes_state);
+    let Ok(state) = serde_json::to_value(state) else {
+        return false;
+    };
+    let mut changed = set_state_json(attributes, &state);
+    if !matches!(column, State::Destroyed | State::Destroyed_Compromised) {
+        for variant in object
+            .as_object_mut()
+            .into_iter()
+            .flat_map(|m| m.values_mut())
+        {
+            if let Some(embedded) = variant.pointer_mut("/KeyBlock/KeyValue/Attributes") {
+                changed |= set_state_json(embedded, &state);
+            }
+        }
+    }
+    changed
+}
+
+/// [`sync_state_json`] for one SQL row: the new `(object, attributes)` documents when the row
+/// changes. A row whose state or JSON does not parse is skipped with a warning, so a junk row
+/// cannot abort startup.
+pub(crate) fn synced_state_json(
+    uid: &str,
+    state: &str,
+    object_json: &str,
+    mut attributes: serde_json::Value,
+) -> Option<(String, serde_json::Value)> {
+    let column = match State::try_from(state) {
+        Ok(column) => column,
+        Err(error) => {
+            tracing::warn!(%uid, %error, "state sync: skipping object with an invalid state column");
+            return None;
+        }
+    };
+    let mut object = match serde_json::from_str(object_json) {
+        Ok(object) => object,
+        Err(error) => {
+            tracing::warn!(%uid, %error, "state sync: skipping object that failed to parse");
+            return None;
+        }
+    };
+    sync_state_json(column, &mut object, &mut attributes).then(|| (object.to_string(), attributes))
 }
 
 /// Persisted as JSON strings (`"ready"` and `"upgrading"`) on every backend.
@@ -501,7 +580,7 @@ mod tests {
             "Minor version must precede patch version"
         );
         db_ensure!(
-            "5.29.0".parse::<Version>()? < "6.0.0".parse::<Version>()?,
+            "4.29.0".parse::<Version>()? < "5.0.0".parse::<Version>()?,
             "Major version ordering failed"
         );
         Ok(())
@@ -624,8 +703,12 @@ mod tests {
         ];
         type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [MigrationStep]);
         let cases: [Case<'_>; 4] = [
-            // Recorded before the 5.15.0 step: every registered step is offered.
-            ("pre-5.15", &[("db_version", "5.14.0")], &MIGRATION_STEPS),
+            // Recorded before the 5.15.0 step: every step up to the 5.29.0 target is offered.
+            (
+                "pre-5.15",
+                &[("db_version", "5.14.0")],
+                &MIGRATION_STEPS[..3],
+            ),
             // A crash after a checkpoint leaves `upgrading`; the run resumes from the checkpoint.
             (
                 "interrupted run",
@@ -674,6 +757,66 @@ mod tests {
                 && error.to_string().contains("4.20.0")
                 && error.to_string().contains("5.0.0"),
             "Unexpected pre-5.0.0 error: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_sync_state_json_follows_the_read_path_precedence() -> DbResult<()> {
+        use serde_json::json;
+
+        let object = |state: &str| {
+            json!({"SymmetricKey": {"KeyBlock": {"KeyValue": {
+                "KeyMaterial": {"Key": [1, 2]}, "Attributes": {"State": state, "Extra": 1}}}}})
+        };
+        let mut destroyed_object = object("Deactivated");
+        let mut attributes = json!({"State": "Deactivated", "Unknown": [1]});
+        db_ensure!(
+            sync_state_json(State::Destroyed, &mut destroyed_object, &mut attributes)
+                && attributes == json!({"State": "Destroyed", "Unknown": [1]})
+                && destroyed_object == object("Deactivated"),
+            "Destroyed column: only the attributes change, got {attributes}, {destroyed_object}"
+        );
+        db_ensure!(
+            !sync_state_json(State::Destroyed, &mut destroyed_object, &mut attributes),
+            "An already synced row must report no change"
+        );
+
+        let mut active_object = object("PreActive");
+        let mut attributes = json!({"State": "Active"});
+        db_ensure!(
+            sync_state_json(State::PreActive, &mut active_object, &mut attributes)
+                && attributes == json!({"State": "Active"})
+                && active_object == object("Active"),
+            "PreActive column defers to the attributes: got {attributes}, {active_object}"
+        );
+
+        let mut active_object = object("PreActive");
+        let mut attributes = json!({"State": "PreActive"});
+        db_ensure!(
+            sync_state_json(State::Active, &mut active_object, &mut attributes)
+                && attributes == json!({"State": "Active"})
+                && active_object == object("Active"),
+            "Active column wins: got {attributes}, {active_object}"
+        );
+
+        let mut certificate = json!({"Certificate": {"CertificateValue": [1]}});
+        let mut attributes = json!({"CertificateType": "X509"});
+        db_ensure!(
+            sync_state_json(State::Deactivated, &mut certificate, &mut attributes)
+                && attributes == json!({"CertificateType": "X509", "State": "Deactivated"})
+                && certificate == json!({"Certificate": {"CertificateValue": [1]}}),
+            "An object without key block only gets its attributes synced: {attributes}"
+        );
+
+        // A wrapped key's `KeyValue` is the ciphertext byte array: nothing to sync inside it.
+        let mut wrapped = json!({"SymmetricKey": {"KeyBlock": {"KeyValue": [1, 2, 3]}}});
+        let mut attributes = json!({"State": "Active"});
+        db_ensure!(
+            sync_state_json(State::Deactivated, &mut wrapped, &mut attributes)
+                && attributes == json!({"State": "Deactivated"})
+                && wrapped == json!({"SymmetricKey": {"KeyBlock": {"KeyValue": [1, 2, 3]}}}),
+            "A wrapped key keeps its ciphertext untouched: {attributes}, {wrapped}"
         );
         Ok(())
     }

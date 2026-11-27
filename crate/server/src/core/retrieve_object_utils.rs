@@ -117,15 +117,8 @@ pub(crate) async fn retrieve_object_for_operation(
             //   NEVER override it with attribute-level values.
             // - Otherwise (Active/PreActive), prefer attribute PreActive when present to satisfy
             //   profile vectors that keep objects PreActive until explicit Activate.
-            let attr_state = owm.attributes().state;
-            let effective_state = match state {
-                State::Destroyed
-                | State::Destroyed_Compromised
-                | State::Compromised
-                | State::Deactivated
-                | State::Active => state, // never downgrade Active to PreActive
-                State::PreActive => attr_state.unwrap_or(State::PreActive),
-            };
+            let effective_state =
+                ObjectWithMetadata::stored_state_precedence(state, owm.attributes().state);
             // Synchronize both external attributes and embedded object attributes to effective state.
             // Only copy-on-write when something actually differs (cached objects are shared).
             let embedded_differs = owm

@@ -29,9 +29,6 @@ use openssl::{
     ecdsa::EcdsaSig,
     hash::{MessageDigest, hash},
     nid::Nid,
-};
-#[cfg(feature = "non-fips")]
-use openssl::{
     pkey::{Id, PKey},
     sign::Verifier,
 };
@@ -1613,7 +1610,6 @@ pub fn ecdsa_sign_all_curves_and_hashes(slot: &Arc<SlotManager>) -> HResult<()> 
 /// Requires an HSM that implements the PKCS#11 v3.0 `CKM_EDDSA`/`CKM_EC_EDWARDS_KEY_PAIR_GEN`
 /// mechanisms (verified against `SoftHSM2` 2.6.1 and the Utimaco `CryptoServer` simulator; not
 /// supported by all vendors/firmware versions, hence the mechanism-support skip below).
-#[cfg(feature = "non-fips")]
 pub fn eddsa_sign_all_curves(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
     let supported_mechanisms = slot.get_supported_mechanisms()?;
@@ -1698,7 +1694,6 @@ pub fn eddsa_sign_all_curves(slot: &Arc<SlotManager>) -> HResult<()> {
 
 /// Verify a raw `EdDSA` signature (no digest, no DER wrapping) against `data` using the given
 /// OpenSSL Ed25519/Ed448 public key.
-#[cfg(feature = "non-fips")]
 fn verify_eddsa_signature(
     public_key: &PKey<openssl::pkey::Public>,
     data: &[u8],
@@ -1734,12 +1729,17 @@ fn ec_public_key_from_material(
         EcCurve::Secp192k1 => Nid::SECP192K1,
         EcCurve::P384 => Nid::SECP384R1,
         EcCurve::P521 => Nid::SECP521R1,
-        #[cfg(feature = "non-fips")]
-        EcCurve::Ed25519 | EcCurve::Ed448 | EcCurve::X25519 => {
+        EcCurve::Ed25519 | EcCurve::Ed448 => {
             return Err(HError::Default(
-                "ec_public_key_from_material: Ed25519/Ed448/X25519 are not OpenSSL EC_KEY \
+                "ec_public_key_from_material: Ed25519/Ed448 are not OpenSSL EC_KEY \
                  objects; use eddsa_public_key_from_material instead"
                     .to_owned(),
+            ));
+        }
+        #[cfg(feature = "non-fips")]
+        EcCurve::X25519 => {
+            return Err(HError::Default(
+                "ec_public_key_from_material: X25519 is not an OpenSSL EC_KEY object".to_owned(),
             ));
         }
     };

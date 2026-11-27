@@ -175,6 +175,14 @@ pub async fn ckms_main() -> CosmianResult<()> {
         return audit_action.process().map_err(Into::into);
     }
 
+    // Short-circuit: `pkcs11 verify` loads the library under test with its own client.
+    if let CliCommands::Kms(kms) = &cli.command
+        && let KmsActions::Pkcs11(pkcs11) = kms.as_ref()
+        && let Some(result) = pkcs11.run_verify_standalone()
+    {
+        return result.map_err(Into::into);
+    }
+
     let mut saved_config = ClientConfig::load(cli.conf_path.clone())?;
     let mut config = saved_config.clone();
 

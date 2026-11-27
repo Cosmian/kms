@@ -5,6 +5,11 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-083 — A CRL fetch error marked an imported certificate Compromised](#cosmian-2026-083--a-crl-fetch-error-marked-an-imported-certificate-compromised)
+      - [COSMIAN-2026-082 — SSRF via DNS names resolving to internal addresses in CRL Distribution Points](#cosmian-2026-082--ssrf-via-dns-names-resolving-to-internal-addresses-in-crl-distribution-points)
+      - [COSMIAN-2026-081 — CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit](#cosmian-2026-081--crl-distribution-point-fetch-accepted-unbounded-chunked-bodies-and-grew-its-cache-without-limit)
+      - [COSMIAN-2026-080 — A failing database lookup made CRL generation, OCSP and Locate see no certificates](#cosmian-2026-080--a-failing-database-lookup-made-crl-generation-ocsp-and-locate-see-no-certificates)
+      - [COSMIAN-2026-079 — mTLS client certificates were never checked against a revocation list](#cosmian-2026-079--mtls-client-certificates-were-never-checked-against-a-revocation-list)
       - [COSMIAN-2026-078 — Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted](#cosmian-2026-078--web-ui-session-key-derived-with-the-public-url-as-password-guessable-ui_session_salt-accepted)
       - [COSMIAN-2026-077 — Web UI session cookie could be replayed after logout and had no server-enforced lifetime](#cosmian-2026-077--web-ui-session-cookie-could-be-replayed-after-logout-and-had-no-server-enforced-lifetime)
       - [COSMIAN-2026-076 — `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure](#cosmian-2026-076--post-uilogin_as-had-no-kms-side-rate-limit-and-turned-an-auth-verifier-throttle-into-an-authentication-failure)
@@ -139,14 +144,109 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 ### 2026
 
+#### COSMIAN-2026-083 — A CRL fetch error marked an imported certificate Compromised
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Low |
+| Published  | Pending |
+| Affected   | before 5.30.0 |
+| Fixed in   | 5.30.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tests/test_validate.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+
+**Summary:** `Import` of an `Active` certificate checks the CRLs of its distribution points and stored the certificate as `Compromised` on any `KmsError::Certificate` error from that check, including an expired CRL, a CRL fetch that failed on a non-success status, an oversized body or a distribution point blocked by the SSRF check.
+
+**Impact:** An error while obtaining a CRL is not evidence of revocation. Whoever controls a distribution point named in a certificate, or any condition that makes the fetch fail, could make the KMS store a valid certificate as `Compromised`, which then appears on the KMS-generated CRL and OCSP responses.
+
+**Mitigation:** Upgrade to 5.30.0. `verify_crls` now returns a verdict (`Revoked` / `NotRevoked`) and reports every failure to obtain or validate a CRL as an error; `Import` sets `Compromised` only for `Revoked` and keeps the requested state (with a warning) on any error. `Validate` behavior is unchanged.
+
+---
+
+#### COSMIAN-2026-082 — SSRF via DNS names resolving to internal addresses in CRL Distribution Points
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | from 5.27.0 before 5.30.0 |
+| Fixed in   | 5.30.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [COSMIAN-2026-021](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport), [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/core/certificate/mod.rs) |
+
+**Summary:** The fix for COSMIAN-2026-021 rejected internal IP literals and internal host names in CRL Distribution Points but never checked the addresses a public-looking host name resolves to, and its IPv4 blocklist missed carrier-grade NAT, documentation, benchmarking, multicast and reserved ranges.
+
+**Impact:** A user allowed to call `Validate` or `Import` could point a distribution point at a DNS name resolving (or rebinding) to an internal address, a CGNAT address or a cloud metadata endpoint, and make the KMS issue a blind HTTP request to it.
+
+**Mitigation:** Upgrade to 5.30.0. The KMS resolves the host name itself, rejects the fetch when any resolved address is blocked (private, loopback, link-local, `0.0.0.0/8`, `100.64.0.0/10`, `192.0.0.0/24`, documentation, `198.18.0.0/15`, multicast, `240.0.0.0/4`, IPv6 loopback/unique-local/link-local/multicast/documentation, IPv4-mapped and NAT64-embedded blocked IPv4) and pins the connection to the checked addresses. With an outbound proxy the proxy resolves the name itself: enforce egress restrictions on the proxy.
+
+---
+
+#### COSMIAN-2026-081 — CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | from 5.27.0 before 5.30.0 |
+| Fixed in   | 5.30.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [COSMIAN-2026-021](#cosmian-2026-021--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport), [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/core/operations/validate.rs) |
+
+**Summary:** The 10 MiB cap on CRL downloads was enforced from the `Content-Length` header only; a chunked response has none, and the body was buffered whole. Fetched CRLs were cached without checking that they were CRLs and without bound on entry count or size. The number of concurrent downloads was unlimited.
+
+**Impact:** A user allowed to call `Validate` or `Import` could make the KMS buffer arbitrarily large chunked responses, fill the CRL cache with distinct URLs, or open many parallel downloads, for a denial of service by memory or connection exhaustion.
+
+**Mitigation:** Upgrade to 5.30.0. The cap is enforced while streaming (the connection is dropped once exceeded), only parseable CRLs are cached, the cache is limited to 256 entries and 64 MiB (oldest evicted first), and at most 8 downloads run at once.
+
+---
+
+#### COSMIAN-2026-080 — A failing database lookup made CRL generation, OCSP and Locate see no certificates
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | Moderate |
+| Published  | Pending |
+| Affected   | before 5.30.0 |
+| Fixed in   | 5.30.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server_database/src/core/database_objects.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+
+**Summary:** `Database::find` and `Database::find_all` replaced an error of any object store by an empty result.
+
+**Impact:** While the database failed, the OCSP responder answered `unknown` for revoked certificates instead of an error, certificate lookups used for CRL generation and enrollment saw no certificates, and `Locate` returned an empty list, so a relying party could accept a revoked certificate during a database fault.
+
+**Mitigation:** Upgrade to 5.30.0. An error of the default store is returned to the caller; an error of an HSM store is logged and skipped. The OCSP responder answers an unsigned `tryLater` response (RFC 6960 §2.3) when the status lookup fails, and never caches it.
+
+---
+
+#### COSMIAN-2026-079 — mTLS client certificates were never checked against a revocation list
+
+| Field      | Value |
+| ---------- | ----- |
+| Severity   | High |
+| Published  | Pending |
+| Affected   | before 5.30.0 |
+| Fixed in   | 5.30.0 |
+| Found by   | Threat model review, 23 November 2026 |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tls_config.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+
+**Summary:** The HTTPS and KMIP socket servers verified client certificates against `clients_ca_cert_file` only. No CRL was consulted, so a revoked client certificate was accepted until it expired.
+
+**Impact:** A client whose certificate was revoked (for example after a key compromise) could keep authenticating to the KMS, with every permission of the mapped user, until the certificate expired.
+
+**Mitigation:** Upgrade to 5.30.0 and set `clients_crl_dir` (`--clients-crl-dir`, `KMS_CLIENTS_CRL_DIR`) to an OpenSSL hashed directory of CRLs (`openssl rehash`). The leaf client certificate is checked against the CRL of its issuer on both servers; the check is fail-closed (missing or expired CRL rejects the client) and new `.rN` files are read without a restart. Connections already open keep their identity until closed.
+
+---
+
 #### COSMIAN-2026-078 — Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted
 
 | Field      | Value |
 | ---------- | ----- |
 | Severity   | Moderate |
 | Published  | Pending |
-| Affected   | from 5.15.0 before 6.0.0 (deployments setting `ui_session_salt`) |
-| Fixed in   | 6.0.0 |
+| Affected   | from 5.15.0 before 5.30.0 (deployments setting `ui_session_salt`) |
+| Fixed in   | 5.30.0 |
 | Found by   | Threat model review, issue #1487 |
 | References | [#1487](https://github.com/Cosmian/kms/issues/1487) |
 
@@ -154,7 +254,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** When the salt was guessable, an attacker could recover the session key and forge a session cookie for any user, which authenticates on the KMIP and REST scopes.
 
-**Mitigation:** Upgrade to 6.0.0. `ui_session_salt` is now the secret input of the key derivation (the URL only binds the key to the deployment) and must be at least 32 random bytes encoded as hex or base64 (`openssl rand -hex 32`); other values stop the server at startup. Existing sessions are invalidated once. Until upgraded, set a random 32-byte `ui_session_salt`.
+**Mitigation:** Upgrade to 5.30.0. `ui_session_salt` is now the secret input of the key derivation (the URL only binds the key to the deployment) and must be at least 32 random bytes encoded as hex or base64 (`openssl rand -hex 32`); other values stop the server at startup. Existing sessions are invalidated once. Until upgraded, set a random 32-byte `ui_session_salt`.
 
 ---
 
@@ -164,8 +264,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ----- |
 | Severity   | Moderate |
 | Published  | Pending |
-| Affected   | from 5.26.0 before 6.0.0 |
-| Fixed in   | 6.0.0 |
+| Affected   | from 5.26.0 before 5.30.0 |
+| Fixed in   | 5.30.0 |
 | Found by   | Threat model review, issue #1487 |
 | References | [#1487](https://github.com/Cosmian/kms/issues/1487) |
 
@@ -173,7 +273,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A copy of the cookie (stolen, or kept after logout) stayed valid as a bearer credential on the Web UI and on the KMIP/REST scopes for as long as the cookie key lived.
 
-**Mitigation:** Upgrade to 6.0.0. The sealed cookie carries a random session id and times: the server enforces a 24-hour absolute lifetime and a 1-hour idle timeout, and `/ui/logout` revokes the session id in the KMS database, so every instance sharing it refuses the cookie. Disabling an account at the identity provider does not end an open session before its expiry. Until upgraded, rotate `ui_session_salt` to invalidate all sessions.
+**Mitigation:** Upgrade to 5.30.0. The sealed cookie carries a random session id and times: the server enforces a 24-hour absolute lifetime and a 1-hour idle timeout, and `/ui/logout` revokes the session id in the KMS database, so every instance sharing it refuses the cookie. Disabling an account at the identity provider does not end an open session before its expiry. Until upgraded, rotate `ui_session_salt` to invalidate all sessions.
 
 ---
 
@@ -183,8 +283,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ----- |
 | Severity   | Moderate |
 | Published  | Pending |
-| Affected   | from 5.26.0 before 6.0.0 |
-| Fixed in   | 6.0.0 |
+| Affected   | from 5.26.0 before 5.30.0 |
+| Fixed in   | 5.30.0 |
 | Found by   | Threat model review, issue #1487 |
 | References | [#1487](https://github.com/Cosmian/kms/issues/1487) |
 
@@ -192,15 +292,15 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Password guessing against Auth Verifier accounts through the KMS, and a single client exhausting the shared Auth Verifier bucket so that legitimate Web UI logins failed.
 
-**Mitigation:** Upgrade to 6.0.0. The endpoint is throttled to 10 attempts per minute per peer IP and 5 per minute per username (always on), answers `429` with `Retry-After`, and relays an Auth Verifier `429` as `429`. Behind a reverse proxy, list it in `trusted_proxy_cidrs` so each client is throttled by its own address.
+**Mitigation:** Upgrade to 5.30.0. The endpoint is throttled to 10 attempts per minute per peer IP and 5 per minute per username (always on), answers `429` with `Retry-After`, and relays an Auth Verifier `429` as `429`. Behind a reverse proxy, list it in `trusted_proxy_cidrs` so each client is throttled by its own address.
 #### COSMIAN-2026-075 — External credential named like `default_username` inherited the default user's identity
 
 | Field      | Value                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------ |
 | Severity   | Moderate                                                                                               |
 | Published  | Pending                                                                                                |
-| Affected   | from 5.0.0 before 6.0.0                                                                                |
-| Fixed in   | 6.0.0                                                                                                  |
+| Affected   | from 5.0.0 before 5.30.0                                                                                |
+| Fixed in   | 5.30.0                                                                                                  |
 | Found by   | Security audit, issue #1486                                                                            |
 | References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
 
@@ -208,7 +308,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** The holder of such a credential acted as the default owner.
 
-**Mitigation:** Upgrade to 6.0.0: every authentication path other than the API token and the unauthenticated mode is refused with 401 when the identity equals `default_username` (case and trailing spaces ignored), including the KMIP socket server. Choose a `default_username` distinct from every real identity; use an API token for operator provisioning. Regression tests: `external_identity_equal_to_default_username_is_rejected` (`crate/server/src/middlewares/ensure_auth.rs`), `client_cn_equal_to_default_username_is_rejected` (`crate/server/src/socket_server.rs`).
+**Mitigation:** Upgrade to 5.30.0: every authentication path other than the API token and the unauthenticated mode is refused with 401 when the identity equals `default_username` (case and trailing spaces ignored), including the KMIP socket server. Choose a `default_username` distinct from every real identity; use an API token for operator provisioning. Regression tests: `external_identity_equal_to_default_username_is_rejected` (`crate/server/src/middlewares/ensure_auth.rs`), `client_cn_equal_to_default_username_is_rejected` (`crate/server/src/socket_server.rs`).
 
 ---
 
@@ -218,8 +318,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------ |
 | Severity   | Moderate                                                                                               |
 | Published  | Pending                                                                                                |
-| Affected   | from 5.0.0 before 6.0.0                                                                                |
-| Fixed in   | 6.0.0                                                                                                  |
+| Affected   | from 5.0.0 before 5.30.0                                                                                |
+| Fixed in   | 5.30.0                                                                                                  |
 | Found by   | Security audit, issue #1486                                                                            |
 | References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
 
@@ -227,7 +327,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A user who can register an unverified address at an identity provider (or controls a secondary provider) could take the identity, and so the keys and grants, of a user with that email.
 
-**Mitigation:** Upgrade to 6.0.0: `email_verified` must be `true`; users of the second and later `jwt_auth_provider` entries (and of a UI OIDC issuer other than the first provider) are identified as `email#<issuer>`, so their access grants and role lists must use that form. Identity providers that omit `email_verified` (for example Microsoft Entra ID access tokens) are rejected. Regression tests: `unverified_email_claim_is_rejected`, `same_email_from_a_secondary_issuer_is_namespaced` (`crate/server/src/middlewares/jwt/jwt_token_auth.rs`), `oidc_login_namespaces_the_identity_unless_the_idp_is_the_primary_jwt_issuer` (`crate/server/src/routes/ui_auth.rs`).
+**Mitigation:** Upgrade to 5.30.0: `email_verified` must be `true`; users of the second and later `jwt_auth_provider` entries (and of a UI OIDC issuer other than the first provider) are identified as `email#<issuer>`, so their access grants and role lists must use that form. Identity providers that omit `email_verified` (for example Microsoft Entra ID access tokens) are rejected. Regression tests: `unverified_email_claim_is_rejected`, `same_email_from_a_secondary_issuer_is_namespaced` (`crate/server/src/middlewares/jwt/jwt_token_auth.rs`), `oidc_login_namespaces_the_identity_unless_the_idp_is_the_primary_jwt_issuer` (`crate/server/src/routes/ui_auth.rs`).
 
 ---
 
@@ -237,8 +337,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------ |
 | Severity   | Moderate                                                                                               |
 | Published  | Pending                                                                                                |
-| Affected   | from 5.26.0 before 6.0.0                                                                               |
-| Fixed in   | 6.0.0                                                                                                  |
+| Affected   | from 5.26.0 before 5.30.0                                                                               |
+| Fixed in   | 5.30.0                                                                                                  |
 | Found by   | Security audit, issue #1486                                                                            |
 | References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
 
@@ -246,7 +346,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A user of another application's realm, or an administrator account of the admin realm, could authenticate to the KMS under its own subject name and act with the permissions granted to that name.
 
-**Mitigation:** Upgrade to 6.0.0: admin-realm tokens are always rejected and, when `auth_verifier_realm` is set, bearer tokens and UI logins must be issued for that realm. A deployment that configured `auth_verifier_realm = "_"` must create a dedicated realm and users. Regression test: `bearer_token_of_another_or_admin_realm_is_rejected` (`crate/server/src/middlewares/auth_verifier/token.rs`).
+**Mitigation:** Upgrade to 5.30.0: admin-realm tokens are always rejected and, when `auth_verifier_realm` is set, bearer tokens and UI logins must be issued for that realm. A deployment that configured `auth_verifier_realm = "_"` must create a dedicated realm and users. Regression test: `bearer_token_of_another_or_admin_realm_is_rejected` (`crate/server/src/middlewares/auth_verifier/token.rs`).
 
 ---
 
@@ -256,8 +356,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------ |
 | Severity   | Moderate                                                                                               |
 | Published  | Pending                                                                                                |
-| Affected   | from 5.0.0 before 6.0.0                                                                                |
-| Fixed in   | 6.0.0                                                                                                  |
+| Affected   | from 5.0.0 before 5.30.0                                                                                |
+| Fixed in   | 5.30.0                                                                                                  |
 | Found by   | Security audit, issue #1486                                                                            |
 | References | [#1486](https://github.com/Cosmian/kms/issues/1486), [#1516](https://github.com/Cosmian/kms/pull/1516) |
 
@@ -265,7 +365,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Any network client could use all KMIP/REST scopes with the default user's permissions and objects.
 
-**Mitigation:** Upgrade to 6.0.0, which refuses to start without authentication on a non-loopback address unless `insecure_allow_unauthenticated = true` (`KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`, development only; Helm `kms.insecureAllowUnauthenticated`). Configure mTLS, JWT, an API token or the Auth Verifier, or bind `127.0.0.1`. Regression tests: `check_unauthenticated_bind_cases` (`crate/server/src/start_kms_server.rs`), `no_auth_server_refuses_non_loopback_bind` (`crate/test_kms_server/src/unauthenticated_bind_tests.rs`). Until upgraded, configure an authentication method.
+**Mitigation:** Upgrade to 5.30.0, which refuses to start without authentication on a non-loopback address unless `insecure_allow_unauthenticated = true` (`KMS_INSECURE_ALLOW_UNAUTHENTICATED=true`, development only; Helm `kms.insecureAllowUnauthenticated`). Configure mTLS, JWT, an API token or the Auth Verifier, or bind `127.0.0.1`. Regression tests: `check_unauthenticated_bind_cases` (`crate/server/src/start_kms_server.rs`), `no_auth_server_refuses_non_loopback_bind` (`crate/test_kms_server/src/unauthenticated_bind_tests.rs`). Until upgraded, configure an authentication method.
 
 ---
 
@@ -275,8 +375,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Severity   | Low                                                                                                                                                                                                    |
 | Published  | Pending                                                                                                                                                                                                |
-| Affected   | before 6.0.0                                                                                                                                                                                           |
-| Fixed in   | 6.0.0                                                                                                                                                                                                  |
+| Affected   | before 5.30.0                                                                                                                                                                                           |
+| Fixed in   | 5.30.0                                                                                                                                                                                                  |
 | Found by   | Threat model review, 14 November 2026                                                                                                                                                                  |
 | References | [#1492](https://github.com/Cosmian/kms/issues/1492), [Regression tests](crate/server/src/tests/kmip_policy/routes.rs), [Vector](test_data/vectors/negative/security/wrap_with_unusable_kek/manifest.toml) |
 
@@ -288,7 +388,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A user with a `DeriveKey` grant could create objects although object creation was restricted to privileged users. A deployment restricting algorithms through `kmip.policy_id` could still have keys of disallowed algorithms or sizes created, imported or used through the JOSE and SPIRE routes. A caller allowed to import wrapped keys could probe the existence and lifecycle state of other users' keys. No key material was exposed.
 
-**Mitigation:** Upgrade to 6.0.0. `DeriveKey` now requires the Create permission (the Crypto Officer is still allowed). The JOSE and SPIRE routes run the same request policy check as the KMIP endpoint and return the same error. Wrap and unwrap return `The (un)wrapping key <uid> does not exist or is not accessible` for a missing key and for a key the caller may not use, and check the key's state and usage only after the permission. Regression tests: `derive_key_requires_create_permission`, `crate/server/src/tests/kmip_policy/routes.rs`, `unauthorized_caller_cannot_distinguish_unwrapping_keys` and `unauthorized_caller_cannot_distinguish_wrapping_keys`.
+**Mitigation:** Upgrade to 5.30.0. `DeriveKey` now requires the Create permission (the Crypto Officer is still allowed). The JOSE and SPIRE routes run the same request policy check as the KMIP endpoint and return the same error. Wrap and unwrap return `The (un)wrapping key <uid> does not exist or is not accessible` for a missing key and for a key the caller may not use, and check the key's state and usage only after the permission. Regression tests: `derive_key_requires_create_permission`, `crate/server/src/tests/kmip_policy/routes.rs`, `unauthorized_caller_cannot_distinguish_unwrapping_keys` and `unauthorized_caller_cannot_distinguish_wrapping_keys`.
 
 ---
 
@@ -298,8 +398,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Moderate                                                                                                                                                    |
 | Published  | Pending                                                                                                                                                     |
-| Affected   | before 6.0.0                                                                                                                                                |
-| Fixed in   | 6.0.0                                                                                                                                                       |
+| Affected   | before 5.30.0                                                                                                                                                |
+| Fixed in   | 5.30.0                                                                                                                                                       |
 | Found by   | Hardening review                                                                                                                                            |
 | References | [#1457](https://github.com/Cosmian/kms/issues/1457), [Regression test](crate/server/src/tests/wrap_certificate_usage_mask.rs)                               |
 
@@ -307,7 +407,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A user allowed to use a certificate (owner or `Get`/`Encrypt` grant) could wrap exported keys under a public key whose owner had restricted it to other uses, such as signature verification. No key material is disclosed to that user beyond what wrapping already allows, but the key-usage policy of the public key was not enforced.
 
-**Mitigation:** Upgrade to 6.0.0. A certificate now wraps only when its own usage mask, or, when it has none, the mask of the public key it links to with `PublicKeyLink` (owned by the certificate's owner), includes `WrapKey`. A certificate with neither is refused (`is not meant to wrap keys`); in FIPS builds, give an imported certificate a usage mask with `WrapKey` or link it to such a public key. Regression tests: `crate/server/src/tests/wrap_certificate_usage_mask.rs` and step 12 of `test_data/vectors/negative/security/wrap_with_unusable_kek`.
+**Mitigation:** Upgrade to 5.30.0. A certificate now wraps only when its own usage mask, or, when it has none, the mask of the public key it links to with `PublicKeyLink` (owned by the certificate's owner), includes `WrapKey`. A certificate with neither is refused (`is not meant to wrap keys`); in FIPS builds, give an imported certificate a usage mask with `WrapKey` or link it to such a public key. Regression tests: `crate/server/src/tests/wrap_certificate_usage_mask.rs` and step 12 of `test_data/vectors/negative/security/wrap_with_unusable_kek`.
 
 ---
 
@@ -317,8 +417,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Severity   | Low                                                                                                                                                                                              |
 | Published  | Pending                                                                                                                                                                                          |
-| Affected   | from 5.3.0 before 6.0.0 (build tooling only)                                                                                                                                                     |
-| Fixed in   | 6.0.0                                                                                                                                                                                            |
+| Affected   | from 5.3.0 before 5.30.0 (build tooling only)                                                                                                                                                     |
+| Fixed in   | 5.30.0                                                                                                                                                                                            |
 | Found by   | OSV scanner (GHSA-g3hv-75wg-m249)                                                                                                                                                                |
 | References | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), [CVE-2026-118764](https://nvd.nist.gov/vuln/detail/CVE-2026-118764), [#1360](https://github.com/Cosmian/kms/pull/1360) |
 
@@ -326,7 +426,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** `minimatch` is not part of the served Web UI bundle and the server never passes untrusted patterns to it. Only a developer or CI job running the linter on a hostile glob is exposed, for a denial of service.
 
-**Mitigation:** Upgrade to 6.0.0. The Web UI dependency `minimatch` was bumped to 11.0.1 or later (resolved to 11.0.3 and 11.0.5).
+**Mitigation:** Upgrade to 5.30.0. The Web UI dependency `minimatch` was bumped to 11.0.1 or later (resolved to 11.0.3 and 11.0.5).
 
 ---
 
@@ -336,8 +436,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Low                                                                                                                                                                                                       |
 | Published  | Pending                                                                                                                                                                                                   |
-| Affected   | before 6.0.0                                                                                                                                                                                              |
-| Fixed in   | 6.0.0                                                                                                                                                                                                     |
+| Affected   | before 5.30.0                                                                                                                                                                                              |
+| Fixed in   | 5.30.0                                                                                                                                                                                                     |
 | Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0543, RUSTSEC-2026-0542)                                                                                                                                      |
 | References | [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543.html), [RUSTSEC-2026-0542](https://rustsec.org/advisories/RUSTSEC-2026-0542.html), [#1431](https://github.com/Cosmian/kms/pull/1431) |
 
@@ -345,7 +445,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** No known exploit. Future vulnerabilities in these crates would not be fixed upstream.
 
-**Mitigation:** Upgrade to 6.0.0. `chrono` and `humantime` were removed from the dependency tree: `time` replaces `chrono`, the AWS XKS `SigV4` verifier no longer uses `scratchstack-aws-signature`, `ckms login oauth` no longer uses `oauth2`, and the Kubernetes operator parses refresh intervals with an internal parser.
+**Mitigation:** Upgrade to 5.30.0. `chrono` and `humantime` were removed from the dependency tree: `time` replaces `chrono`, the AWS XKS `SigV4` verifier no longer uses `scratchstack-aws-signature`, `ckms login oauth` no longer uses `oauth2`, and the Kubernetes operator parses refresh intervals with an internal parser.
 
 ---
 
@@ -355,8 +455,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Severity   | Low                                                                                                                                                                                              |
 | Published  | Pending                                                                                                                                                                                          |
-| Affected   | from 5.24.0 before 6.0.0 (MySQL/Percona/MariaDB backend only)                                                                                                                                    |
-| Fixed in   | 6.0.0                                                                                                                                                                                            |
+| Affected   | from 5.24.0 before 5.30.0 (MySQL/Percona/MariaDB backend only)                                                                                                                                    |
+| Fixed in   | 5.30.0                                                                                                                                                                                            |
 | Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0544)                                                                                                                                                |
 | References | [RUSTSEC-2026-0544](https://rustsec.org/advisories/RUSTSEC-2026-0544.html), [CVE-2026-85091](https://nvd.nist.gov/vuln/detail/CVE-2026-85091), [#1431](https://github.com/Cosmian/kms/pull/1431) |
 
@@ -364,7 +464,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** The KMS does not call the `gz*` file API, and `flate2` uses the deflate and inflate stream API, so the vulnerable code path is not reachable. Severity is Low.
 
-**Mitigation:** Upgrade to 6.0.0, which bundles `libz-sys` 1.1.33.
+**Mitigation:** Upgrade to 5.30.0, which bundles `libz-sys` 1.1.33.
 
 ---
 
@@ -374,8 +474,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Moderate                                                                                                                                                                                                                                                                              |
 | Published  | Pending                                                                                                                                                                                                                                                                               |
-| Affected   | before 6.0.0                                                                                                                                                                                                                                                                          |
-| Fixed in   | 6.0.0                                                                                                                                                                                                                                                                                 |
+| Affected   | before 5.30.0                                                                                                                                                                                                                                                                          |
+| Fixed in   | 5.30.0                                                                                                                                                                                                                                                                                 |
 | Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0552, RUSTSEC-2026-0553, RUSTSEC-2026-0554)                                                                                                                                                                                               |
 | References | [RUSTSEC-2026-0552](https://rustsec.org/advisories/RUSTSEC-2026-0552.html), [RUSTSEC-2026-0553](https://rustsec.org/advisories/RUSTSEC-2026-0553.html), [RUSTSEC-2026-0554](https://rustsec.org/advisories/RUSTSEC-2026-0554.html), [#1431](https://github.com/Cosmian/kms/pull/1431) |
 
@@ -383,7 +483,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A remote unauthenticated client could hold connections open indefinitely and exhaust connection or file-descriptor limits (availability). The framing flaws allow request smuggling only when a reverse proxy forwards the malformed body with a different request boundary; the advisories demonstrate no proxy bypass or cross-user effect.
 
-**Mitigation:** Upgrade to 6.0.0, which bundles `actix-http` 3.21.3. Until upgraded, put the server behind a proxy that normalizes HTTP/1.1 requests and enforces header timeouts and connection limits.
+**Mitigation:** Upgrade to 5.30.0, which bundles `actix-http` 3.21.3. Until upgraded, put the server behind a proxy that normalizes HTTP/1.1 requests and enforces header timeouts and connection limits.
 
 ---
 
@@ -393,8 +493,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Low                                                                                                                                                                                                |
 | Published  | Pending                                                                                                                                                                                            |
-| Affected   | before 6.0.0 (SQLite backend only)                                                                                                                                                                 |
-| Fixed in   | 6.0.0                                                                                                                                                                                              |
+| Affected   | before 5.30.0 (SQLite backend only)                                                                                                                                                                 |
+| Fixed in   | 5.30.0                                                                                                                                                                                              |
 | Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0459)                                                                                                                                                  |
 | References | [RUSTSEC-2026-0459](https://rustsec.org/advisories/RUSTSEC-2026-0459.html), [CVE-2026-119375](https://nvd.nist.gov/vuln/detail/CVE-2026-119375), [#1388](https://github.com/Cosmian/kms/pull/1388) |
 
@@ -402,7 +502,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Exploitation needs a crafted database and `-wal` file pair opened by the server, so an attacker must be able to write in the SQLite database directory; the vector is local. The KMS opens only its own database file. Severity is Low unless the database directory is writable by a less trusted party. PostgreSQL, MySQL and Redis backends are not affected.
 
-**Mitigation:** Upgrade to 6.0.0. `rusqlite` was upgraded from 0.37 to 0.41 (`libsqlite3-sys` 0.39.1, SQLite 3.54.1), and `tokio-rusqlite` was replaced by an in-house async connection wrapper. Keep the SQLite database directory writable only by the KMS service account.
+**Mitigation:** Upgrade to 5.30.0. `rusqlite` was upgraded from 0.37 to 0.41 (`libsqlite3-sys` 0.39.1, SQLite 3.54.1), and `tokio-rusqlite` was replaced by an in-house async connection wrapper. Keep the SQLite database directory writable only by the KMS service account.
 
 ---
 
@@ -412,8 +512,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------ |
 | Severity   | Low                                                                                                    |
 | Published  | Pending                                                                                                |
-| Affected   | from 5.15.0 before 6.0.0                                                                               |
-| Fixed in   | 6.0.0                                                                                                  |
+| Affected   | from 5.15.0 before 5.30.0                                                                               |
+| Fixed in   | 5.30.0                                                                                                  |
 | Found by   | Hardening review, 19 November 2026                                                                     |
 | References | [#1438](https://github.com/Cosmian/kms/pull/1438), [#1366](https://github.com/Cosmian/kms/issues/1366) |
 
@@ -421,7 +521,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Any caller who could reach the endpoint could read database driver errors, which can include host names, user names or file paths, and PKCS#11 return codes. This information helps to target further attacks; no key material was exposed.
 
-**Mitigation:** Upgrade to 6.0.0. The `message` of a `DOWN` dependency is now a fixed text; the error detail is written to the server log as `health check: ...`. Until upgraded, restrict access to `/health` at the reverse proxy.
+**Mitigation:** Upgrade to 5.30.0. The `message` of a `DOWN` dependency is now a fixed text; the error detail is written to the server log as `health check: ...`. Until upgraded, restrict access to `/health` at the reverse proxy.
 
 ---
 
@@ -431,8 +531,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Moderate                                                                                                                                                                                                                                       |
 | Published  | Pending                                                                                                                                                                                                                                        |
-| Affected   | before 6.0.0                                                                                                                                                                                                                                   |
-| Fixed in   | 6.0.0                                                                                                                                                                                                                                          |
+| Affected   | before 5.30.0                                                                                                                                                                                                                                   |
+| Fixed in   | 5.30.0                                                                                                                                                                                                                                          |
 | Found by   | Issue #1426                                                                                                                                                                                                                                    |
 | References | [#1442](https://github.com/Cosmian/kms/pull/1442), [#1426](https://github.com/Cosmian/kms/issues/1426), [COSMIAN-2026-051](#cosmian-2026-051--kmip-payloads-written-to-debug-logs), [Regression tests](crate/kmip/src/ttlv/tests/redaction.rs) |
 
@@ -440,7 +540,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** At trace or debug log level, plaintext, IVs, AAD, PINs and passwords, PKCS#12 passwords and private-key integers could be written to logs. Anyone able to read those logs could recover them. Default log levels do not emit them.
 
-**Mitigation:** Upgrade to 6.0.0. Secret-bearing KMIP fields now use `cosmian_kmip::Sensitive<T>`, whose `Debug` and `Display` print only a size, and the types and log statements above redact their secrets (`SafeBigInt`, `Secret`, `TTLV`, `CredentialValue`, `Link`, `EncryptionKeyInformation`, `DataToEncrypt`, HSM key material, PKCS#11 provider). Sensitive buffers are zeroized and compared in constant time. Rotate or restrict access to trace and debug logs written by earlier versions. Regression tests: `crate/kmip/src/ttlv/tests/redaction.rs`.
+**Mitigation:** Upgrade to 5.30.0. Secret-bearing KMIP fields now use `cosmian_kmip::Sensitive<T>`, whose `Debug` and `Display` print only a size, and the types and log statements above redact their secrets (`SafeBigInt`, `Secret`, `TTLV`, `CredentialValue`, `Link`, `EncryptionKeyInformation`, `DataToEncrypt`, HSM key material, PKCS#11 provider). Sensitive buffers are zeroized and compared in constant time. Rotate or restrict access to trace and debug logs written by earlier versions. Regression tests: `crate/kmip/src/ttlv/tests/redaction.rs`.
 
 ---
 
@@ -450,8 +550,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Moderate                                                                                                                                                                        |
 | Published  | Pending                                                                                                                                                                         |
-| Affected   | before 6.0.0                                                                                                                                                                    |
-| Fixed in   | 6.0.0                                                                                                                                                                           |
+| Affected   | before 5.30.0                                                                                                                                                                    |
+| Fixed in   | 5.30.0                                                                                                                                                                           |
 | Found by   | Hardening review, 19 November 2026                                                                                                                                              |
 | References | [#1439](https://github.com/Cosmian/kms/pull/1439), [#1437](https://github.com/Cosmian/kms/issues/1437), [Regression test](crate/server/src/tests/revocation_authority_tests.rs) |
 
@@ -459,7 +559,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** The affected objects sat in the database in plaintext although the operator had configured wrapping at rest. An attacker with read access to the database (backup, replica, SQL access) could read them without the key encryption key. The KEK is not exposed and no API access control was bypassed.
 
-**Mitigation:** Upgrade to 6.0.0. Every object-creation path now applies the `key_encryption_key`; wrapping accepts split-key shares, and `Get`/`Export` of a share honours `key_wrap_type = NotWrapped`. Objects created by earlier releases stay unwrapped until they are re-wrapped or re-created; rotate any such key that must be protected at rest. Downgrade note: with `key_encryption_key` configured, split-key shares created by 6.0.0 are stored wrapped and earlier releases cannot join them (`JoinSplitKey` and Crypto Officer ceremony activation fail); join or re-split them before downgrading. Regression test: `certify_generated_key_pair_is_wrapped_by_the_server_kek` in `crate/server/src/tests/revocation_authority_tests.rs`.
+**Mitigation:** Upgrade to 5.30.0. Every object-creation path now applies the `key_encryption_key`; wrapping accepts split-key shares, and `Get`/`Export` of a share honours `key_wrap_type = NotWrapped`. Objects created by earlier releases stay unwrapped until they are re-wrapped or re-created; rotate any such key that must be protected at rest. Downgrade note: with `key_encryption_key` configured, split-key shares created by 5.30.0 are stored wrapped and earlier releases cannot join them (`JoinSplitKey` and Crypto Officer ceremony activation fail); join or re-split them before downgrading. Regression test: `certify_generated_key_pair_is_wrapped_by_the_server_kek` in `crate/server/src/tests/revocation_authority_tests.rs`.
 
 ---
 
@@ -469,8 +569,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Critical                                                                                                                                                        |
 | Published  | Pending                                                                                                                                                         |
-| Affected   | from 5.26.0 before 6.0.0                                                                                                                                        |
-| Fixed in   | 6.0.0                                                                                                                                                           |
+| Affected   | from 5.26.0 before 5.30.0                                                                                                                                        |
+| Fixed in   | 5.30.0                                                                                                                                                           |
 | Found by   | Hardening review, 19 November 2026                                                                                                                              |
 | References | [#1439](https://github.com/Cosmian/kms/pull/1439), [#1437](https://github.com/Cosmian/kms/issues/1437), [Regression test](crate/server/src/start_kms_server.rs) |
 
@@ -478,7 +578,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** An unauthenticated network client could run operations on those scopes with the permissions and objects of the default user. Only deployments whose sole authentication method is the Vault token verifier were exposed.
 
-**Mitigation:** Upgrade to 6.0.0. An `X-Vault-Token` now counts as configured authentication on every scope, so a request without credentials is rejected. Clients must send `X-Vault-Token` or authenticate another way, for example an API token (`api_token_id`) for `ckms` provisioning; a client certificate whose CN equals `default_username` is refused since 6.0.0 (COSMIAN-2026-073). Regression test: `vault_token_only_auth_rejects_requests_without_credentials` in `crate/server/src/start_kms_server.rs`. Until upgraded, configure a second authentication method (mTLS, JWT or API token) so that anonymous requests are refused.
+**Mitigation:** Upgrade to 5.30.0. An `X-Vault-Token` now counts as configured authentication on every scope, so a request without credentials is rejected. Clients must send `X-Vault-Token` or authenticate another way, for example an API token (`api_token_id`) for `ckms` provisioning; a client certificate whose CN equals `default_username` is refused since 5.30.0 (COSMIAN-2026-073). Regression test: `vault_token_only_auth_rejects_requests_without_credentials` in `crate/server/src/start_kms_server.rs`. Until upgraded, configure a second authentication method (mTLS, JWT or API token) so that anonymous requests are refused.
 
 ---
 
@@ -488,8 +588,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Low                                                                                                                                                                              |
 | Published  | Pending                                                                                                                                                                          |
-| Affected   | from 5.25.0 before 6.0.0                                                                                                                                                         |
-| Fixed in   | 6.0.0                                                                                                                                                                            |
+| Affected   | from 5.25.0 before 5.30.0                                                                                                                                                         |
+| Fixed in   | 5.30.0                                                                                                                                                                            |
 | Found by   | PR review, 22 November 2026                                                                                                                                                      |
 | References | [COSMIAN-2026-037](#cosmian-2026-037--crypto-operations-reveal-the-existence-and-state-of-other-users-keys), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
 
@@ -497,7 +597,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Such a user could test whether an HSM key ID exists on a slot and whether it is an AES key, without any grant on it. Key material and attributes were not exposed, and no key was rotated.
 
-**Mitigation:** Upgrade to 6.0.0. HSM `ReKey` and `ReKeyKeyPair` check the caller's ownership or `Rekey` grant before the object type, and a caller with no grant on the key gets the same `Item_Not_Found` as for a missing key; a missing key now returns `Item_Not_Found` and a wrong type `Invalid_Object_Type`. Regression tests: `hsm_rekey_by_a_non_owner_reveals_nothing` and `hsm_rekey_error_reasons` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+**Mitigation:** Upgrade to 5.30.0. HSM `ReKey` and `ReKeyKeyPair` check the caller's ownership or `Rekey` grant before the object type, and a caller with no grant on the key gets the same `Item_Not_Found` as for a missing key; a missing key now returns `Item_Not_Found` and a wrong type `Invalid_Object_Type`. Regression tests: `hsm_rekey_by_a_non_owner_reveals_nothing` and `hsm_rekey_error_reasons` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
 
 ---
 
@@ -507,8 +607,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Moderate                                                                                                                                     |
 | Published  | Pending                                                                                                                                      |
-| Affected   | from 5.16.0 before 6.0.0                                                                                                                     |
-| Fixed in   | 6.0.0                                                                                                                                        |
+| Affected   | from 5.16.0 before 5.30.0                                                                                                                     |
+| Fixed in   | 5.30.0                                                                                                                                        |
 | Found by   | PR review, 22 November 2026                                                                                                                  |
 | References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression test](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
 
@@ -516,7 +616,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** A user holding a grant on an HSM key could use it for `Encrypt`, `Decrypt`, `Sign`, `MAC` and the verify operations although the configured algorithm policy forbids it, for example a key created on the token by another PKCS#11 application with a disallowed size or curve.
 
-**Mitigation:** Upgrade to 6.0.0. Every HSM key is checked against the algorithm policy, on its PKCS#11 metadata, before the HSM is called, however it is addressed. Regression test: `hsm_key_addressed_by_uid_obeys_algorithm_policy` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+**Mitigation:** Upgrade to 5.30.0. Every HSM key is checked against the algorithm policy, on its PKCS#11 metadata, before the HSM is called, however it is addressed. Regression test: `hsm_key_addressed_by_uid_obeys_algorithm_policy` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
 
 ---
 
@@ -526,8 +626,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Low                                                                                                                                           |
 | Published  | Pending                                                                                                                                       |
-| Affected   | from 5.25.0 before 6.0.0                                                                                                                      |
-| Fixed in   | 6.0.0                                                                                                                                         |
+| Affected   | from 5.25.0 before 5.30.0                                                                                                                      |
+| Fixed in   | 5.30.0                                                                                                                                         |
 | Found by   | PR review, 22 November 2026                                                                                                                   |
 | References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
 
@@ -535,7 +635,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** After an HSM key was rotated, for example because it was suspected compromised or had reached the end of its cryptoperiod, any user still holding a grant on an older generation could keep encrypting, signing and computing MACs with it by its generation UID.
 
-**Mitigation:** Upgrade to 6.0.0. A generation that is not the head of its HSM keyset is treated as `Deactivated`: `Encrypt`, `Sign` and `MAC` with it fail with `Wrong_Key_Lifecycle_State`, while `Decrypt`, `Signature Verify` and `MAC Verify` still accept it. The head is read from the HSM on each protection operation, not from cached metadata, so a rotation made by another KMS node, or a keyset enrolled after its key was cached, also retires the old generation at once; an HSM failure during that check refuses the operation. The `name@first` / `name@0` addresses and the cached-metadata cases concern development code only. Regression tests: `protect_operations_use_only_the_keyset_head`, `cached_bare_and_latest_heads_cannot_protect_after_external_rotation`, `cached_hsm_protection_fails_closed_when_live_keyset_scan_fails` and `rsa_public_encrypt_checks_live_head_for_generated_public_key_ids` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+**Mitigation:** Upgrade to 5.30.0. A generation that is not the head of its HSM keyset is treated as `Deactivated`: `Encrypt`, `Sign` and `MAC` with it fail with `Wrong_Key_Lifecycle_State`, while `Decrypt`, `Signature Verify` and `MAC Verify` still accept it. The head is read from the HSM on each protection operation, not from cached metadata, so a rotation made by another KMS node, or a keyset enrolled after its key was cached, also retires the old generation at once; an HSM failure during that check refuses the operation. The `name@first` / `name@0` addresses and the cached-metadata cases concern development code only. Regression tests: `protect_operations_use_only_the_keyset_head`, `cached_bare_and_latest_heads_cannot_protect_after_external_rotation`, `cached_hsm_protection_fails_closed_when_live_keyset_scan_fails` and `rsa_public_encrypt_checks_live_head_for_generated_public_key_ids` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
 
 ---
 
@@ -545,8 +645,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Severity   | Moderate                                                                                                                                      |
 | Published  | Pending                                                                                                                                       |
-| Affected   | from 5.25.0 before 6.0.0                                                                                                                      |
-| Fixed in   | 6.0.0                                                                                                                                         |
+| Affected   | from 5.25.0 before 5.30.0                                                                                                                      |
+| Fixed in   | 5.30.0                                                                                                                                         |
 | Found by   | PR review, 22 November 2026                                                                                                                   |
 | References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
 
@@ -554,7 +654,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 **Impact:** Ciphertext produced with an older generation in one of these modes could be decrypted with a newer key and the garbage returned as the plaintext, with a success status. A client unwrapping a data key this way silently received a wrong key, and the data it then protected could be lost.
 
-**Mitigation:** Upgrade to 6.0.0. `Decrypt` by keyset name is refused with `Feature_Not_Supported` unless the request or stored parameters select a mode that rejects a wrong key (AES GCM, GCM-SIV, CCM, key wrap, RSA OAEP); address one generation (`name@N`) to decrypt in another mode. On HSM keysets, a member decrypted without request parameters uses AES-GCM or RSA-OAEP, never the token default, which falls back to AES CBC or RSA PKCS#1 v1.5 on tokens without GCM or OAEP. Regression tests: `keyset_decrypt_refuses_modes_that_cannot_detect_a_wrong_key` and `keyset_decrypt_defaults_never_fall_back_to_unauthenticated_token_algorithms` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
+**Mitigation:** Upgrade to 5.30.0. `Decrypt` by keyset name is refused with `Feature_Not_Supported` unless the request or stored parameters select a mode that rejects a wrong key (AES GCM, GCM-SIV, CCM, key wrap, RSA OAEP); address one generation (`name@N`) to decrypt in another mode. On HSM keysets, a member decrypted without request parameters uses AES-GCM or RSA-OAEP, never the token default, which falls back to AES CBC or RSA PKCS#1 v1.5 on tokens without GCM or OAEP. Regression tests: `keyset_decrypt_refuses_modes_that_cannot_detect_a_wrong_key` and `keyset_decrypt_defaults_never_fall_back_to_unauthenticated_token_algorithms` in `crate/server/src/tests/hsm/fake_hsm_rotation.rs`.
 
 The released exposure was in SQL keysets. HSM keyset chain-walking is new on this branch. The SQL regression `test_sql_keyset_decrypt_refuses_unauthenticated_modes` in `crate/server/src/core/operations/decrypt.rs` covers inherited stored parameters, explicit-generation CBC decryption and a request overriding stored CBC with GCM.
 
@@ -566,8 +666,8 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | ---------- | ---------------------------------------------------------- |
 | Severity   | Moderate                                                   |
 | Published  | Pending                                                    |
-| Affected   | before 6.0.0                                               |
-| Fixed in   | 6.0.0                                                      |
+| Affected   | before 5.30.0                                               |
+| Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -575,7 +675,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 
 **Impact:** A caller who owned no object learned the Unique Identifier of the newest object in the database, whoever owned it. Any authenticated user could also make each such request read the whole object table.
 
-**Mitigation:** Upgrade to 6.0.0. An omitted Unique Identifier now means the ID Placeholder only (KMIP 2.1 §6.1.20); with no placeholder the request fails without selecting or naming any object. Regression test: `test_get_attributes_without_identifier_selects_nothing`.
+**Mitigation:** Upgrade to 5.30.0. An omitted Unique Identifier now means the ID Placeholder only (KMIP 2.1 §6.1.20); with no placeholder the request fails without selecting or naming any object. Regression test: `test_get_attributes_without_identifier_selects_nothing`.
 
 ---
 
@@ -585,12 +685,12 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | ---------- | --------------------------------------------------------------------- |
 | Severity   | Moderate                                                              |
 | Published  | Pending                                                               |
-| Affected   | unreleased development code only (introduced and fixed before 6.0.0)  |
-| Fixed in   | 6.0.0                                                                 |
+| Affected   | unreleased development code only (introduced and fixed before 5.30.0)  |
+| Fixed in   | 5.30.0                                                                 |
 | Found by   | Security review, 20 October 2026                                      |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md)            |
 
-**Summary:** The KMIP Undo batch error option, implemented during the 6.0.0 development cycle, snapshotted each item's target and every object the target linked to, without checking the caller's permissions, and wrote the snapshots back unconditionally after a failure. Links are client-editable, so a user could link one of their own objects to another user's object. Tag, keyset and name handles, re-keys of wrapping keys, Covercrypt cascades and Crypto Officer key splits were reported as undone although their effects remained, and a ceremony split lost its key.
+**Summary:** The KMIP Undo batch error option, implemented during the 5.30.0 development cycle, snapshotted each item's target and every object the target linked to, without checking the caller's permissions, and wrote the snapshots back unconditionally after a failure. Links are client-editable, so a user could link one of their own objects to another user's object. Tag, keyset and name handles, re-keys of wrapping keys, Covercrypt cascades and Crypto Officer key splits were reported as undone although their effects remained, and a ceremony split lost its key.
 
 **Impact:** A user could make an Undo batch overwrite another user's object with an earlier state: for example, revert a revocation or bring back key material destroyed concurrently. No released version is affected.
 
@@ -604,8 +704,8 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 6.0.0                                               |
-| Fixed in   | 6.0.0                                                      |
+| Affected   | before 5.30.0                                               |
+| Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -613,7 +713,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 
 **Impact:** A user with only a read or `Certify` grant on a leaf certificate, plus the right to create objects, could have the owner's CA key sign a certificate for a request the user chose. The user owned the issued certificate. The CA key itself was not exposed.
 
-**Mitigation:** Upgrade to 6.0.0. The subject and issuer are now resolved and authorized as the requesting user, and keys linked to the old certificate are relinked only when the user may certify with them. Regression test: `test_recertify_authorizes_issuer_as_requester`.
+**Mitigation:** Upgrade to 5.30.0. The subject and issuer are now resolved and authorized as the requesting user, and keys linked to the old certificate are relinked only when the user may certify with them. Regression test: `test_recertify_authorizes_issuer_as_requester`.
 
 ---
 
@@ -623,8 +723,8 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 6.0.0                                               |
-| Fixed in   | 6.0.0                                                      |
+| Affected   | before 5.30.0                                               |
+| Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -632,7 +732,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 
 **Impact:** A user could point their own private key at another user's public key and re-key it. The victim's public key was then deactivated and given a Replacement Object Link to the attacker's new key, and its attributes were copied into a key the attacker owned. This is the same class as COSMIAN-2026-017.
 
-**Mitigation:** Upgrade to 6.0.0. The linked public key now requires the `Rekey` permission and is otherwise reported as `Object_Not_Found`. Editing a Link also requires ownership or an explicit grant of the edit operation. Regression test: `test_rekey_keypair_does_not_retire_another_users_linked_public_key`.
+**Mitigation:** Upgrade to 5.30.0. The linked public key now requires the `Rekey` permission and is otherwise reported as `Object_Not_Found`. Editing a Link also requires ownership or an explicit grant of the edit operation. Regression test: `test_rekey_keypair_does_not_retire_another_users_linked_public_key`.
 
 ---
 
@@ -642,8 +742,8 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | ---------- | ---------------------------------------------------------- |
 | Severity   | Moderate                                                   |
 | Published  | Pending                                                    |
-| Affected   | before 6.0.0                                               |
-| Fixed in   | 6.0.0                                                      |
+| Affected   | before 5.30.0                                               |
+| Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -651,7 +751,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 
 **Impact:** An authenticated caller able to create or link managed certificates could make an export loop indefinitely. On a server with HSMs, any authenticated user could make each Locate read the metadata of every key on the HSMs.
 
-**Mitigation:** Upgrade to 6.0.0. Certificate chains reject cycles and chains above 100 certificates. Locate does not limit destroyed-only results before filtering their storage status. For a user who is not an HSM administrator, Locate resolves the HSM keys granted to that user first and looks up only those, bounded by the requested page. Regression tests: `certificate_chain_cycle_is_rejected`, `destroyed_only_locate_is_not_limited_before_status_filtering`, and `non_hsm_admin_locate_pages_only_granted_hsm_keys`.
+**Mitigation:** Upgrade to 5.30.0. Certificate chains reject cycles and chains above 100 certificates. Locate does not limit destroyed-only results before filtering their storage status. For a user who is not an HSM administrator, Locate resolves the HSM keys granted to that user first and looks up only those, bounded by the requested page. Regression tests: `certificate_chain_cycle_is_rejected`, `destroyed_only_locate_is_not_limited_before_status_filtering`, and `non_hsm_admin_locate_pages_only_granted_hsm_keys`.
 
 ---
 
@@ -661,8 +761,8 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 6.0.0                                               |
-| Fixed in   | 6.0.0                                                      |
+| Affected   | before 5.30.0                                               |
+| Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -670,7 +770,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 
 **Impact:** Debug logs could contain plaintext key material, wrapped keys, decrypted data, signatures, and client correlation values. Anyone who could read those logs could recover the recorded data.
 
-**Mitigation:** Upgrade to 6.0.0. KMIP logs retain only request metadata and operation names; they no longer emit payloads or encoded bytes. Rotate or restrict access to logs written by earlier versions.
+**Mitigation:** Upgrade to 5.30.0. KMIP logs retain only request metadata and operation names; they no longer emit payloads or encoded bytes. Rotate or restrict access to logs written by earlier versions.
 
 ---
 
@@ -680,8 +780,8 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | ---------- | ---------------------------------------------------------- |
 | Severity   | High                                                       |
 | Published  | Pending                                                    |
-| Affected   | before 6.0.0                                               |
-| Fixed in   | 6.0.0                                                      |
+| Affected   | before 5.30.0                                               |
+| Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
 | References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
 
@@ -689,7 +789,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 
 **Impact:** An Operator could access PKCS#11 administration, including functions acting on the HSM library shared by all users.
 
-**Mitigation:** Upgrade to 6.0.0. `PKCS11` and `SetConstraints` require a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and `SetConstraints` once roles are configured; regression tests `operator_cannot_invoke_administrative_operations`, `pkcs11_requires_a_configured_crypto_officer` and `set_constraints_requires_a_configured_crypto_officer` cover the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions.
+**Mitigation:** Upgrade to 5.30.0. `PKCS11` and `SetConstraints` require a configured Crypto Officer, and Operators are refused `PKCS11`, `RNGSeed` and `SetConstraints` once roles are configured; regression tests `operator_cannot_invoke_administrative_operations`, `pkcs11_requires_a_configured_crypto_officer` and `set_constraints_requires_a_configured_crypto_officer` cover the boundary. Operators keep `Get`, `Export` and the lifecycle and attribute operations on objects they own or were granted, as in earlier versions.
 
 ---
 
@@ -1903,35 +2003,40 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
-| COSMIAN-2026-078    | Moderate | from 5.15.0 before 6.0.0 (deployments setting `ui_session_salt`) | 6.0.0 | Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted |
-| COSMIAN-2026-077    | Moderate | from 5.26.0 before 6.0.0 | 6.0.0 | Web UI session cookie could be replayed after logout and had no server-enforced lifetime |
-| COSMIAN-2026-076    | Moderate | from 5.26.0 before 6.0.0 | 6.0.0 | `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure |
-| COSMIAN-2026-075    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | External credential named like `default_username` inherited the default user's identity             |
-| COSMIAN-2026-074    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | KMS identity taken from an unverified `email` claim, shared across identity providers               |
-| COSMIAN-2026-073    | Moderate | from 5.26.0 before 6.0.0                                                | 6.0.0    | Authentication Verifier bearer tokens of the admin realm or of another realm accepted               |
-| COSMIAN-2026-072    | Moderate | from 5.0.0 before 6.0.0                                                 | 6.0.0    | Server without authentication started on a non-loopback address                                     |
-| COSMIAN-2026-071    | Low      | before 6.0.0                                                            | 6.0.0    | DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys |
-| COSMIAN-2026-070    | Moderate | before 6.0.0                                                            | 6.0.0    | Key wrapping with a Certificate skipped the `WrapKey` usage-mask check                              |
-| COSMIAN-2026-069    | Low      | from 5.3.0 before 6.0.0 (build tooling only)                            | 6.0.0    | GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree                    |
-| COSMIAN-2026-068    | Low      | before 6.0.0                                                            | 6.0.0    | RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates               |
-| COSMIAN-2026-067    | Low      | from 5.24.0 before 6.0.0 (MySQL/Percona/MariaDB backend only)           | 6.0.0    | RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow in `gzwrite`               |
-| COSMIAN-2026-066    | Moderate | before 6.0.0                                                            | 6.0.0    | RUSTSEC-2026-0552, RUSTSEC-2026-0553, RUSTSEC-2026-0554: `actix-http` request framing and keep-alive timeout flaws |
-| COSMIAN-2026-065    | Low      | before 6.0.0 (SQLite backend only)                                      | 6.0.0    | RUSTSEC-2026-0459 / CVE-2026-119375: bundled SQLite before 3.54 may return uninitialised page-cache memory |
-| COSMIAN-2026-064    | Low      | from 5.15.0 before 6.0.0                                                | 6.0.0    | Public `GET /health` returned database driver and PKCS#11 error details                             |
-| COSMIAN-2026-063    | Moderate | before 6.0.0                                                            | 6.0.0    | Secret KMIP fields written to trace and debug logs by the TTLV serializer, deserializer and `#[instrument]` spans |
-| COSMIAN-2026-062    | Moderate | before 6.0.0                                                            | 6.0.0    | Server key encryption key not applied to several object-creation paths                              |
-| COSMIAN-2026-061    | Critical | from 5.26.0 before 6.0.0                                                | 6.0.0    | Vault-token-only authentication let requests without credentials run as the default user            |
-| COSMIAN-2026-060    | Low      | from 5.25.0 before 6.0.0                                                | 6.0.0    | HSM ReKey revealed the existence and type of other users' HSM keys                                  |
-| COSMIAN-2026-059    | Moderate | from 5.16.0 before 6.0.0                                                | 6.0.0    | HSM keys addressed by their UID skipped the KMIP algorithm policy                                   |
-| COSMIAN-2026-058    | Low      | from 5.25.0 before 6.0.0                                                | 6.0.0    | Retired HSM key generations remained usable for Encrypt, Sign and MAC                               |
-| COSMIAN-2026-057    | Moderate | from 5.25.0 before 6.0.0                                                | 6.0.0    | Decrypt by keyset name returned wrong-key output in unauthenticated modes                           |
-| COSMIAN-2026-056    | Moderate | before 6.0.0                                                            | 6.0.0    | Get Attributes without a Unique Identifier selected another user's newest object                    |
-| COSMIAN-2026-055    | Moderate | unreleased development code only (introduced and fixed before 6.0.0)    | 6.0.0    | Batch Undo could restore objects of another user                                                    |
-| COSMIAN-2026-054    | High     | before 6.0.0                                                            | 6.0.0    | ReCertify authorized the issuer key as the certificate owner                                        |
-| COSMIAN-2026-053    | High     | before 6.0.0                                                            | 6.0.0    | ReKeyKeyPair retired another user's linked public key                                               |
-| COSMIAN-2026-052    | Moderate | before 6.0.0                                                            | 6.0.0    | KMIP certificate chains and unbounded HSM Locate permit excessive server work                       |
-| COSMIAN-2026-051    | High     | before 6.0.0                                                            | 6.0.0    | KMIP payloads written to debug logs                                                                 |
-| COSMIAN-2026-050    | High     | before 6.0.0                                                            | 6.0.0    | Configured Operator role permitted PKCS#11 administration                                           |
+| COSMIAN-2026-083    | Low | before 5.30.0 | 5.30.0 | A CRL fetch error marked an imported certificate Compromised |
+| COSMIAN-2026-082    | Moderate | from 5.27.0 before 5.30.0 | 5.30.0 | SSRF via DNS names resolving to internal addresses in CRL Distribution Points |
+| COSMIAN-2026-081    | Moderate | from 5.27.0 before 5.30.0 | 5.30.0 | CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit |
+| COSMIAN-2026-080    | Moderate | before 5.30.0 | 5.30.0 | A failing database lookup made CRL generation, OCSP and Locate see no certificates |
+| COSMIAN-2026-079    | High | before 5.30.0 | 5.30.0 | mTLS client certificates were never checked against a revocation list |
+| COSMIAN-2026-078    | Moderate | from 5.15.0 before 5.30.0 (deployments setting `ui_session_salt`) | 5.30.0 | Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted |
+| COSMIAN-2026-077    | Moderate | from 5.26.0 before 5.30.0 | 5.30.0 | Web UI session cookie could be replayed after logout and had no server-enforced lifetime |
+| COSMIAN-2026-076    | Moderate | from 5.26.0 before 5.30.0 | 5.30.0 | `POST /ui/login_as` had no KMS-side rate limit and turned an Auth Verifier throttle into an authentication failure |
+| COSMIAN-2026-075    | Moderate | from 5.0.0 before 5.30.0                                                 | 5.30.0    | External credential named like `default_username` inherited the default user's identity             |
+| COSMIAN-2026-074    | Moderate | from 5.0.0 before 5.30.0                                                 | 5.30.0    | KMS identity taken from an unverified `email` claim, shared across identity providers               |
+| COSMIAN-2026-073    | Moderate | from 5.26.0 before 5.30.0                                                | 5.30.0    | Authentication Verifier bearer tokens of the admin realm or of another realm accepted               |
+| COSMIAN-2026-072    | Moderate | from 5.0.0 before 5.30.0                                                 | 5.30.0    | Server without authentication started on a non-loopback address                                     |
+| COSMIAN-2026-071    | Low      | before 5.30.0                                                            | 5.30.0    | DeriveKey skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys |
+| COSMIAN-2026-070    | Moderate | before 5.30.0                                                            | 5.30.0    | Key wrapping with a Certificate skipped the `WrapKey` usage-mask check                              |
+| COSMIAN-2026-069    | Low      | from 5.3.0 before 5.30.0 (build tooling only)                            | 5.30.0    | GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree                    |
+| COSMIAN-2026-068    | Low      | before 5.30.0                                                            | 5.30.0    | RUSTSEC-2026-0543 and RUSTSEC-2026-0542: unmaintained `chrono` and `humantime` crates               |
+| COSMIAN-2026-067    | Low      | from 5.24.0 before 5.30.0 (MySQL/Percona/MariaDB backend only)           | 5.30.0    | RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow in `gzwrite`               |
+| COSMIAN-2026-066    | Moderate | before 5.30.0                                                            | 5.30.0    | RUSTSEC-2026-0552, RUSTSEC-2026-0553, RUSTSEC-2026-0554: `actix-http` request framing and keep-alive timeout flaws |
+| COSMIAN-2026-065    | Low      | before 5.30.0 (SQLite backend only)                                      | 5.30.0    | RUSTSEC-2026-0459 / CVE-2026-119375: bundled SQLite before 3.54 may return uninitialised page-cache memory |
+| COSMIAN-2026-064    | Low      | from 5.15.0 before 5.30.0                                                | 5.30.0    | Public `GET /health` returned database driver and PKCS#11 error details                             |
+| COSMIAN-2026-063    | Moderate | before 5.30.0                                                            | 5.30.0    | Secret KMIP fields written to trace and debug logs by the TTLV serializer, deserializer and `#[instrument]` spans |
+| COSMIAN-2026-062    | Moderate | before 5.30.0                                                            | 5.30.0    | Server key encryption key not applied to several object-creation paths                              |
+| COSMIAN-2026-061    | Critical | from 5.26.0 before 5.30.0                                                | 5.30.0    | Vault-token-only authentication let requests without credentials run as the default user            |
+| COSMIAN-2026-060    | Low      | from 5.25.0 before 5.30.0                                                | 5.30.0    | HSM ReKey revealed the existence and type of other users' HSM keys                                  |
+| COSMIAN-2026-059    | Moderate | from 5.16.0 before 5.30.0                                                | 5.30.0    | HSM keys addressed by their UID skipped the KMIP algorithm policy                                   |
+| COSMIAN-2026-058    | Low      | from 5.25.0 before 5.30.0                                                | 5.30.0    | Retired HSM key generations remained usable for Encrypt, Sign and MAC                               |
+| COSMIAN-2026-057    | Moderate | from 5.25.0 before 5.30.0                                                | 5.30.0    | Decrypt by keyset name returned wrong-key output in unauthenticated modes                           |
+| COSMIAN-2026-056    | Moderate | before 5.30.0                                                            | 5.30.0    | Get Attributes without a Unique Identifier selected another user's newest object                    |
+| COSMIAN-2026-055    | Moderate | unreleased development code only (introduced and fixed before 5.30.0)    | 5.30.0    | Batch Undo could restore objects of another user                                                    |
+| COSMIAN-2026-054    | High     | before 5.30.0                                                            | 5.30.0    | ReCertify authorized the issuer key as the certificate owner                                        |
+| COSMIAN-2026-053    | High     | before 5.30.0                                                            | 5.30.0    | ReKeyKeyPair retired another user's linked public key                                               |
+| COSMIAN-2026-052    | Moderate | before 5.30.0                                                            | 5.30.0    | KMIP certificate chains and unbounded HSM Locate permit excessive server work                       |
+| COSMIAN-2026-051    | High     | before 5.30.0                                                            | 5.30.0    | KMIP payloads written to debug logs                                                                 |
+| COSMIAN-2026-050    | High     | before 5.30.0                                                            | 5.30.0    | Configured Operator role permitted PKCS#11 administration                                           |
 | COSMIAN-2026-049    | Critical | from 5.15.0 before 5.30.0                                               | 5.30.0   | Statically linked OpenSSL 3.6.2 and container runtime packages with fixable CVEs                    |
 | COSMIAN-2026-048    | High     | from 5.27.0 before 5.29.0                                               | 5.29.0   | CRL and OCSP trust any certificate linked to the CA                                                 |
 | COSMIAN-2026-047    | Moderate | from 5.16.0 before 5.29.0                                               | 5.29.0   | Batched KMIP `RequestMessage` operations skip the algorithm policy and the role check               |

@@ -5,17 +5,15 @@ End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 ## FIPS mode
 
 Run `mise run test:ui --variant fips` to execute the suite
-against a FIPS-mode KMS server. Six spec files are automatically skipped in
+against a FIPS-mode KMS server. Four spec files are automatically skipped in
 FIPS mode because they exercise algorithms that are not NIST-approved:
 
-| Skipped spec      | Reason                                            |
-| ----------------- | ------------------------------------------------- |
-| `covercrypt-flow` | Covercrypt is a non-FIPS algorithm                |
-| `pqc-key-flow`    | ML-KEM, ML-DSA, SLH-DSA are non-FIPS              |
-| `pqc-encaps-sign` | ML-KEM, ML-DSA, SLH-DSA, Hybrid KEMs are non-FIPS |
-| `fpe`             | FPE-FF1 is a non-FIPS algorithm                   |
-| `tokenize`        | Anonymization endpoints are non-FIPS only         |
-| `pgp-key-flow`    | OpenPGP is not available in FIPS mode             |
+| Skipped spec      | Reason                                    |
+| ----------------- | ----------------------------------------- |
+| `covercrypt-flow` | Covercrypt is a non-FIPS algorithm        |
+| `fpe`             | FPE-FF1 is a non-FIPS algorithm           |
+| `tokenize`        | Anonymization endpoints are non-FIPS only |
+| `pgp-key-flow`    | OpenPGP is not available in FIPS mode     |
 
 In addition, specific individual tests inside otherwise-FIPS-compatible spec files
 are skipped because the underlying algorithm is not FIPS 140-3 approved:
@@ -25,6 +23,7 @@ are skipped because the underlying algorithm is not FIPS 140-3 approved:
 | `ec-encrypt-sign`    | ECIES encrypt then decrypt preserves plaintext   | ECIES KDF is not FIPS-approved               |
 | `ec-encrypt-sign`    | encrypt with wrong public key then decrypt fails | ECIES KDF is not FIPS-approved               |
 | `rsa-export-options` | wrap sym key with RSA PKCS v1.5                  | RSA PKCS1v15 encryption is not FIPS-approved |
+| `pqc-encaps-sign`    | Configurable Hybrid KEM key creation             | ConfigurableKEM is a non-FIPS software KEM   |
 
 These skips are controlled by the `PLAYWRIGHT_FIPS_MODE=true` environment variable,
 which `test_ui.sh` injects automatically when run with `--variant fips`.
@@ -38,7 +37,8 @@ Runs against any server variant: it overrides the `fips_mode` field of `/server-
 
 ```mermaid
 graph LR
-    A[Force fips_mode=true] --> B[Sidebar hides PGP, PQC, FPE, Anonymize, Covercrypt]
+    A[Force fips_mode=true] --> B[Sidebar hides PGP, FPE, Anonymize, Covercrypt]
+    A --> E[PQC menu and pages stay reachable]
     A --> C[Non-FIPS URLs redirect to /ui/locate]
     A --> D[MAC menu and pages stay reachable]
 ```
@@ -145,8 +145,6 @@ Covers ECIES encryption and ECDSA signing on NIST P-256.
 
 ## Key Rotation Policy
 
-_PQC tests skipped in FIPS mode (`PLAYWRIGHT_FIPS_MODE=true`)._
-
 ### rotation-policy
 
 Covers set-rotation-policy, get-rotation-policy and rekey for all four key types:
@@ -169,7 +167,7 @@ graph LR
         C2 --> C3[Get rotation policy]
         C1 --> C4[Re-key → new priv + pub UIDs]
     end
-    subgraph "PQC (non-FIPS)"
+    subgraph "PQC"
         D1[Create ML-DSA-44 pair] --> D2[Set rotation policy]
         D2 --> D3[Get rotation policy]
         D1 --> D4[Re-key → new priv + pub UIDs]
@@ -234,8 +232,6 @@ graph LR
 ```
 
 ### certificates-certify
-
-_PQC tests skipped in FIPS mode._
 
 Full coverage of all four certification methods and all supported algorithms:
 
@@ -586,6 +582,8 @@ EC key create page, then the local private key ID and the peer's public key
 ID are used to derive a shared secret (persisted as a Secret Data object).
 
 ## Other Flows
+
+`ui-config-menu.spec.ts` checks that optional menu items and direct links follow the KMS feature flags. It also covers the CSR HSM control and the Vite dev fallback when `/ui/config` is unavailable.
 
 ### opaque-flow
 

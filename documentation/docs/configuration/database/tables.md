@@ -131,6 +131,41 @@ After upgrading again, the Total the earlier release decremented caps the remain
 
 **Downgrade (MySQL).** SAFE. No storage change: an older node writes the state and the payload without the lifecycle join and the Destroyed guard, as before.
 
+**Row binding.** When the server `key_encryption_key` (KEK) is configured, the wrapped plaintext of every
+object it protects carries the vendor attribute `x-cosmian-stored-uid` (vendor `cosmian`), the UID of the
+row, in the key value attributes, and the wrapping uses the TTLV encoding. The server refuses to
+unwrap an object whose binding is missing or names another row, so a ciphertext copied from one row to
+another (same or different owner) is no longer served. Objects wrapped by an explicit user wrapping key
+are not concerned. The binding covers the UID only: a database writer who can change `owner` can also add
+`read_access` rows, so binding the owner would protect nothing.
+
+The binding is only as strong as the integrity of the KEK wrapping. It holds with an AES KEK (AES key wrap,
+AES key wrap with padding, AES-GCM, including an HSM AES KEK). With an RSA-OAEP KEK, anyone who holds the
+public key can build a ciphertext, so the binding does not stop a database writer who forges one. The
+wrapped plaintext of a symmetric key is its key material and the binding only (168 bytes with a UUID):
+an RSA-OAEP KEK must accept it (190 bytes with a 2048-bit key and SHA-256), which limits the UID to about
+58 characters unless the KEK is longer.
+
+At every start with a KEK, the server wraps again, bound to their row, the objects wrapped by the KEK
+that carry no binding (query `select-ids-wrapped-by`). It trusts the rows it finds at that moment: it
+cannot tell a ciphertext moved before the first start of this version from a genuine row. An object
+bound to another row is left unchanged and fails on read. Without a KEK, objects are stored in clear and
+are not bound.
+
+**Downgrade (row binding).** BREAKING for mixed-version operation, DEGRADED for a downgrade (verdict of
+`/kms-db-compat`; the change needs the approval given in
+[issue #1519](https://github.com/Cosmian/kms/issues/1519)).
+
+- No table, column or query used by the previous release changes. The previous release unwraps a bound object
+  with the TTLV encoding recorded in its key wrapping data, and returns the key material unchanged, but the
+  unwrapped key value keeps the attribute `x-cosmian-stored-uid`. The previous release does not reattach
+  the stored attributes to a key value that has attributes, so a bound object that is itself used by the
+  previous release to wrap or unwrap other keys is refused with a missing usage mask.
+- Rows the previous release writes carry no binding. This version refuses them until it is restarted, which binds
+  them again: do not run both versions at once on one database with a KEK (rolling upgrades are not supported).
+- To downgrade, stop every instance of this version, start the previous release, and bind again by
+  starting this version when upgrading back.
+
 ## read_access
 
 Stores the operations that a given user is allowed to perform on a given object.
@@ -182,7 +217,12 @@ Known parameters:
 | `attributes_jsonb_converted` | PostgreSQL-only marker recording that `objects.attributes` was converted to `jsonb`. |
 | `wrapping_key_id_backfilled` | One-time marker recording that the `objects.wrapping_key_id` backfill completed. |
 | `certificate_serial_tag_backfilled` | One-time marker recording that the `_serial=<HEX>` tag backfill for existing certificates completed. |
+| `stored_state_synced` | One-time marker recording that the `StoredStateSync` startup step (lifecycle `State` written into the stored attributes and key-block attributes) completed. |
 | `kv_metadata_uid_key` | Hex-encoded 32-byte key initialized by the leader region at startup; followers only read it after replication. It derives internal identifiers for the [KV secret store](../secret_backends.md#internal-record-identifiers) and SSH CA/role records. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
+
+**Downgrade (`stored_state_synced`).** DEGRADED, cosmetic. An older KMS reads the lifecycle state from the `objects.state` column (the stored attribute `State` only matters while the column is `PreActive`) and ignores the marker, so the rewritten JSON is harmless. The database keeps `db_version` at this version, so the step does not run again on a later upgrade, and state JSON that the older KMS let lag stays as it is. The swapped-role gate run (`mise run test:db:upgrade --backend sqlite --old-kms <this build> --new-kms <5.29.0 build>`) fails at the first `GetAttributes` of `mig_kek` with `one or more objects already exist`; it fails identically when the old server is the unmodified `develop` build, so the failure is not caused by this step (its cause was not investigated), and the run cannot confirm the state-JSON rewrite on its own. The claim above comes from reading the 5.29.0 read path, not from a passing downgrade run.
+
+**Replication (`stored_state_synced`).** The step adds no table, column or key, and the marker lives in `parameters`, in the shared database. On SQLite, PostgreSQL and MySQL it reads each row, then rewrites `objects.object` and `objects.attributes` with an `UPDATE` guarded by the `object`, `attributes` and `state` values it read, so a row another client or instance of the same database rewrote in between is left unchanged and keeps the stored `State` JSON that writer produced. The guard cannot see a write that has not reached the local node yet: under Spock (asynchronous replication) a remote region's write can still be overwritten by the sync, so stop every other region's writers before the first start of this version; Galera certifies writes synchronously, so the guard covers it. Redis-with-Findex has no guard: its sync rewrites the object, attributes and tags it scanned, so stop all other instances before the first start of this version. The step runs under the startup migration lock, which serializes migrating instances but not instances already serving requests. On PostgreSQL the step runs in one transaction, which can be long on a large `objects` table. No Spock command is required after the upgrade.
 
 ## `kms_migration_lock`
 
@@ -217,8 +257,14 @@ One row is added each time the Crypto Officer role is activated via a split-key 
 In MySQL, an additional `id INTEGER PRIMARY KEY AUTO_INCREMENT` column is added.
 In PostgreSQL, an `id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY` column is added to provide valid `REPLICA IDENTITY` for logical replication.
 In SQLite there is no explicit `id` column; the active activation is the latest row where `revoked_at IS NULL`.
+Revocation erases `sealed_record` (empty string); a record is valid only for the user it was sealed for. At startup, records revoked by an older KMS are erased too.
 
-**Downgrade.** SAFE. The PostgreSQL identity column `id` is filled automatically; an older KMS inserts with an explicit column list.
+**Downgrade.** SAFE. The PostgreSQL identity column `id` is filled automatically; an older KMS inserts with an explicit column list and never reads revoked rows (`revoked_at IS NULL` filter), so their emptied `sealed_record` is ignored. Rows an older KMS revokes keep their sealed record until the next start of this version.
+
+**Accepted residual risk.** The sealed record is not bound to the time of the activation: a database writer who
+copied an active `sealed_record` can insert it again for the same user after the activation was revoked, and
+reactivate the role. Restrict write access to this table and audit its changes. See
+[issue #1519](https://github.com/Cosmian/kms/issues/1519).
 
 ## `object_state_events` and `object_state_event_tombstones`
 

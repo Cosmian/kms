@@ -568,7 +568,7 @@ Both dash (`ssl-mode`) and underscore (`ssl_mode`) variants are accepted.
 !!! note "ssl-mode behaviour"
     - `DISABLED` – no TLS at all.
     - `PREFERRED` / `REQUIRED` – TLS is used but the server certificate is **not** verified.
-    - `VERIFY_CA` – the server certificate is verified against the CA.
+    - `VERIFY_CA` – the server certificate is verified against the CA. When `ssl-ca` is set, only that CA is trusted (the system CA store is not consulted); the file must contain the root CA of the server chain. Without `ssl-ca`, the system CA store is used.
     - `VERIFY_IDENTITY` – the server certificate is verified against the CA **and** the hostname must match.
 
 !!! warning "PKCS#12 client identity"
@@ -611,7 +611,7 @@ The KMS server can be configured to clear the database on restart automatically.
 
 When the KMS server starts against an existing database, it checks the recorded database version and runs any pending schema or data updates before opening its HTTP and KMIP ports.
 
-For supported source versions, multi-instance startup behavior, and recovery steps, see [Database Migrations](../../installation/upgrading/database_migrations.md) and [Upgrading from 5.x to 6.0](../../installation/upgrading/upgrade_5_to_6.md).
+For supported source versions, multi-instance startup behavior, and recovery steps, see [Database Migrations](../../installation/upgrading/database_migrations.md) and [Upgrading from 5.x to 5.30](../../installation/upgrading/upgrade_5_to_5_30.md).
 
 ## The Unwrapped Objects Cache
 

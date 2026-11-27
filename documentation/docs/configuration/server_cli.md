@@ -276,6 +276,19 @@ Options:
 
           [env: KMS_CLIENTS_CA_CERT_FILE=]
 
+      --clients-crl-dir <CLIENTS_CRL_DIR>
+          Directory of PEM certificate revocation lists (CRLs) used to reject revoked client
+          certificates presented for mTLS authentication.
+          The directory must be in OpenSSL hashed-directory format (run `openssl rehash <dir>`):
+          one `<issuer-subject-hash>.r0` (then `.r1`, ...) file per issuing CA.
+          When set, the CRL of the CA that issued each client certificate must be present and
+          not expired, otherwise the client is rejected (fail-closed). A renewed CRL must be added
+          under the next suffix (`.r1`, `.r2`, ...) and is then picked up without restarting the
+          server; an overwritten `.rN` file is not reloaded until restart.
+          Requires `--clients-ca-cert-file`.
+
+          [env: KMS_CLIENTS_CRL_DIR=]
+
       --tls-cipher-suites <TLS_CIPHER_SUITES>
           Colon-separated list of TLS cipher suites to enable:
           Example: --tls-cipher-suites `"TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256"`
@@ -515,7 +528,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.29.0"]
+          [default: "Cosmian KMS v5.30.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -1205,9 +1218,11 @@ Options:
           Accept `RenewalReq` messages signed with a still-valid certificate issued by the SCEP
           CA without requiring the challenge password (RFC 8894 §2.3, §2.4).
 
-          When `false`, renewal requests are rejected with `badRequest`.
+          When `false` (default), renewal requests are rejected with `badRequest` and a device
+          must re-enroll with the challenge password. Set to `true` only if every certificate
+          issued by the SCEP CA may be renewed by whoever holds its private key.
 
-          [default: true]
+          [default: false]
           [possible values: true, false]
 
       --scep-template <SCEP_TEMPLATE>

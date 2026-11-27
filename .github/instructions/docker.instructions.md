@@ -254,18 +254,7 @@ Never leave namespaces with `pvc-protection` finalizers — use `emptyDir` for S
 
 ## 5. CI coverage matrix
 
-The `packaging-docker.yml` workflow tests the following combinations:
-
-| Job | fips | non-fips | amd64 | arm64 |
-|-----|------|----------|-------|-------|
-| `nix-docker-image` (build + `test:pkg:docker` + `test:pkg:docker-scan`, Syft + Grype, fails on fixable High/Critical) | ✅ | ✅ | ✅ | ✅ |
-| `test-k8s-kms-pod` (`test:k8s:kms-image`) | ✅ | ✅ | ✅ | ✅ |
-| `k8s-operator-image` (build + `test:k8s:operator-image`) | n/a | n/a | ✅ | ✅ |
-| `k8s-csi-provider-image` (build + `test:k8s:csi-provider-image`) | n/a | n/a | ✅ | ✅ |
-| `nix-docker-manifest` (multi-arch manifest) | ✅ | ✅ | n/a | n/a |
-
-**All four combinations of `{fips, non-fips} × {amd64, arm64}` must remain covered.**
-If you add a new image or new runner, update this table.
+Read the job matrices and conditions in [packaging-docker.yml](../workflows/packaging-docker.yml). Preserve image build and smoke-test coverage for all four combinations of `{fips, non-fips} × {amd64, arm64}`.
 
 ### Triggering the workflow manually
 

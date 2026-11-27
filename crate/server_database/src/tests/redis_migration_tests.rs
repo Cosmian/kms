@@ -6,14 +6,15 @@ use std::{
     time::Duration,
 };
 
+use cosmian_kmip::kmip_0::kmip_types::State;
 use cosmian_kms_interfaces::{ObjectsStore, UserId};
 use redis::aio::ConnectionManager;
 
 use super::{
     get_redis_url,
     sqlite_migration_tests::{
-        assert_markers, assert_ready, assert_serial_tag, assert_store_objects_and_grants,
-        assert_wrapped_key_found, expect_steps,
+        assert_markers, assert_ready, assert_serial_tag, assert_state_synced,
+        assert_store_objects_and_grants, assert_wrapped_key_found, expect_steps,
     },
 };
 use crate::{
@@ -24,11 +25,13 @@ use crate::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex,
         migrate::{
             MIGRATION_STEPS, Migrate,
-            MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
+            MigrationStep::{
+                self, CertificateSerialTagBackfill, StoredStateSync, WrappingKeyIdBackfill,
+            },
         },
         redis::{
             migrations::{REDIS_MIGRATION_LOCK_KEY, REDIS_MIGRATION_LOCK_LEASE_MS},
-            objects_db::{ACTIVE_KEY_COUNT_KEY, LIVE_COUNT_KEY},
+            objects_db::{ACTIVE_KEY_COUNT_KEY, LIVE_COUNT_KEY, RedisDbObject},
         },
     },
 };
@@ -415,7 +418,7 @@ async fn released_fixtures(fixture: &RedisFixture) -> DbResult<()> {
     let cases: [(&str, Option<&str>, &[MigrationStep]); 3] = [
         ("5.24.0", None, &BOTH_STEPS),
         ("5.28.0", None, &[CertificateSerialTagBackfill]),
-        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS[..3]),
     ];
     for (version, recorded, expected) in cases {
         fixture.restore(version).await?;
@@ -428,7 +431,7 @@ async fn released_fixtures(fixture: &RedisFixture) -> DbResult<()> {
             .map_err(|error| db_error!("Fixture {version} recorded {recorded:?}: {error}"))?;
         assert_ready(&pool, TARGET).await?;
         let markers: &[MigrationStep] = if recorded.is_some() {
-            &MIGRATION_STEPS
+            &MIGRATION_STEPS[..3]
         } else {
             &BOTH_STEPS
         };
@@ -439,6 +442,95 @@ async fn released_fixtures(fixture: &RedisFixture) -> DbResult<()> {
         assert_fixture_preserved(fixture, &pool, &original).await?;
     }
     Ok(())
+}
+
+async fn typed_records(
+    fixture: &RedisFixture,
+    pool: &RedisWithFindex,
+) -> DbResult<BTreeMap<String, RedisDbObject>> {
+    let mut records = BTreeMap::new();
+    for (uid, bytes) in fixture.raw_do_blobs().await? {
+        if let Ok(record) = pool.objects_db().decrypt_object(&uid, &bytes) {
+            records.insert(uid, record);
+        }
+    }
+    Ok(records)
+}
+
+/// `StoredStateSync` on a database recorded at 5.29.0: exactly that step runs, only `State`
+/// values change, and a reopen rewrites nothing.
+async fn stored_state_sync(fixture: &RedisFixture) -> DbResult<()> {
+    const SYNC_TARGET: &str = "5.30.0";
+    fixture.restore("5.28.0").await?;
+    let (pool, applied) = fixture.open(false, TARGET).await?;
+    expect_steps(&applied, &[CertificateSerialTagBackfill])?;
+    let before = typed_records(fixture, &pool).await?;
+    let raw_before = fixture.raw_do_blobs().await?;
+    drop(pool);
+
+    let (pool, applied) = fixture.open(false, SYNC_TARGET).await?;
+    expect_steps(&applied, &[StoredStateSync])?;
+    assert_ready(&pool, SYNC_TARGET).await?;
+    let after = typed_records(fixture, &pool).await?;
+    let raw_after = fixture.raw_do_blobs().await?;
+    db_ensure!(
+        before.keys().eq(after.keys()),
+        "The sync changed the set of decryptable objects"
+    );
+    for (uid, ciphertext) in &raw_before {
+        db_ensure!(
+            before.contains_key(uid) || raw_after.get(uid) == Some(ciphertext),
+            "The undecryptable object {uid} was rewritten"
+        );
+    }
+    let mut changed = 0;
+    for (uid, old) in &before {
+        let new = after
+            .get(uid)
+            .ok_or_else(|| db_error!("Object {uid} disappeared"))?;
+        db_ensure!(
+            old.state == new.state && old.tags == new.tags && old.owner == new.owner,
+            "Object {uid} changed its state column, tags or owner"
+        );
+        let json = |record: &RedisDbObject| -> DbResult<(String, String)> {
+            Ok((
+                serde_json::to_string(&record.object)?,
+                serde_json::to_string(&record.attributes.clone().unwrap_or_default())?,
+            ))
+        };
+        let (old_object, old_attributes) = json(old)?;
+        let (new_object, new_attributes) = json(new)?;
+        assert_state_synced(
+            uid,
+            &old.state.to_string(),
+            (&old_object, &old_attributes),
+            (&new_object, &new_attributes),
+        )?;
+        changed += usize::from((old_object, old_attributes) != (new_object, new_attributes));
+    }
+    db_ensure!(
+        changed > 0,
+        "The 5.28.0 fixture has no drifted record to sync"
+    );
+    let destroyed = after
+        .get("bulk_destroyed")
+        .and_then(|record| record.attributes.as_ref())
+        .ok_or_else(|| db_error!("The fixture lost bulk_destroyed"))?;
+    db_ensure!(
+        destroyed.state == Some(State::Destroyed),
+        "bulk_destroyed attributes must now say Destroyed"
+    );
+    let objects = fixture.stored_objects_with_state(&pool).await?;
+    assert_store_objects_and_grants(&pool, &objects, true).await?;
+
+    drop(pool);
+    let (pool, applied) = fixture.open(false, SYNC_TARGET).await?;
+    expect_steps(&applied, &[])?;
+    db_ensure!(
+        fixture.raw_do_blobs().await? == raw_after,
+        "Reopening changed migrated records"
+    );
+    assert_ready(&pool, SYNC_TARGET).await
 }
 
 async fn newer_and_invalid_versions_are_refused(fixture: &RedisFixture) -> DbResult<()> {
@@ -604,6 +696,7 @@ pub(super) async fn redis_migration_scenarios() -> DbResult<()> {
         below_minimum_version_is_refused(&fixture).await?;
         step_by_step_matches_all_at_once(&fixture).await?;
         released_fixtures(&fixture).await?;
+        stored_state_sync(&fixture).await?;
         newer_and_invalid_versions_are_refused(&fixture).await?;
         clear_and_reopen(&fixture).await?;
         concurrent_startup_and_lock_semantics(&fixture).await

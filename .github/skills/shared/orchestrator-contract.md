@@ -31,7 +31,7 @@ Orchestrators run phases in this priority order. Each skill **uses exactly this 
 
 ### Release Order (9 phases, for pre-release)
 
-1. **Sync Rules** — rule 4.1–4.18 satisfaction
+1. **Sync Rules** — rule 4.1–4.21 satisfaction
 2. **Security Review** — operations, middleware, routes, crypto endpoints
 3. **Cryptography Review** — if crypto/algorithm/provider changed
 4. **Standards Review** — spec-level conformance

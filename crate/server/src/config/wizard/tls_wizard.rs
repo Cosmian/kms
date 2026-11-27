@@ -138,6 +138,7 @@ pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
                 } else {
                     None
                 },
+                clients_crl_dir: None,
                 tls_cipher_suites: cipher_suites,
                 #[cfg(feature = "non-fips")]
                 tls_p12_file: None,
@@ -184,6 +185,7 @@ pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
                 .interact_text()
                 .prompt_err()?;
 
+            let clients_crl_dir = prompt_clients_crl_dir(&theme, !ca_cert.trim().is_empty())?;
             let cipher_suites = prompt_cipher_suites(&theme)?;
 
             return Ok(TlsWizardResult {
@@ -198,6 +200,7 @@ pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
                     } else {
                         Some(PathBuf::from(ca_cert))
                     },
+                    clients_crl_dir,
                     tls_cipher_suites: cipher_suites,
                 },
                 generated_ca_cert: None,
@@ -230,6 +233,7 @@ pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
         .interact_text()
         .prompt_err()?;
 
+    let clients_crl_dir = prompt_clients_crl_dir(&theme, !ca_cert_file.trim().is_empty())?;
     let cipher_suites = prompt_cipher_suites(&theme)?;
 
     Ok(TlsWizardResult {
@@ -246,6 +250,7 @@ pub(crate) fn configure_tls() -> KResult<TlsWizardResult> {
             } else {
                 Some(PathBuf::from(ca_cert_file))
             },
+            clients_crl_dir,
             tls_cipher_suites: cipher_suites,
             #[cfg(feature = "non-fips")]
             tls_p12_file: None,
@@ -268,5 +273,26 @@ fn prompt_cipher_suites(theme: &ColorfulTheme) -> KResult<Option<String>> {
         None
     } else {
         Some(cipher_suites)
+    })
+}
+
+/// Optional CRL directory (hashed, `openssl rehash`) revoking mTLS client certificates;
+/// only asked when a clients CA certificate is configured.
+fn prompt_clients_crl_dir(theme: &ColorfulTheme, has_clients_ca: bool) -> KResult<Option<PathBuf>> {
+    if !has_clients_ca {
+        return Ok(None);
+    }
+    let dir: String = Input::with_theme(theme)
+        .with_prompt(
+            "Directory of client certificate CRLs, in `openssl rehash` format \
+             (optional, leave blank to skip)",
+        )
+        .allow_empty(true)
+        .interact_text()
+        .prompt_err()?;
+    Ok(if dir.trim().is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(dir))
     })
 }

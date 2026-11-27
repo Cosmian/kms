@@ -477,6 +477,48 @@ impl RedisWithFindex {
         Ok(())
     }
 
+    /// Write the state clients already see into the stored attributes and the key block's
+    /// embedded attributes (same precedence and destroyed-payload rule as
+    /// [`crate::stores::migrate::sync_state_json`]). Only changed records are rewritten, through
+    /// the normal atomic path so tags and Findex keywords stay untouched.
+    pub(crate) async fn sync_stored_state(&self) -> DbResult<()> {
+        for (uid, db_object) in self.objects_db.scan_all_objects().await? {
+            let column = db_object.state;
+            let mut object = db_object.object;
+            let mut attributes = db_object.attributes.unwrap_or_default();
+            let state = ObjectWithMetadata::stored_state_precedence(column, attributes.state);
+            let mut changed = attributes.state != Some(state);
+            attributes.state = Some(state);
+            if !matches!(column, State::Destroyed | State::Destroyed_Compromised)
+                && let Ok(embedded) = object.attributes_mut()
+                && embedded.state != Some(state)
+            {
+                embedded.state = Some(state);
+                changed = true;
+            }
+            if !changed {
+                continue;
+            }
+            match self
+                .run_atomic(
+                    None,
+                    &[AtomicOperation::UpdateObject((
+                        uid,
+                        object,
+                        attributes,
+                        db_object.tags,
+                    ))],
+                )
+                .await
+            {
+                // ItemNotFound: deleted since the scan started
+                Ok(_) | Err(DbError::ItemNotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
     /// Test-only accessor to the underlying object store, used to seed a legacy
     /// (unindexed) object when exercising [`Self::backfill_wrapped_by_index`].
     #[cfg(test)]
@@ -987,6 +1029,12 @@ impl RedisWithFindex {
                     "revoked_by".to_owned(),
                     serde_json::Value::String(revoked_by.to_owned()),
                 );
+                // Erase the sealed record: a revoked ceremony must not be revivable by
+                // clearing `revoked_at`.
+                obj.insert(
+                    "sealed".to_owned(),
+                    serde_json::Value::String(String::new()),
+                );
             }
             let updated = serde_json::to_string(&v).map_err(|e| {
                 InterfaceError::Default(format!("Failed to serialize ceremony record: {e}"))
@@ -1385,6 +1433,28 @@ impl ObjectsStore for RedisWithFindex {
             results.push((uid, attrs));
         }
         Ok(results)
+    }
+
+    async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+        let indexed_uids = self
+            .findex
+            .search(&keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching wrapped_by keyword: {e:?}")))?;
+        let candidate_uids: HashSet<String> = indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+            .collect();
+        Ok(self
+            .objects_db
+            .objects_get(&candidate_uids)
+            .await?
+            .into_iter()
+            // Discard stale index hits: the object must still carry the keyword.
+            .filter(|(_, dbo)| has_all_keywords(dbo, [&keyword]))
+            .map(|(uid, _)| uid)
+            .collect())
     }
 
     async fn find_wrapped_by(
@@ -1913,7 +1983,7 @@ pub(crate) mod tests {
         kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
     };
     use cosmian_kms_crypto::{crypto::KmsRng, reexport::cosmian_crypto_core::Secret};
-    use cosmian_kms_interfaces::{ObjectsStore as _, UserId};
+    use cosmian_kms_interfaces::{ObjectsStore as _, PermissionsStore as _, UserId};
     use uuid::Uuid;
 
     use crate::{
@@ -2032,6 +2102,28 @@ pub(crate) mod tests {
             .find(Some(&attributes), None, &owner, true, VENDOR_ID_COSMIAN)
             .await?;
         assert!(found.is_empty(), "find returned stale hit: {found:?}");
+        Ok(())
+    }
+
+    /// Revoking a ceremony record erases the sealed blob, so clearing `revoked_at` cannot
+    /// bring it back.
+    pub(crate) async fn test_db_redis_revoked_ceremony_record_is_tombstoned()
+    -> crate::error::DbResult<()> {
+        let mut rng = KmsRng::new().seeded_csrng()?;
+        let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+        let store = RedisWithFindex::instantiate(&get_redis_url(), master_key, false).await?;
+        let user = format!("co-{}", Uuid::new_v4());
+        store
+            .activate_crypto_officer_ceremony("blob", &user, &user)
+            .await?;
+        store.revoke_crypto_officer_activation(&user, &user).await?;
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(store.derive_per_user_ceremony_key_name("crypto_officer", &user))
+            .query_async(&mut store.mgr.clone())
+            .await?;
+        let record: serde_json::Value =
+            serde_json::from_str(&raw.ok_or_else(|| crate::db_error!("ceremony record missing"))?)?;
+        assert_eq!(record["sealed"], "");
         Ok(())
     }
 

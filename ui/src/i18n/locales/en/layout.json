@@ -4,11 +4,11 @@
         "apiDocumentation": "API Documentation"
     },
     "header": {
-        "noHsmConfigured": "No HSM configured",
         "hsmSlot": "slot"
     },
     "main": {
         "devUnrestricted": "DEV unrestricted mode running",
+        "devUiConfigUnavailable": "Server feature settings unavailable. The default menu is shown.",
         "downloadCli": "Download CLI",
         "logout": "Logout",
         "authDisabledTitle": "Authentication is disabled on this KMS server",

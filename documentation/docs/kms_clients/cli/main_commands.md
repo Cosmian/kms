@@ -3097,9 +3097,9 @@ Possible values:  `"nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "
 
 ` <PRIVATE_KEY_ID>` The unique id of the private key; a random uuid is generated if not specified
 
-`--sensitive <SENSITIVE>` Sensitive: if set, the key will not be exportable
+`--sensitive <SENSITIVE>` Sensitive: `--sensitive` (or `--sensitive true`) makes the private key non-exportable; `--sensitive false` explicitly allows its export, including on an HSM, where keys are sensitive (non-extractable) by default
 
-Possible values:  `"true", "false"` [default: `"false"`]
+Possible values:  `"true", "false"`
 
 `--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key encryption key (KEK) used to wrap the keypair with.
 If the wrapping key is:
@@ -3912,7 +3912,7 @@ Create a new CA key pair in the KMS and make it the SSH CA
 `ckms ssh ca create [options] [PRIVATE_KEY_ID]
 `
 ### Arguments
-`--curve [-c] <CURVE>` The elliptic curve of the CA key: an SSH CA accepts NIST P-256, P-384 and P-521, and Ed25519 in non-FIPS mode
+`--curve [-c] <CURVE>` The elliptic curve of the CA key: an SSH CA accepts NIST P-256, P-384, P-521 and Ed25519
 
 Possible values:  `"nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448", "secp256k1", "secp192k1", "secp224k1"` [default: `"nist-p256"`]
 
@@ -4425,9 +4425,9 @@ Create a new RSA key pair
 
 ` <PRIVATE_KEY_ID>` The unique id of the private key; a random uuid is generated if not specified
 
-`--sensitive <SENSITIVE>` Sensitive: if set, the private key will not be exportable
+`--sensitive <SENSITIVE>` Sensitive: `--sensitive` (or `--sensitive true`) makes the private key non-exportable; `--sensitive false` explicitly allows its export, including on an HSM, where keys are sensitive (non-extractable) by default
 
-Possible values:  `"true", "false"` [default: `"false"`]
+Possible values:  `"true", "false"`
 
 `--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key encryption key (KEK) used to wrap the keypair with.
 If the wrapping key is:
@@ -5495,9 +5495,9 @@ Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 ` <KEY_ID>` The unique id of the key; a random uuid is generated if not specified
 
-`--sensitive <SENSITIVE>` Sensitive: if set, the key will not be exportable
+`--sensitive <SENSITIVE>` Sensitive: `--sensitive` (or `--sensitive true`) makes the key non-exportable; `--sensitive false` explicitly allows its export, including on an HSM, where keys are sensitive (non-extractable) by default
 
-Possible values:  `"true", "false"` [default: `"false"`]
+Possible values:  `"true", "false"`
 
 `--wrapping-key-id [-w] <WRAPPING_KEY_ID>` The key encryption key (KEK) used to wrap this new key with.
 If the wrapping key is:

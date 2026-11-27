@@ -40,7 +40,7 @@ use crate::{
     stores::{
         migrate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, Migrate, MigrationStep, certificate_serial_tag,
-            wait_for_migration_lock,
+            synced_state_json, wait_for_migration_lock,
         },
         pgsql_queries, sqlite_queries,
     },
@@ -288,6 +288,8 @@ impl SqlitePool {
             get_sqlite_query!("clean-table-gcm_invocations"),
         ];
         let purge_gcm_invocations = get_sqlite_query!("purge-orphan-gcm-invocations");
+        let tombstone_revoked_co =
+            get_sqlite_query!("tombstone-revoked-crypto-officer-activations");
         let table_info_objects_sql = get_sqlite_query!("table-info-objects");
         let add_version_sql = get_sqlite_query!("add-column-version");
         retry_on_transient_lock(|| async {
@@ -322,6 +324,8 @@ impl SqlitePool {
                         // Drop counters orphaned by an older KMS that deleted keys without
                         // deleting their counters (downgrade then upgrade).
                         tx.execute(purge_gcm_invocations, [])?;
+                        // Erase the sealed record of ceremony activations revoked by an older KMS.
+                        tx.execute(tombstone_revoked_co, [])?;
                         tx.commit()?;
                         Ok(())
                     },
@@ -434,6 +438,57 @@ impl SqlitePool {
                                     "wrapping_key_id backfill: skipping object that failed to \
                                      deserialize"
                                 ),
+                            }
+                        }
+                        tx.commit()?;
+                        Ok(())
+                    },
+                )
+                .await
+        })
+        .await
+    }
+
+    /// The scan and updates share a transaction, so an interrupted run leaves nothing half-synced.
+    async fn sync_stored_state(&self) -> DbResult<()> {
+        let select_sql = get_sqlite_query!("select-objects-state-sync");
+        let update_sql = get_sqlite_query!("update-object-state-json");
+        retry_on_transient_lock(|| async {
+            self.writer
+                .call(
+                    move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                        let tx = c.transaction()?;
+                        let rows: Vec<(String, String, String, String)> = {
+                            let mut stmt = tx.prepare(select_sql)?;
+                            let mut rows = stmt.query([])?;
+                            let mut out = Vec::new();
+                            while let Some(row) = rows.next()? {
+                                out.push((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?));
+                            }
+                            out
+                        };
+                        for (id, object_json, attributes_json, state) in &rows {
+                            let Ok(attributes) = serde_json::from_str(attributes_json) else {
+                                tracing::warn!(
+                                    uid = %id,
+                                    "state sync: skipping object with unparsable attributes"
+                                );
+                                continue;
+                            };
+                            if let Some((object, attributes)) =
+                                synced_state_json(id, state, object_json, attributes)
+                            {
+                                tx.execute(
+                                    update_sql,
+                                    rusqlite::params![
+                                        object,
+                                        attributes.to_string(),
+                                        id,
+                                        object_json,
+                                        attributes_json,
+                                        state
+                                    ],
+                                )?;
                             }
                         }
                         tx.commit()?;
@@ -983,6 +1038,22 @@ impl ObjectsStore for SqlitePool {
         Ok(rows)
     }
 
+    async fn find_all_wrapped_by(&self, wrapping_key_uid: &str) -> InterfaceResult<Vec<String>> {
+        let sql: &'static str = get_sqlite_query!("select-ids-wrapped-by");
+        let uid_s = wrapping_key_uid.to_owned();
+        let ids = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<String>, rusqlite::Error> {
+                    let mut stmt = c.prepare(sql)?;
+                    stmt.query_map([uid_s.as_str()], |r| r.get(0))?
+                        .collect::<Result<Vec<String>, _>>()
+                },
+            )
+            .await?;
+        Ok(ids)
+    }
+
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,
@@ -1319,6 +1390,7 @@ impl Migrate for SqlitePool {
             MigrationStep::CertificateSerialTagBackfill => {
                 self.backfill_certificate_serial_tags().await
             }
+            MigrationStep::StoredStateSync => self.sync_stored_state().await,
         }
     }
 }
@@ -2083,8 +2155,40 @@ mod tests {
     use cosmian_kms_interfaces::PermissionsStore;
     use tempfile::TempDir;
 
-    use super::SqlitePool;
+    use super::{SqlitePool, sqlite_converted_queries};
     use crate::{DbError, error::DbResult};
+
+    /// The state-sync `UPDATE` must not overwrite a row a client rewrote after the sync read it.
+    #[test]
+    fn test_state_json_update_skips_concurrently_rewritten_row() -> DbResult<()> {
+        let conn = rusqlite::Connection::open_in_memory()?;
+        conn.execute(
+            "CREATE TABLE objects (id TEXT, object TEXT, attributes TEXT, state TEXT)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO objects VALUES ('u', 'obj-v1', '{\"State\":\"A\"}', 'Active')",
+            [],
+        )?;
+        let sql = sqlite_converted_queries()?
+            .get("update-object-state-json")
+            .ok_or_else(|| DbError::DatabaseError("query not found".to_owned()))?;
+        // A client rewrites the row after the sync read it.
+        conn.execute("UPDATE objects SET object='obj-v2' WHERE id='u'", [])?;
+        let stale = rusqlite::params!["synced", "{}", "u", "obj-v1", "{\"State\":\"A\"}", "Active"];
+        if conn.execute(sql, stale)? != 0 {
+            return Err(DbError::DatabaseError(
+                "stale sync overwrote a rewritten row".to_owned(),
+            ));
+        }
+        let fresh = rusqlite::params!["synced", "{}", "u", "obj-v2", "{\"State\":\"A\"}", "Active"];
+        if conn.execute(sql, fresh)? != 1 {
+            return Err(DbError::DatabaseError(
+                "sync skipped an unchanged row".to_owned(),
+            ));
+        }
+        Ok(())
+    }
 
     /// Fail unless the `crls` table holds exactly `expected` issuers.
     async fn expect_crl_issuers(pool: &SqlitePool, expected: usize) -> DbResult<()> {

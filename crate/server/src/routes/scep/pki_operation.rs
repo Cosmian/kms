@@ -432,8 +432,6 @@ mod tests {
         assert_eq!(rsa_signer_can_receive().ok(), Some(true));
     }
 
-    /// Ed25519 is not in the FIPS provider.
-    #[cfg(feature = "non-fips")]
     fn eddsa_signer_can_receive() -> KResult<bool> {
         let key = PKey::generate_ed25519()?;
         Ok(can_receive_envelope(&self_signed(
@@ -442,7 +440,6 @@ mod tests {
         )?))
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn eddsa_signer_cannot_receive_the_response() {
         assert_eq!(eddsa_signer_can_receive().ok(), Some(false));

@@ -59,10 +59,8 @@ pub(crate) enum JoseAlgorithm {
     HS256,
     HS384,
     HS512,
-    // ── Non-FIPS algorithms ──
-    #[cfg(feature = "non-fips")]
+    // ── Post-quantum / EdDSA algorithms ──
     EdDSA,
-    #[cfg(feature = "non-fips")]
     MLDSA44,
 }
 
@@ -89,9 +87,7 @@ impl JoseAlgorithm {
             Self::HS256 => "HS256",
             Self::HS384 => "HS384",
             Self::HS512 => "HS512",
-            #[cfg(feature = "non-fips")]
             Self::EdDSA => "EdDSA",
-            #[cfg(feature = "non-fips")]
             Self::MLDSA44 => "MLDSA44",
         }
     }
@@ -126,15 +122,12 @@ impl FromStr for JoseAlgorithm {
             "HS256" => Ok(Self::HS256),
             "HS384" => Ok(Self::HS384),
             "HS512" => Ok(Self::HS512),
-            #[cfg(feature = "non-fips")]
             "EdDSA" => Ok(Self::EdDSA),
-            #[cfg(feature = "non-fips")]
             "MLDSA44" => Ok(Self::MLDSA44),
             other => Err(format!(
                 "Unknown JOSE alg identifier '{other}'. Supported: dir, RSA-OAEP, RSA-OAEP-256, \
                  ECDH-ES, ECDH-ES+A128KW, ECDH-ES+A256KW, RS256, RS384, RS512, PS256, PS384, \
-                 PS512, ES256, ES384, ES512, HS256, HS384, HS512, EdDSA (non-FIPS), MLDSA44 \
-                 (non-FIPS)."
+                 PS512, ES256, ES384, ES512, HS256, HS384, HS512, EdDSA, MLDSA44."
             )),
         }
     }
@@ -273,7 +266,6 @@ fn build_alg_params(alg: JoseAlgorithm) -> Result<CryptographicParameters, Crypt
         JoseAlgorithm::ES256 => (DigitalSignatureAlgorithm::ECDSAWithSHA256, None),
         JoseAlgorithm::ES384 => (DigitalSignatureAlgorithm::ECDSAWithSHA384, None),
         JoseAlgorithm::ES512 => (DigitalSignatureAlgorithm::ECDSAWithSHA512, None),
-        #[cfg(feature = "non-fips")]
         JoseAlgorithm::EdDSA | JoseAlgorithm::MLDSA44 => {
             // These use CryptographicAlgorithm directly, not DigitalSignatureAlgorithm
             return build_pqc_params(alg);
@@ -309,8 +301,7 @@ fn try_mac_params(alg: JoseAlgorithm) -> Option<CryptographicParameters> {
     })
 }
 
-/// Build KMIP parameters for post-quantum / `EdDSA` algorithms (non-FIPS only).
-#[cfg(feature = "non-fips")]
+/// Build KMIP parameters for post-quantum / `EdDSA` algorithms.
 fn build_pqc_params(alg: JoseAlgorithm) -> Result<CryptographicParameters, CryptoApiError> {
     let crypto_alg = match alg {
         JoseAlgorithm::EdDSA => CryptographicAlgorithm::Ed25519,
@@ -376,12 +367,11 @@ pub(crate) fn curve_from_crv(crv: &str) -> Result<RecommendedCurve, CryptoApiErr
         "P-256" => Ok(RecommendedCurve::P256),
         "P-384" => Ok(RecommendedCurve::P384),
         "P-521" => Ok(RecommendedCurve::P521),
-        #[cfg(feature = "non-fips")]
         "Ed25519" => Ok(RecommendedCurve::CURVEED25519),
         #[cfg(feature = "non-fips")]
         "X25519" => Ok(RecommendedCurve::CURVE25519),
         other => Err(CryptoApiError::BadRequest(format!(
-            "Unsupported curve '{other}'. Supported: P-256, P-384, P-521, Ed25519 (non-FIPS), \
+            "Unsupported curve '{other}'. Supported: P-256, P-384, P-521, Ed25519, \
              X25519 (non-FIPS)."
         ))),
     }

@@ -1,6 +1,4 @@
-use std::fmt;
-#[cfg(feature = "non-fips")]
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 
 use cosmian_logger::debug;
 #[cfg(feature = "non-fips")]
@@ -11,6 +9,7 @@ use x509_parser::pem::Pem;
 use crate::error::KmsError;
 use crate::{
     config::TlsConfig,
+    kms_ensure,
     result::{KResult, KResultHelper},
 };
 
@@ -29,6 +28,8 @@ pub struct TlsParams {
     /// The certificate used to verify the client TLS certificates
     /// used for authentication in PEM format
     pub clients_ca_cert_pem: Option<Vec<u8>>,
+    /// Hashed directory of CRLs used to reject revoked client certificates (fail-closed)
+    pub clients_crl_dir: Option<PathBuf>,
     /// Configured cipher suites to use for TLS connections (OpenSSL cipher string format)
     pub cipher_suites: Option<String>,
 }
@@ -60,6 +61,22 @@ impl TlsParams {
                 None
             };
         let cipher_suites = config.tls_cipher_suites.clone();
+        let clients_crl_dir = config
+            .clients_crl_dir
+            .as_ref()
+            .map(|dir| -> KResult<PathBuf> {
+                kms_ensure!(
+                    config.clients_ca_cert_file.is_some(),
+                    "TLS configuration. clients_crl_dir requires clients_ca_cert_file"
+                );
+                kms_ensure!(
+                    dir.is_dir(),
+                    "TLS configuration. clients_crl_dir {} is not a directory",
+                    dir.display()
+                );
+                Ok(dir.clone())
+            })
+            .transpose()?;
 
         #[cfg(feature = "non-fips")]
         if let (Some(p12_file), Some(p12_password)) =
@@ -69,6 +86,7 @@ impl TlsParams {
             return Ok(Some(Self {
                 p12: Some(p12),
                 clients_ca_cert_pem,
+                clients_crl_dir,
                 cipher_suites,
                 ..Default::default()
             }));
@@ -97,6 +115,7 @@ impl TlsParams {
             server_key_pem,
             server_chain_pem,
             clients_ca_cert_pem,
+            clients_crl_dir,
             cipher_suites,
             #[cfg(feature = "non-fips")]
             p12: None,
@@ -166,7 +185,42 @@ impl fmt::Debug for TlsParams {
                     .map_or("[N/A]", |_| "[PEM provided]"),
             )
             .field("authority_cert_file: ", &ca_cert)
+            .field("clients_crl_dir: ", &self.clients_crl_dir)
             .field("cipher_suites: ", &cipher_suites)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `clients_crl_dir` needs `clients_ca_cert_file` and must be an existing directory.
+    #[test]
+    fn clients_crl_dir_requires_ca_cert_and_an_existing_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ca_file = tmp.path().join("ca.crt");
+        std::fs::write(&ca_file, b"").unwrap();
+
+        let without_ca = TlsConfig {
+            clients_crl_dir: Some(tmp.path().to_path_buf()),
+            ..TlsConfig::default()
+        };
+        TlsParams::try_from(&without_ca).unwrap_err();
+
+        let not_a_dir = TlsConfig {
+            clients_ca_cert_file: Some(ca_file.clone()),
+            clients_crl_dir: Some(ca_file.clone()),
+            ..TlsConfig::default()
+        };
+        TlsParams::try_from(&not_a_dir).unwrap_err();
+
+        // Valid combination: no server certificate is configured, hence no TLS parameters
+        let valid = TlsConfig {
+            clients_ca_cert_file: Some(ca_file),
+            clients_crl_dir: Some(tmp.path().to_path_buf()),
+            ..TlsConfig::default()
+        };
+        assert!(TlsParams::try_from(&valid).unwrap().is_none());
     }
 }

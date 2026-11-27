@@ -13,7 +13,7 @@ A new HTTP endpoint is registered in four places. All must stay consistent.
 - [ ] Handler implemented in `crate/server/src/routes/<module>/`
 - [ ] `crate/server/src/routes/mod.rs` — `pub mod <module>;` declared
 - [ ] `crate/server/src/start_kms_server.rs` — `web::scope(...)` or `.service(...)` registered
-    - Middleware order: Cors → auth extractors → EnsureAuth (LIFO: wrap inner-first)
+    - Execution order: CORS → `AuditMiddleware` → auth extractors (`wrap_native_auth`) → `ensure_auth_middleware` (LIFO: wrap `ensure_auth_middleware` innermost and CORS outermost)
 - [ ] `crate/server/documentation/openapi.yaml` — path, request/response schemas, tags added
 - [ ] Run `crate/test_kms_server/src/openapi_validation.rs` tests to validate
 

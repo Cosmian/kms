@@ -1,7 +1,7 @@
 // ── PQC X.509 Certificate Chain Validation Tests (RFC 9881 / RFC 9935) ────────────
 //
 // These tests validate PQC certificate chains using the KMIP Validate operation.
-// All functions are cfg(feature = "non-fips") because PQC algorithms are not FIPS-approved.
+// PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) are served by the FIPS provider: runs in both builds.
 //
 // RFC references:
 //   RFC 9881 — ML-DSA in X.509: keyUsage MUST be critical, MUST include digitalSignature
@@ -23,7 +23,6 @@
 //   - Certificates supplied out-of-order → sorted internally, still valid
 //   - All three ML-DSA variants (44, 65, 87) as roots → all valid
 //   - All three ML-KEM variants (512, 768, 1024) as CA-issued leaves → all valid
-#[cfg(feature = "non-fips")]
 mod pqc_validate_tests {
     use std::sync::Arc;
 
@@ -1249,13 +1248,13 @@ mod internal_state_and_crl_cascade_tests {
     use std::sync::Arc;
 
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{CertificateType, RevocationReason, RevocationReasonCode},
+        kmip_0::kmip_types::{CertificateType, RevocationReason, RevocationReasonCode, State},
         kmip_2_1::{
             extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
             kmip_attributes::Attributes,
-            kmip_objects::{Certificate, Object},
+            kmip_objects::{Certificate, Object, ObjectType},
             kmip_operations::{
-                Certify, Get, GetAttributes, GetAttributesResponse, Revoke, Validate,
+                Certify, Get, GetAttributes, GetAttributesResponse, Import, Revoke, Validate,
             },
             kmip_types::{
                 CertificateAttributes, CryptographicAlgorithm, Link, LinkType,
@@ -1695,6 +1694,98 @@ basicConstraints=critical,CA:FALSE
             "raw-bytes chain must detect the root's internal compromise via exact-DER match, \
              got: {res:?}"
         );
+        Ok(())
+    }
+
+    /// Import `leaf_der` as a new, already-activated certificate and return its stored state.
+    async fn import_active_certificate_state(
+        kms: &Arc<KMS>,
+        owner: &UserId,
+        leaf_der: Vec<u8>,
+    ) -> KResult<Option<State>> {
+        let uid = uuid::Uuid::new_v4().to_string();
+        kms.import(
+            Import {
+                unique_identifier: UniqueIdentifier::TextString(uid.clone()),
+                object_type: ObjectType::Certificate,
+                replace_existing: None,
+                key_wrap_type: None,
+                attributes: Attributes {
+                    activation_date: Some(
+                        time::OffsetDateTime::now_utc() - time::Duration::hours(1),
+                    ),
+                    ..Attributes::default()
+                },
+                object: Object::Certificate(Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: leaf_der,
+                }),
+            },
+            owner,
+        )
+        .await?;
+        Ok(kms
+            .get_attributes(GetAttributes::from(uid), owner)
+            .await?
+            .attributes
+            .state)
+    }
+
+    /// F-041: a certificate listed in its CRL is imported as `Compromised`.
+    #[tokio::test]
+    async fn test_import_of_crl_revoked_certificate_is_compromised() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("owner@example.com");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let crl_path = tmp.path().join("ca.crl.der");
+
+        let (ca_id, _ca_sk) = certify(&kms, &owner, "Root CA", None, None, ROOT_EXT).await?;
+        let (leaf_id, _leaf_sk) = certify(
+            &kms,
+            &owner,
+            "leaf",
+            Some(&ca_id),
+            None,
+            &leaf_ext(&file_uri(&crl_path)),
+        )
+        .await?;
+        let leaf_der = get_cert_der(&kms, &owner, &leaf_id).await;
+        revoke_cert(&kms, &owner, &leaf_id, RevocationReasonCode::KeyCompromise).await?;
+        write_crl_fixture(&kms, &owner, &ca_id, &crl_path).await;
+
+        assert_eq!(
+            import_active_certificate_state(&kms, &owner, leaf_der).await?,
+            Some(State::Compromised)
+        );
+        Ok(())
+    }
+
+    /// F-041: a CRL that cannot be used (blocked distribution point, malformed CRL) says
+    /// nothing about revocation, so the imported certificate stays `Active`.
+    #[tokio::test]
+    async fn test_import_with_unusable_crl_stays_active() -> KResult<()> {
+        let kms = test_kms().await?;
+        let owner = UserId::from("owner@example.com");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let garbage_path = tmp.path().join("garbage.crl");
+        std::fs::write(&garbage_path, b"this is not a CRL").expect("write garbage CRL");
+
+        let (ca_id, _ca_sk) = certify(&kms, &owner, "Root CA", None, None, ROOT_EXT).await?;
+        for cdp in [
+            // Blocked by the SSRF check before any network I/O.
+            "http://169.254.169.254/latest/ca.crl".to_owned(),
+            // Fetched, but not parseable as a CRL.
+            file_uri(&garbage_path),
+        ] {
+            let (leaf_id, _leaf_sk) =
+                certify(&kms, &owner, "leaf", Some(&ca_id), None, &leaf_ext(&cdp)).await?;
+            let leaf_der = get_cert_der(&kms, &owner, &leaf_id).await;
+            assert_eq!(
+                import_active_certificate_state(&kms, &owner, leaf_der).await?,
+                Some(State::Active),
+                "CRL distribution point {cdp}"
+            );
+        }
         Ok(())
     }
 }

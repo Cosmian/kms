@@ -18,7 +18,7 @@ Create Playwright E2E tests for the KMS Web UI following the project's establish
 **Test location**: `ui/tests/e2e/`
 **Config**: `ui/playwright.config.ts`
 **Runner**: `cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e`
-**Timeout budget**: 60 seconds per test (CI runs 10 parallel workers against one KMS server)
+**Timeouts and workers**: See [playwright.config.ts](../../../ui/playwright.config.ts), or [playwright.auth.config.ts](../../../ui/playwright.auth.config.ts) for auth tests.
 
 ## Step 1 — Understand the Feature
 
@@ -42,29 +42,7 @@ ls ui/src/actions/
 
 ## Step 2 — Test File Structure
 
-Name the file `ui/tests/e2e/<feature>.spec.ts`. Follow this structure:
-
-```typescript
-import { test, expect } from '@playwright/test'
-import { selectAntOption, waitForKmsResponse } from './helpers'
-
-// Skip non-FIPS tests in FIPS mode
-const FIPS_MODE = process.env.FIPS_MODE === 'true'
-
-test.describe('<Feature Name>', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/<route>')
-    // Wait for the page to be ready
-    await page.waitForSelector('[data-testid="<main-component>"]')
-  })
-
-  test('<should do something>', async ({ page }) => {
-    // ...
-  })
-
-  test.skip(FIPS_MODE, '<non-fips feature> is not available in FIPS mode')
-})
-```
+Name the file `ui/tests/e2e/<feature>.spec.ts`. Start with one `test(...)`: navigate with `gotoAndWait`, exercise the feature, and assert the result. Cover relevant rejection paths separately. Use the closest existing spec as a template; see [sym-key-flow.spec.ts](../../../ui/tests/e2e/sym-key-flow.spec.ts) for form submission and result assertions.
 
 ## Step 3 — Element Selection Rules
 
@@ -87,13 +65,17 @@ If the UI component doesn't have `data-testid`, add it to the component first (i
 Ant Design `<Select>` dropdowns render in `document.body`, not in the component tree. **Always use the helpers from `helpers.ts`**:
 
 ```typescript
-import { selectAntOption } from './helpers'
+import { selectOption, selectOptionById, selectMultipleOptions } from './helpers'
 
-// ✅ Use the helper — it handles the portal rendering
-await selectAntOption(page, '[data-testid="algorithm-select"]', 'AES-256-GCM')
+// ✅ By data-testid (pass the bare testid string, not a CSS selector)
+await selectOption(page, 'ec-curve-select', 'NIST P-256')
 
-// ❌ Wrong — select portal won't be found inside the component
-await page.locator('[data-testid="algorithm-select"]').selectOption('AES-256-GCM')
+// ✅ By CSS selector (e.g. Form.Item id) or multi-select
+await selectOptionById(page, '#keyFormat', 'json-ttlv')
+await selectMultipleOptions(page, '#keyUsage', ['Encrypt', 'Decrypt'])
+
+// ❌ Wrong — native <select> helper fails on Ant Design portal dropdowns
+await page.locator('[data-testid="ec-curve-select"]').selectOption('NIST P-256')
 ```
 
 ## Step 5 — Assertions
@@ -116,7 +98,7 @@ expect(text).toContain('success')
 ## Step 6 — FIPS / Non-FIPS Skipping
 
 ```typescript
-const FIPS_MODE = process.env.FIPS_MODE === 'true'
+const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === 'true'
 
 // Skip entire test in FIPS mode
 test('Covercrypt encrypt', async ({ page }) => {
@@ -131,17 +113,9 @@ test.describe('Non-FIPS algorithms', () => {
 })
 ```
 
-## Step 7 — WASM Call Tests
+## Step 7 — WASM-Backed Forms
 
-When testing features that use WASM (e.g. key creation with specific TTLV structure):
-
-```typescript
-// Wait for WASM to initialize before interacting
-await page.waitForFunction(() => typeof window.wasmModule !== 'undefined', { timeout: 10000 })
-
-// Then proceed with the test
-await page.locator('[data-testid="create-button"]').click()
-```
+Wait for the form control the test needs to be ready before submitting. Prefer the existing readiness and submission helpers in [helpers.ts](../../../ui/tests/e2e/helpers.ts). There is no `window.wasmModule` global.
 
 ## Step 8 — Update E2E README
 
@@ -149,42 +123,3 @@ After creating the test file, update `ui/tests/e2e/README.md`:
 
 - Add the new spec file to the coverage table
 - Add a row to the FIPS-skip table if applicable
-
-## Example: Full Test Skeleton
-
-```typescript
-import { test, expect, Page } from '@playwright/test'
-import { selectAntOption } from './helpers'
-
-const FIPS_MODE = process.env.FIPS_MODE === 'true'
-
-test.describe('Symmetric Key Creation', () => {
-  async function navigateToCreateKey(page: Page) {
-    await page.goto('/keys')
-    await page.locator('[data-testid="create-symmetric-key-tab"]').click()
-    await page.waitForSelector('[data-testid="symmetric-key-form"]')
-  }
-
-  test('creates an AES-256-GCM key', async ({ page }) => {
-    await navigateToCreateKey(page)
-
-    await page.locator('[data-testid="key-id-input"]').fill('test-key-001')
-    await selectAntOption(page, '[data-testid="algorithm-select"]', 'AES')
-    await selectAntOption(page, '[data-testid="key-length-select"]', '256')
-
-    await page.locator('[data-testid="create-key-button"]').click()
-
-    await expect(page.locator('[data-testid="success-banner"]')).toHaveText(
-      /Key created successfully/
-    )
-    await expect(page.locator('[data-testid="created-key-uid"]')).toHaveText(
-      /test-key-001/
-    )
-  })
-
-  test('shows error for invalid key length', async ({ page }) => {
-    await navigateToCreateKey(page)
-    // ... negative test
-  })
-})
-```

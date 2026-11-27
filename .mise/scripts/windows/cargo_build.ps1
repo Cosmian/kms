@@ -85,7 +85,8 @@ function Build-Binaries {
     }
     # Server needs --no-default-features; PKCS#11 DLL and ckms CLI keep defaults.
     Invoke-Native "cargo" @("build", "--release", "--package", "cosmian_kms_server", "--features", "non-fips", "--no-default-features")
-    Invoke-Native "cargo" @("build", "--release", "--package", "cosmian_pkcs11", "--package", "ckms", "--features", "non-fips")
+    Invoke-Native "cargo" @("build", "--release", "--package", "ckms", "--features", "non-fips")
+    Invoke-Native "cargo" @("build", "--profile", "pkcs11-provider", "--package", "cosmian_pkcs11", "--features", "non-fips")
     # CNG KSP DLL (bundled into the ckms NSIS installer via cargo-packager)
     Invoke-Native "cargo" @("build", "--release", "--package", "cosmian_cng", "--features", "non-fips")
 }
@@ -180,7 +181,7 @@ function New-Installers {
     if ($Variant -eq "non-fips") {
         # Copy DLLs where cargo-packager looks for them (relative to ckms crate)
         New-Item -ItemType Directory -Path "crate\clients\ckms\target\release" -Force | Out-Null
-        Copy-Item -Force "target\release\cosmian_pkcs11.dll" "crate\clients\ckms\target\release\cosmian_pkcs11.dll"
+        Copy-Item -Force "target\pkcs11-provider\cosmian_pkcs11.dll" "crate\clients\ckms\target\release\cosmian_pkcs11.dll"
         Copy-Item -Force "target\release\cosmian_cng.dll" "crate\clients\ckms\target\release\cosmian_cng.dll"
         Write-Host "Copied cosmian_pkcs11.dll and cosmian_cng.dll to crate\clients\ckms\target\release\"
 

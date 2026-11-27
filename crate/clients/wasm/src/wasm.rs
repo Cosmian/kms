@@ -1,6 +1,10 @@
 use std::{cell::RefCell, str::FromStr};
 
 use base64::{Engine as _, engine::general_purpose};
+#[cfg(feature = "non-fips")]
+use cosmian_kms_client_utils::configurable_kem_utils::{
+    KemAlgorithm, build_create_configurable_kem_keypair_request,
+};
 use cosmian_kms_client_utils::{
     attributes_utils::{
         LOCATE_ENRICH_ATTRIBUTE_KEYS, build_selected_attribute, parse_selected_attributes_flatten,
@@ -9,7 +13,6 @@ use cosmian_kms_client_utils::{
         Algorithm, CertificationSource, CertifyRequestParams, build_certify_request,
         build_re_certify_request,
     },
-    configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
         CoverCryptEncryptionHint, CoverCryptRekeyAction, build_covercrypt_rekey_keypair_request,
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
@@ -248,6 +251,8 @@ fn fips_ec_alg_options() -> impl Iterator<Item = AlgoOption> {
         ("nist-p256", "NIST P-256"),
         ("nist-p384", "NIST P-384"),
         ("nist-p521", "NIST P-521"),
+        ("ed25519", "Ed25519"),
+        ("ed448", "Ed448"),
     ]
     .into_iter()
     .map(|(value, label)| AlgoOption {
@@ -276,9 +281,7 @@ fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
     [
         ("secp256k1", "SECP256k1"),
         ("x25519", "X25519"),
-        ("ed25519", "Ed25519"),
         ("x448", "X448"),
-        ("ed448", "Ed448"),
     ]
     .into_iter()
     .map(|(value, label)| AlgoOption {
@@ -340,8 +343,7 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         variants.push(CryptographicAlgorithm::ChaCha20Poly1305);
     }
 
-    // PQC algorithms (non-fips only — uses OpenSSL 3.6+ default provider)
-    #[cfg(feature = "non-fips")]
+    // PQC algorithms (served by the OpenSSL FIPS provider; X448MLKEM1024 is non-FIPS only)
     {
         variants.push(CryptographicAlgorithm::MLKEM_512);
         variants.push(CryptographicAlgorithm::MLKEM_768);
@@ -350,7 +352,6 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         variants.push(CryptographicAlgorithm::MLDSA_65);
         variants.push(CryptographicAlgorithm::MLDSA_87);
         variants.push(CryptographicAlgorithm::X25519MLKEM768);
-        variants.push(CryptographicAlgorithm::X448MLKEM1024);
         variants.push(CryptographicAlgorithm::SLHDSA_SHA2_128s);
         variants.push(CryptographicAlgorithm::SLHDSA_SHA2_128f);
         variants.push(CryptographicAlgorithm::SLHDSA_SHA2_192s);
@@ -364,6 +365,8 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
         variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_256s);
         variants.push(CryptographicAlgorithm::SLHDSA_SHAKE_256f);
     }
+    #[cfg(feature = "non-fips")]
+    variants.push(CryptographicAlgorithm::X448MLKEM1024);
 
     let algorithms: Vec<AlgoOption> = variants
         .into_iter()
@@ -381,9 +384,9 @@ pub fn get_crypto_algorithms() -> Result<JsValue, JsValue> {
 /// mirroring `crate/clients/client_utils/src/certificate_utils.rs` `Algorithm` variants.
 #[wasm_bindgen]
 pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
-    #[cfg(feature = "non-fips")]
-    let opts: Vec<AlgoOption> = vec![
+    let opts: Vec<AlgoOption> = Vec::from([
         // EC curves (keep NIST P-192 first)
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "nist-p192".into(),
             label: "NIST P-192".into(),
@@ -404,7 +407,7 @@ pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
             value: "nist-p521".into(),
             label: "NIST P-521".into(),
         },
-        // Additional EC (non-FIPS)
+        // Edwards curves
         AlgoOption {
             value: "ed25519".into(),
             label: "Ed25519".into(),
@@ -414,6 +417,7 @@ pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
             label: "Ed448".into(),
         },
         // RSA sizes
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "rsa1024".into(),
             label: "RSA 1024".into(),
@@ -510,60 +514,32 @@ pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
             value: "x25519-ml-kem-768".into(),
             label: "X25519/ML-KEM-768 (Hybrid KEM)".into(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "x448-ml-kem-1024".into(),
             label: "X448/ML-KEM-1024 (Hybrid KEM)".into(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-512-p256".into(),
             label: "ML-KEM-512/P-256 (Hybrid KEM)".into(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-768-p256".into(),
             label: "ML-KEM-768/P-256 (Hybrid KEM)".into(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-512-curve25519".into(),
             label: "ML-KEM-512/Curve25519 (Hybrid KEM)".into(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-768-curve25519".into(),
             label: "ML-KEM-768/Curve25519 (Hybrid KEM)".into(),
         },
-    ];
-    #[cfg(not(feature = "non-fips"))]
-    let opts: Vec<AlgoOption> = vec![
-        // EC curves (FIPS subset)
-        AlgoOption {
-            value: "nist-p224".into(),
-            label: "NIST P-224".into(),
-        },
-        AlgoOption {
-            value: "nist-p256".into(),
-            label: "NIST P-256".into(),
-        },
-        AlgoOption {
-            value: "nist-p384".into(),
-            label: "NIST P-384".into(),
-        },
-        AlgoOption {
-            value: "nist-p521".into(),
-            label: "NIST P-521".into(),
-        },
-        // RSA sizes
-        AlgoOption {
-            value: "rsa2048".into(),
-            label: "RSA 2048".into(),
-        },
-        AlgoOption {
-            value: "rsa3072".into(),
-            label: "RSA 3072".into(),
-        },
-        AlgoOption {
-            value: "rsa4096".into(),
-            label: "RSA 4096".into(),
-        },
-    ];
+    ]);
 
     serde_wasm_bindgen::to_value(&opts).map_err(|e| JsValue::from(e.to_string()))
 }
@@ -957,6 +933,7 @@ pub fn create_pqc_key_pair_ttlv_request(
         "ml-dsa-65" => CryptographicAlgorithm::MLDSA_65,
         "ml-dsa-87" => CryptographicAlgorithm::MLDSA_87,
         "x25519-ml-kem-768" => CryptographicAlgorithm::X25519MLKEM768,
+        #[cfg(feature = "non-fips")]
         "x448-ml-kem-1024" => CryptographicAlgorithm::X448MLKEM1024,
         "slh-dsa-sha2-128s" => CryptographicAlgorithm::SLHDSA_SHA2_128s,
         "slh-dsa-sha2-128f" => CryptographicAlgorithm::SLHDSA_SHA2_128f,
@@ -970,6 +947,7 @@ pub fn create_pqc_key_pair_ttlv_request(
         "slh-dsa-shake-192f" => CryptographicAlgorithm::SLHDSA_SHAKE_192f,
         "slh-dsa-shake-256s" => CryptographicAlgorithm::SLHDSA_SHAKE_256s,
         "slh-dsa-shake-256f" => CryptographicAlgorithm::SLHDSA_SHAKE_256f,
+        #[cfg(feature = "non-fips")]
         "ml-kem-512-p256"
         | "ml-kem-768-p256"
         | "ml-kem-512-curve25519"
@@ -996,11 +974,12 @@ pub fn create_pqc_key_pair_ttlv_request(
             return Err(JsValue::from_str(&format!(
                 "Invalid PQC algorithm: {algorithm}. \
                  Use one of: ml-kem-512, ml-kem-768, ml-kem-1024, ml-dsa-44, ml-dsa-65, ml-dsa-87, \
-                 x25519-ml-kem-768, x448-ml-kem-1024, \
+                 x25519-ml-kem-768, \
                  slh-dsa-sha2-128s, slh-dsa-sha2-128f, slh-dsa-sha2-192s, slh-dsa-sha2-192f, \
                  slh-dsa-sha2-256s, slh-dsa-sha2-256f, slh-dsa-shake-128s, slh-dsa-shake-128f, \
-                 slh-dsa-shake-192s, slh-dsa-shake-192f, slh-dsa-shake-256s, slh-dsa-shake-256f, \
-                 ml-kem-512-p256, ml-kem-768-p256, ml-kem-512-curve25519, ml-kem-768-curve25519"
+                 slh-dsa-shake-192s, slh-dsa-shake-192f, slh-dsa-shake-256s, slh-dsa-shake-256f \
+                 (non-FIPS builds also: x448-ml-kem-1024, ml-kem-512-p256, ml-kem-768-p256, \
+                 ml-kem-512-curve25519, ml-kem-768-curve25519)"
             )));
         }
     };
@@ -1013,7 +992,7 @@ pub fn create_pqc_key_pair_ttlv_request(
 /// Returns the list of PQC algorithms available.
 #[wasm_bindgen]
 pub fn get_pqc_algorithms() -> Result<JsValue, JsValue> {
-    let algorithms: Vec<AlgoOption> = vec![
+    let algorithms: Vec<AlgoOption> = Vec::from([
         AlgoOption {
             value: "ml-kem-512".to_owned(),
             label: "ML-KEM-512".to_owned(),
@@ -1042,6 +1021,7 @@ pub fn get_pqc_algorithms() -> Result<JsValue, JsValue> {
             value: "x25519-ml-kem-768".to_owned(),
             label: "X25519MLKEM768".to_owned(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "x448-ml-kem-1024".to_owned(),
             label: "X448MLKEM1024".to_owned(),
@@ -1094,23 +1074,27 @@ pub fn get_pqc_algorithms() -> Result<JsValue, JsValue> {
             value: "slh-dsa-shake-256f".to_owned(),
             label: "SLH-DSA-SHAKE-256f".to_owned(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-512-p256".to_owned(),
             label: "ML-KEM-512/P-256".to_owned(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-768-p256".to_owned(),
             label: "ML-KEM-768/P-256".to_owned(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-512-curve25519".to_owned(),
             label: "ML-KEM-512/Curve25519".to_owned(),
         },
+        #[cfg(feature = "non-fips")]
         AlgoOption {
             value: "ml-kem-768-curve25519".to_owned(),
             label: "ML-KEM-768/Curve25519".to_owned(),
         },
-    ];
+    ]);
     serde_wasm_bindgen::to_value(&algorithms).map_err(|e| JsValue::from(e.to_string()))
 }
 

@@ -12,5 +12,4 @@ pub mod reexport {
 }
 
 #[cfg(test)]
-#[cfg(feature = "non-fips")]
 mod tests;

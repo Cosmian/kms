@@ -26,6 +26,7 @@ applyTo: '**/*.md'
 - Skill files (`SKILL.md`) start with a one-line purpose summary, then sections.
 - Instruction files must have valid YAML frontmatter with `name`, `description`, and `applyTo`.
 - Use fenced code blocks with language identifiers for all code examples.
+- Link to the code or configuration instead of copying inventories into agent instructions or `SKILL.md`. Use an on-demand skill reference only when it adds guidance the source cannot provide.
 
 ## General formatting
 

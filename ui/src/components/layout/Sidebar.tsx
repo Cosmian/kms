@@ -6,6 +6,7 @@ import { useAuth } from "../../contexts/useAuth";
 import { useBranding } from "../../contexts/useBranding";
 import { MenuItem, getMenuItems } from "../../menuItems.tsx";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest } from "../../utils/utils.ts";
+import type { UiFeatures } from "../../utils/uiConfig";
 
 const { Sider } = Layout;
 
@@ -14,62 +15,53 @@ interface LevelKeysProps {
     children?: LevelKeysProps[];
 }
 
-const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips = false, isDarkMode = false }) => {
+const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean; features?: UiFeatures | null }> = ({
+    isFips = false,
+    isDarkMode = false,
+    features,
+}) => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const [stateOpenKeys, setStateOpenKeys] = useState<string[]>([]);
     const branding = useBranding();
     const { t } = useTranslation("menu");
     const menuItems = useMemo(
-        () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel, isFips }),
-        [branding.enableCovercrypt, branding.pqcLabel, isFips],
+        () => getMenuItems({ enableCovercrypt: branding.enableCovercrypt, pqcLabel: branding.pqcLabel, isFips, features }),
+        [branding.enableCovercrypt, branding.pqcLabel, isFips, features],
     );
-    const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
+    const [hasCreateAccess, setHasCreateAccess] = useState(true);
     const { serverUrl } = useAuth();
 
     // Process menu items to disable "Create" and "Import" options based on access rights
-    const processMenuItems = useCallback(
-        (hasCreateAccess: boolean) => {
-            const processItems = (items: MenuItem[]): MenuItem[] => {
-                return items.map((item) => {
-                    const newItem = { ...item };
+    const processedMenuItems = useMemo(() => {
+        const processItems = (items: MenuItem[]): MenuItem[] => {
+            return items.map((item) => {
+                const newItem = { ...item };
 
-                    // Check if item is a Create item
-                    const isCreateItem =
-                        item.key && (item.key.includes("/create") || item.key.includes("/create-") || item.label === "Create");
+                // Check if item is a Create item
+                const isCreateItem = item.key && (item.key.includes("/create") || item.key.includes("/create-") || item.label === "Create");
 
-                    // // Check if item is an Import item
-                    const isImportItem =
-                        item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
+                // // Check if item is an Import item
+                const isImportItem = item.key && (item.key.includes("/import") || item.key.includes("/import-") || item.label === "Import");
 
-                    // // Handle disabled state based on access rights
-                    if (isCreateItem || isImportItem) {
-                        newItem.disabled = !hasCreateAccess;
-                    }
+                // // Handle disabled state based on access rights
+                if (isCreateItem || isImportItem) {
+                    newItem.disabled = !hasCreateAccess;
+                }
 
-                    // Process children recursively if they exist
-                    if (newItem.children) {
-                        newItem.children = processItems(newItem.children);
-                    }
-                    return newItem;
-                });
-            };
+                // Process children recursively if they exist
+                if (newItem.children) {
+                    newItem.children = processItems(newItem.children);
+                }
+                return newItem;
+            });
+        };
 
-            setProcessedMenuItems(processItems(menuItems));
-        },
-        [menuItems],
-    );
-
-    const fetchCreatePermission = useCallback(async () => {
-        try {
-            const response = await getNoTTLVRequest("/access/create", serverUrl);
-            processMenuItems(response.has_create_permission);
-        } catch {
-            processMenuItems(false);
-        }
-    }, [serverUrl, processMenuItems]);
+        return processItems(menuItems);
+    }, [menuItems, hasCreateAccess]);
 
     useEffect(() => {
+        let cancelled = false;
         (async () => {
             let method: AuthMethod | null = null;
             try {
@@ -81,12 +73,20 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
             // without calling the permissions API. Also grant if the auth method
             // could not be determined (e.g. server not yet reachable).
             if (method === "None" || method === null) {
-                processMenuItems(true);
+                if (!cancelled) setHasCreateAccess(true);
             } else {
-                fetchCreatePermission();
+                try {
+                    const response = await getNoTTLVRequest("/access/create", serverUrl);
+                    if (!cancelled) setHasCreateAccess(response.has_create_permission);
+                } catch {
+                    if (!cancelled) setHasCreateAccess(false);
+                }
             }
         })();
-    }, [fetchCreatePermission, serverUrl, processMenuItems]);
+        return () => {
+            cancelled = true;
+        };
+    }, [serverUrl]);
 
     const getLevelKeys = (items1: LevelKeysProps[]) => {
         const key: Record<string, number> = {};
@@ -155,7 +155,7 @@ const Sidebar: React.FC<{ isFips?: boolean; isDarkMode?: boolean }> = ({ isFips 
     const decorateMenuItems = (items: MenuItem[]): NonNullable<MenuProps["items"]> =>
         items.map((item) => ({
             ...item,
-            label: displayLabel(item),
+            label: <span data-testid={`menu-${item.key}`}>{displayLabel(item)}</span>,
             ...(item.children ? { children: decorateMenuItems(item.children) } : {}),
         }));
 

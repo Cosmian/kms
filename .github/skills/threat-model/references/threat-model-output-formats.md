@@ -77,7 +77,7 @@ Templates for every output file. Copy the skeleton, fill in `[FILL]` placeholder
 | ID | Component / Data Flow | Threat Type | Threat Description | Evidence | CVSS 4.0 | CWE | Status |
 |----|----------------------|-------------|-------------------|----------|----------|-----|--------|
 | T-001 | Auth middleware | Spoofing | [FILL] | `crate/server/src/middlewares/...` | [FILL] | CWE-287 | [Confirmed/Not confirmed/No evidence] |
-| T-002 | KMIP Get operation | Information Disclosure | [FILL] | `crate/server/src/core/operations/get.rs:L42` | [FILL] | CWE-284 | |
+| T-002 | KMIP Get operation | Information Disclosure | [FILL] | [FILL: verified file and line] | [FILL] | CWE-284 | |
 | [FILL: additional rows] | | | | | | | |
 
 ## Threat Narrative
@@ -143,10 +143,13 @@ For each CRITICAL and HIGH threat, provide a detailed narrative:
 
 **Proposed Fix** (review before applying)
 
-    // Fixed code snippet
-    async fn get_object(uid: &str, caller: &UserId, db: &dyn Database) -> KResult<KmipObject> {
-        db.is_allowed(uid, caller, OperationType::Get).await?;
-        db.get(uid).await
+    // Fixed code snippet (illustrative; use retrieve_object_for_operation / user_has_permission)
+    async fn get_object(
+        object_handle: ObjectHandle<'_>,
+        kms: &KMS,
+        user: &UserId,
+    ) -> KResult<Arc<ObjectWithMetadata>> {
+        retrieve_object_for_operation(object_handle, KmipOperation::Get, kms, user).await
     }
 
 ---
@@ -198,6 +201,8 @@ For each CRITICAL and HIGH threat, provide a detailed narrative:
 
 ## threat-inventory.json (Machine-Readable)
 
+Replace placeholder values, including `line: 0`, with verified evidence. Use `confirmed` only when the cited source supports the finding.
+
 ```json
 {
   "analysis_date": "YYYY-MM-DD",
@@ -206,17 +211,17 @@ For each CRITICAL and HIGH threat, provide a detailed narrative:
   "findings": [
     {
       "id": "F-001",
-      "title": "Missing access control in Get operation",
+      "title": "[FILL: verified finding title]",
       "stride": "I",
       "severity": "CRITICAL",
       "cvss_score": 9.1,
       "cwe": "CWE-284",
       "owasp": "A01:2025",
       "component": "KMIP operations",
-      "file": "crate/server/src/core/operations/get.rs",
-      "line": 42,
-      "status": "confirmed",
-      "evidence": "db.get() called without is_allowed() check"
+      "file": "[FILL: source path]",
+      "line": 0,
+      "status": "[FILL: verification status]",
+      "evidence": "[FILL: evidence from the cited source]"
     }
   ],
   "summary": {

@@ -24,6 +24,7 @@ const apiProxy: Record<string, { target: string; secure: boolean }> = {
     // Match auth endpoints exactly so `/ui/tokenize/*` remains a client-side route.
     "^/ui/whoami$": proxyOpts,
     "^/ui/auth_method$": proxyOpts,
+    "^/ui/config$": proxyOpts,
 };
 
 // https://vite.dev/config/

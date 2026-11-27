@@ -139,7 +139,6 @@ pub(super) fn jose_rsa_oaep_decrypt_body(
     jose_jwe_decrypt_body(&protected, &cek, &encrypted_key, plaintext)
 }
 
-#[cfg(feature = "non-fips")]
 pub(super) fn jose_try_create_okp_kp(rt: &Runtime, client: &KmsClient) -> Option<(String, String)> {
     let req = JoseKeyReq {
         kty: "OKP",
@@ -311,14 +310,11 @@ pub(super) fn bench_jose_sign_verify(c: &mut Criterion, client: &KmsClient, rt: 
         bench_jose_sign_verify_one(c, client, rt, alg, &priv_kid, &payload);
     }
 
-    #[cfg(feature = "non-fips")]
-    {
-        if let Some((priv_kid, _pub_kid)) = jose_try_create_okp_kp(rt, client) {
-            bench_jose_sign_verify_one(c, client, rt, "EdDSA", &priv_kid, &payload);
-        } else {
-            eprintln!("[bench] JOSE sign EdDSA key creation failed, skipping");
-            bench_ko("jose/sign-verify/eddsa-ed25519");
-        }
+    if let Some((priv_kid, _pub_kid)) = jose_try_create_okp_kp(rt, client) {
+        bench_jose_sign_verify_one(c, client, rt, "EdDSA", &priv_kid, &payload);
+    } else {
+        eprintln!("[bench] JOSE sign EdDSA key creation failed, skipping");
+        bench_ko("jose/sign-verify/eddsa-ed25519");
     }
 }
 

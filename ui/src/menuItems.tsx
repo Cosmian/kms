@@ -19,6 +19,7 @@ import {
     UsbOutlined,
     WindowsOutlined,
 } from "@ant-design/icons";
+import type { UiFeature, UiFeatures } from "./utils/uiConfig";
 
 export interface MenuItem {
     key: string;
@@ -31,6 +32,7 @@ export interface MenuItem {
     disabled?: boolean;
     /** When true, `label` is displayed as-is (e.g. branding-provided) and never translated. */
     rawLabel?: boolean;
+    feature?: UiFeature;
 }
 
 // Covercrypt is conditionally shown based on branding.enableCovercrypt
@@ -325,17 +327,19 @@ const baseMenu: MenuItem[] = [
             { key: "access-rights/list", label: "List" },
             { key: "access-rights/owned", label: "Owned" },
             { key: "access-rights/obtained", label: "Obtained" },
-            { key: "access-rights/crypto-officer", label: "Crypto Officer" },
+            { key: "access-rights/crypto-officer", label: "Crypto Officer", feature: "crypto_officer" },
         ],
     },
     {
         key: "hsm-status",
+        feature: "hsm",
         label: "HSM Status",
         icon: <UsbOutlined />,
         collapsedlabel: "HSM",
     },
     {
         key: "kv-secrets",
+        feature: "kv",
         label: "Secrets (KV)",
         icon: <DatabaseOutlined />,
         collapsedlabel: "KV",
@@ -386,6 +390,7 @@ const baseMenu: MenuItem[] = [
             },
             {
                 key: "google-cse",
+                feature: "google_cse",
                 label: "Google CSE",
                 icon: <GoogleOutlined />,
                 collapsedlabel: "CSE",
@@ -418,7 +423,21 @@ const covercryptSection: MenuItem = {
     ],
 };
 
-export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: string; isFips?: boolean }): MenuItem[] {
+function filterFeatures(menu: MenuItem[], features: UiFeatures | null | undefined): MenuItem[] {
+    return menu.flatMap((item) => {
+        if (item.feature && (features === null || features?.[item.feature] === false)) return [];
+        if (!item.children) return [item];
+        const children = filterFeatures(item.children, features);
+        return children.length > 0 ? [{ ...item, children }] : [];
+    });
+}
+
+export function getMenuItems(options?: {
+    enableCovercrypt?: boolean;
+    pqcLabel?: string;
+    isFips?: boolean;
+    features?: UiFeatures | null;
+}): MenuItem[] {
     const enableCc = options?.enableCovercrypt ?? true;
     const pqcLabel = options?.pqcLabel ?? "PQC";
     const isFips = options?.isFips ?? false;
@@ -430,11 +449,10 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
         return item;
     });
 
-    // Hide PQC, OpenPGP, FPE, and Tokenize/Anonymize in FIPS mode (not available in the FIPS build).
-    // MAC (HMAC) is available in FIPS mode and stays visible.
-    // Rotation Policy for PQC is removed automatically since it lives inside the PQC item.
+    // Hide OpenPGP, FPE, and Tokenize/Anonymize in FIPS mode (not available in the FIPS build).
+    // MAC (HMAC) and PQC (ML-KEM, ML-DSA, SLH-DSA, X25519MLKEM768) are available in FIPS mode and stay visible.
     if (isFips) {
-        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "pgp" && item.key !== "fpe" && item.key !== "tokenize");
+        menu = menu.filter((item) => item.key !== "pgp" && item.key !== "fpe" && item.key !== "tokenize");
     }
 
     // Insert Covercrypt immediately after PQC so Hyperscalers stays last
@@ -447,5 +465,5 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
         }
     }
 
-    return menu;
+    return filterFeatures(menu, options?.features);
 }

@@ -6,7 +6,7 @@
 
 ## Documentation
 
-- Upgrade guide 5.x to 6.0: no rolling upgrade (stop every node), upgrade `ckms` with the server, package and installer behaviour, FIPS build restrictions, Vault-token-only authentication, downgrade of `kms.toml`; fix the IV Length row for FIPS builds
+- Upgrade guide 5.x to 5.30: no rolling upgrade (stop every node), upgrade `ckms` with the server, package and installer behaviour, FIPS build restrictions, Vault-token-only authentication, downgrade of `kms.toml`; fix the IV Length row for FIPS builds
 
 ## Testing
 

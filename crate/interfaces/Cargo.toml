@@ -33,7 +33,8 @@ mockall = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [features]
-# Enables HSM-delegated EdDSA (Ed25519/Ed448) signing and X25519 ECDH key agreement types,
-# mirroring the software crypto path gating in `crate/crypto/src/crypto/elliptic_curves/sign.rs`.
+# Enables the non-FIPS HSM-delegated types (X25519 ECDH key agreement, secp256k1, secp192k1);
+# EdDSA (Ed25519/Ed448) is available in every build. Mirrors the software crypto path gating in
+# `crate/crypto/src/crypto/elliptic_curves/sign.rs`.
 # See issue #1157 ("HSM delegation Track B").
 non-fips = []

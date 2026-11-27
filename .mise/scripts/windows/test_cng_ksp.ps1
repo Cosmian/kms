@@ -188,10 +188,12 @@ $DllPath = Join-Path $TARGET_DIR "cosmian_cng.dll"
 if (-not (Test-Path $DllPath)) { Write-Error "DLL not found: $DllPath"; exit 1 }
 Write-Ok "CNG KSP DLL built: $DllPath"
 
-# Build the PKCS#11 provider DLL (cdylib)
-Invoke-Native cargo (@("build", "--package", "cosmian_pkcs11", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build PKCS#11 provider DLL"
+# Build the PKCS#11 provider DLL (cdylib); release validation uses the shipped unwind profile
+$Pkcs11Profile = if ($PROFILE -eq "release") { "pkcs11-provider" } else { "debug" }
+$Pkcs11ProfileFlag = if ($PROFILE -eq "release") { @("--profile", "pkcs11-provider") } else { @() }
+Invoke-Native cargo (@("build", "--package", "cosmian_pkcs11", "--features", $FEATURES) + $Pkcs11ProfileFlag) "Failed to build PKCS#11 provider DLL"
 
-$Pkcs11DllPath = Join-Path $TARGET_DIR "cosmian_pkcs11.dll"
+$Pkcs11DllPath = Join-Path "target\$Pkcs11Profile" "cosmian_pkcs11.dll"
 if (-not (Test-Path $Pkcs11DllPath)) { Write-Error "PKCS#11 DLL not found: $Pkcs11DllPath"; exit 1 }
 Write-Ok "PKCS#11 provider DLL built: $Pkcs11DllPath"
 

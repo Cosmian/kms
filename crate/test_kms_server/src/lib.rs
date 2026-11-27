@@ -82,5 +82,4 @@ mod pgp_gnupg_tests;
 mod pgp_tests;
 
 #[cfg(test)]
-#[cfg(feature = "non-fips")]
 mod pqc_export_tests;

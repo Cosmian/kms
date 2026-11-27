@@ -215,6 +215,9 @@ LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = $2
 WHERE (objects.owner = $2 OR read_access.userid = $2)
   AND objects.wrapping_key_id = $1;
 
+-- name: select-ids-wrapped-by
+SELECT id FROM objects WHERE wrapping_key_id = $1;
+
 -- name: select-objects-null-wrapping-key
 SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
 
@@ -225,6 +228,12 @@ UPDATE objects SET wrapping_key_id = $1 WHERE id = $2;
 SELECT objects.id, objects.object FROM objects
 INNER JOIN tags c ON c.id = objects.id AND c.tag = '_cert'
 WHERE NOT EXISTS (SELECT 1 FROM tags s WHERE s.id = objects.id AND SUBSTR(s.tag, 1, 8) = '_serial=');
+
+-- name: select-objects-state-sync
+SELECT id, object, attributes, state FROM objects WHERE state IS NOT NULL AND attributes IS NOT NULL;
+
+-- name: update-object-state-json
+UPDATE objects SET object=$1, attributes=$2 WHERE id=$3 AND object=$4 AND attributes=$5 AND state=$6;
 
 -- name: create-table-crypto_officer_activations
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (
@@ -248,8 +257,12 @@ SELECT sealed_record FROM crypto_officer_activations
 SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
 
 -- name: revoke-crypto-officer-activation
-UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1
+UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1, sealed_record = ''
         WHERE activated_by = $2 AND revoked_at IS NULL;
+
+-- name: tombstone-revoked-crypto-officer-activations
+UPDATE crypto_officer_activations SET sealed_record = ''
+        WHERE revoked_at IS NOT NULL AND sealed_record <> '';
 
 -- name: count-all-non-destroyed
 SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';

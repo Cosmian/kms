@@ -11,10 +11,9 @@
  * on the Certificate Issuance page):
  *   • re-certify self-signed RSA certificate → new UID ≠ original UID
  *   • re-certify self-signed EC P-256 certificate → new UID ≠ original UID
- *   • re-certify PQC ML-DSA-44 certificate (skip FIPS) → new UID ≠ original UID
+ *   • re-certify PQC ML-DSA-44 certificate → new UID ≠ original UID
  *
- * PQC tests are skipped when running in FIPS mode because ML-DSA / ML-KEM are
- * not FIPS-approved algorithms.
+ * PQC (ML-KEM, ML-DSA, SLH-DSA) is available in FIPS mode and is not skipped.
  */
 
 import { expect, test } from "@playwright/test";
@@ -30,8 +29,6 @@ import {
     gotoAndWait,
     submitAndWaitForResponse,
 } from "./helpers";
-
-const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
 
 // ---------------------------------------------------------------------------
 // Symmetric key rotation
@@ -229,12 +226,10 @@ test.describe("EC key rotation policy", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PQC key rotation (ML-DSA-44; skipped in FIPS mode)
+// PQC key rotation (ML-DSA-44)
 // ---------------------------------------------------------------------------
 
 test.describe("PQC key rotation policy", () => {
-    test.skip(FIPS_MODE, "PQC algorithms are not available in FIPS mode");
-
     test("set rotation policy on PQC key pair", async ({ page }) => {
         const { privKeyId } = await createPqcKeyPair(page, "ML-DSA-44");
 
@@ -334,8 +329,6 @@ test.describe("Certificate renewal (ReCertify)", () => {
     });
 
     test("re-certify PQC ML-DSA-44 certificate returns a new distinct UID", async ({ page }) => {
-        test.skip(FIPS_MODE, "PQC algorithms are not available in FIPS mode");
-
         const originalId = await createCertificate(page, "ML-DSA-44 (PQC)");
 
         await gotoAndWait(page, "/ui/certificates/certs/certify");

@@ -2,7 +2,7 @@
 
 When you start a newer KMS binary against an existing database, the server checks the stored database version and applies any required schema or data updates automatically before opening its HTTP and KMIP ports. Once the update completes, the server records the new version and begins serving requests. Subsequent restarts at the same version start immediately without re-running completed steps.
 
-For KMIP protocol and client behavior changes when upgrading to 6.0, see [Upgrading from 5.x to 6.0](./upgrade_5_to_6.md).
+For KMIP protocol and client behavior changes when upgrading to 5.30, see [Upgrading from 5.x to 5.30](./upgrade_5_to_5_30.md).
 
 ## Supported source versions
 
@@ -14,6 +14,10 @@ You can upgrade directly to the current release without installing intermediate 
 | **Redis with Findex** *(non-FIPS only)* | `5.12.0` or later: automatic in-place upgrade at startup. | `< 5.12.0` (or unversioned): startup is refused. Export all objects from the old KMS, initialize an empty Redis database on the new KMS, and import them. |
 
 On large databases, the first startup after an upgrade takes longer than a normal boot while new indexes or data backfills run.
+
+### Upgrading to 5.30.0: stored state synchronization
+
+The lifecycle column is the source of truth for an object's state; the `State` inside the stored attributes and key block can lag it after a state change. KMS always reports the column, so clients see the right state. The 5.30.0 upgrade writes that reported state into the stored attributes (and, except for destroyed objects, the key-block attributes) of every object once. API responses do not change; rows whose stored JSON cannot be parsed are skipped with a warning. Because this step rewrites rows, it adds to the first startup time on large databases.
 
 ## Before you upgrade
 

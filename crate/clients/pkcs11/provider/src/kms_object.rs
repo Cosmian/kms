@@ -62,24 +62,30 @@ const AES_GCM_TAG_LENGTH: usize = 16;
 /// Shared Tokio runtime — created once, reused for every blocking KMS call.
 /// Avoids the overhead (and potential `io::Error`) of spinning up a runtime per call.
 ///
-/// Also entered (via `RUNTIME.enter()`) around synchronous `KmsClient` construction in
+/// Also entered (via `runtime()?.enter()`) around synchronous `KmsClient` construction in
 /// `C_GetFunctionList`: that entrypoint is invoked directly by PKCS#11 consumers (e.g. SAP
 /// ASE) with no Tokio runtime active, and the underlying `hyper` client requires one.
-pub(crate) static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> =
-    std::sync::LazyLock::new(|| {
-        tokio::runtime::Runtime::new().unwrap_or_else(|e| {
-            // Runtime creation can only fail due to OS resource exhaustion; no
-            // recovery is possible, so terminate the process immediately.
-            eprintln!("FATAL: failed to create Tokio runtime: {e}");
-            std::process::abort()
-        })
-    });
+static RUNTIME: std::sync::LazyLock<std::io::Result<tokio::runtime::Runtime>> =
+    std::sync::LazyLock::new(tokio::runtime::Runtime::new);
+
+/// Returns the cached runtime or its construction error without aborting the host.
+pub(crate) fn runtime() -> Pkcs11Result<&'static tokio::runtime::Runtime> {
+    runtime_result(&RUNTIME)
+}
+
+fn runtime_result(
+    result: &std::io::Result<tokio::runtime::Runtime>,
+) -> Pkcs11Result<&tokio::runtime::Runtime> {
+    result
+        .as_ref()
+        .map_err(|error| Pkcs11Error::ServerError(error.to_string()))
+}
 
 /// Query the KMS server for its vendor identification string.
 ///
 /// Falls back to `VENDOR_ID_COSMIAN` if the server doesn't report one.
-pub(crate) fn query_vendor_id(client: &KmsClient) -> String {
-    RUNTIME
+pub(crate) fn query_vendor_id(client: &KmsClient) -> Pkcs11Result<String> {
+    Ok(runtime()?
         .block_on(async {
             let request = Query {
                 query_function: Some(vec![QueryFunction::QueryServerInformation]),
@@ -91,7 +97,7 @@ pub(crate) fn query_vendor_id(client: &KmsClient) -> String {
                 .ok()
                 .and_then(|resp| resp.vendor_identification)
         })
-        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned())
+        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned()))
 }
 
 /// Write-once, read-many holder for sensitive key material.
@@ -166,7 +172,7 @@ pub(crate) fn locate_kms_objects(
     vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<String>> {
-    RUNTIME.block_on(locate_kms_objects_async(kms_rest_client, vendor_id, tags))
+    runtime()?.block_on(locate_kms_objects_async(kms_rest_client, vendor_id, tags))
 }
 
 pub(crate) async fn locate_kms_objects_async(
@@ -186,7 +192,7 @@ pub(crate) fn get_kms_secret_data_objects(
     vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_secret_data_objects_async(
+    runtime()?.block_on(get_kms_secret_data_objects_async(
         kms_rest_client,
         vendor_id,
         tags,
@@ -249,7 +255,7 @@ pub(crate) fn get_kms_certificate_objects(
     vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_certificate_objects_async(
+    runtime()?.block_on(get_kms_certificate_objects_async(
         kms_rest_client,
         vendor_id,
         tags,
@@ -348,7 +354,7 @@ pub(crate) fn get_kms_disk_encryption_data_objects(
     vendor_id: &str,
     disk_encryption_tag: &str,
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_disk_encryption_data_objects_async(
+    runtime()?.block_on(get_kms_disk_encryption_data_objects_async(
         kms_rest_client,
         vendor_id,
         disk_encryption_tag,
@@ -426,7 +432,7 @@ pub(crate) fn get_kms_object(
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
-    RUNTIME.block_on(get_kms_object_async(
+    runtime()?.block_on(get_kms_object_async(
         kms_client,
         object_id_or_tags,
         key_format_type,
@@ -504,7 +510,7 @@ pub(crate) fn kms_import_symmetric_key(
     label: Option<&str>,
     mac_usage: MacUsage,
 ) -> Pkcs11Result<KmsObject> {
-    RUNTIME.block_on(kms_import_symmetric_key_async(
+    runtime()?.block_on(kms_import_symmetric_key_async(
         kms_rest_client,
         vendor_id,
         algorithm,
@@ -521,7 +527,7 @@ const MAX_RNG_RETRIEVE_BYTES: usize = 64 * 1024;
 /// Fill `buf` with random bytes retrieved from the KMS (KMIP `RNGRetrieve`), splitting the
 /// request so that no single call exceeds the server limit.
 pub(crate) fn kms_generate_random(kms_rest_client: &KmsClient, buf: &mut [u8]) -> Pkcs11Result<()> {
-    RUNTIME.block_on(kms_generate_random_async(kms_rest_client, buf))
+    runtime()?.block_on(kms_generate_random_async(kms_rest_client, buf))
 }
 
 async fn kms_generate_random_async(
@@ -568,6 +574,10 @@ pub(crate) async fn kms_import_symmetric_key_async(
             "unsupported key algorithm: {algorithm:?}"
         )));
     };
+    let key_bits = key_length
+        .checked_mul(8)
+        .ok_or_else(|| Pkcs11Error::Conversion("key length overflow".to_owned()))?;
+    let cryptographic_length = Some(i32::try_from(key_bits)?);
     let tags = label.map(|l| vec![l.to_owned()]).unwrap_or_default();
 
     // The key is generated here and then imported into the KMS: draw it from the private DRBG
@@ -577,8 +587,6 @@ pub(crate) async fn kms_import_symmetric_key_async(
     KmsRng::new()
         .fill_bytes(&mut key)
         .map_err(|e| Pkcs11Error::Default(format!("failed to generate the key: {e}")))?;
-
-    let cryptographic_length = Some(i32::try_from(key_length * 8)?);
 
     let is_hsm_key = label.is_some_and(|label| label.starts_with("hsm::"));
     // `CKA_SIGN` / `CKA_VERIFY` of the `C_GenerateKey` template grant the MAC usage bits. An HSM
@@ -626,7 +634,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
         let request = symmetric_key_create_request(
             vendor_id,
             label.map(|label| UniqueIdentifier::TextString(label.to_owned())),
-            key_length * 8,
+            key_bits,
             cryptographic_algorithm,
             &tags,
             sensitive,
@@ -664,7 +672,7 @@ pub(crate) fn kms_import_object(
     label: &str,
     data: &[u8],
 ) -> Pkcs11Result<KmsObject> {
-    RUNTIME.block_on(kms_import_object_async(
+    runtime()?.block_on(kms_import_object_async(
         kms_rest_client,
         vendor_id,
         label,
@@ -735,7 +743,7 @@ pub(crate) fn kms_revoke_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    RUNTIME.block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
+    runtime()?.block_on(kms_revoke_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_revoke_object_async(
@@ -761,7 +769,7 @@ pub(crate) fn kms_destroy_object(
     kms_rest_client: &KmsClient,
     unique_identifier: &str,
 ) -> Pkcs11Result<()> {
-    RUNTIME.block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
+    runtime()?.block_on(kms_destroy_object_async(kms_rest_client, unique_identifier))
 }
 
 pub(crate) async fn kms_destroy_object_async(
@@ -786,7 +794,7 @@ pub(crate) fn kms_encrypt(
     data: Vec<u8>,
 ) -> Pkcs11Result<Vec<u8>> {
     let mut output =
-        RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, false))?;
+        runtime()?.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, false))?;
     if matches!(encrypt_ctx.algorithm, EncryptionAlgorithm::AesGcm) {
         output.ciphertext.extend_from_slice(&output.tag);
     }
@@ -799,7 +807,7 @@ pub(crate) fn kms_encrypt_message(
     encrypt_ctx: &EncryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<MessageEncryptionOutput> {
-    RUNTIME.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, true))
+    runtime()?.block_on(kms_encrypt_async(kms_rest_client, encrypt_ctx, data, true))
 }
 
 async fn kms_encrypt_async(
@@ -884,7 +892,7 @@ pub(crate) fn kms_decrypt(
     decrypt_ctx: &DecryptContext,
     data: Vec<u8>,
 ) -> Pkcs11Result<Zeroizing<Vec<u8>>> {
-    RUNTIME.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
+    runtime()?.block_on(kms_decrypt_async(kms_rest_client, decrypt_ctx, data))
 }
 
 pub(crate) async fn kms_decrypt_async(
@@ -971,7 +979,7 @@ pub(crate) fn kms_sign(
     key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<Vec<u8>> {
     let runtime_block_on = profiling::phase(SignPhase::RuntimeBlockOn);
-    let result = RUNTIME.block_on(kms_sign_async(
+    let result = runtime()?.block_on(kms_sign_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
@@ -1410,7 +1418,7 @@ pub(crate) fn kms_verify(
     signature: &[u8],
     key_algorithm: KeyAlgorithm,
 ) -> Pkcs11Result<()> {
-    RUNTIME.block_on(kms_verify_async(
+    runtime()?.block_on(kms_verify_async(
         kms_rest_client,
         unique_identifier,
         algorithm,
@@ -1502,7 +1510,7 @@ pub(crate) fn kms_mac(
         i_v_counter_nonce: iv.map(Into::into),
         ..Default::default()
     };
-    let response = RUNTIME.block_on(kms_rest_client.mac(request))?;
+    let response = runtime()?.block_on(kms_rest_client.mac(request))?;
     let mac_data = response.mac_data.ok_or_else(|| {
         Pkcs11Error::ServerError("MAC response does not contain MAC data".to_owned())
     })?;
@@ -1541,7 +1549,7 @@ pub(crate) fn kms_mac_verify(
         init_indicator: None,
         final_indicator: None,
     };
-    let response = RUNTIME.block_on(kms_rest_client.mac_verify(request))?;
+    let response = runtime()?.block_on(kms_rest_client.mac_verify(request))?;
     match response.validity_indicator {
         Some(ValidityIndicator::Valid) => Ok(()),
         Some(ValidityIndicator::Invalid | ValidityIndicator::Unknown) | None => {
@@ -1554,7 +1562,7 @@ pub(crate) fn get_kms_object_attributes(
     kms_client: &KmsClient,
     object_id: &str,
 ) -> Pkcs11Result<Attributes> {
-    RUNTIME.block_on(get_kms_object_attributes_async(kms_client, object_id))
+    runtime()?.block_on(get_kms_object_attributes_async(kms_client, object_id))
 }
 
 pub(crate) async fn get_kms_object_attributes_async(
@@ -1661,6 +1669,50 @@ mod tests {
         ] {
             assert!(!is_export_denial(&error), "{error} must surface");
         }
+    }
+
+    #[test]
+    fn test_setup_runtime_failure_is_cached() {
+        let creations = std::sync::atomic::AtomicUsize::new(0);
+        let cache = std::sync::LazyLock::new(|| {
+            creations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(std::io::Error::other("runtime unavailable"))
+        });
+        for _ in 0..2 {
+            assert!(matches!(
+                runtime_result(&cache),
+                Err(Pkcs11Error::ServerError(_))
+            ));
+        }
+        assert_eq!(creations.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn test_setup_key_length_checked_before_allocation() -> Pkcs11Result<()> {
+        let client = KmsClient::new_with_config(KmsClientConfig::default())?;
+        for length in [usize::MAX, usize::try_from(i32::MAX)?] {
+            if !matches!(
+                kms_import_symmetric_key_async(
+                    &client,
+                    VENDOR_ID_COSMIAN,
+                    KeyAlgorithm::Aes256,
+                    length,
+                    true,
+                    None,
+                    MacUsage {
+                        generate: false,
+                        verify: false,
+                    },
+                )
+                .await,
+                Err(Pkcs11Error::Conversion(_) | Pkcs11Error::TryFromInt(_))
+            ) {
+                return Err(Pkcs11Error::Default(
+                    "oversized key length was not rejected before allocation".to_owned(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     #[test]

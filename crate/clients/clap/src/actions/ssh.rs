@@ -124,8 +124,8 @@ async fn fetch_ca_public_key(kms_rest_client: &KmsClient) -> KmsCliResult<String
 /// new public key.
 #[derive(Args, Debug)]
 pub struct CaCreateAction {
-    /// The elliptic curve of the CA key: an SSH CA accepts NIST P-256, P-384 and P-521, and
-    /// Ed25519 in non-FIPS mode.
+    /// The elliptic curve of the CA key: an SSH CA accepts NIST P-256, P-384, P-521 and
+    /// Ed25519.
     #[clap(long = "curve", short = 'c', default_value = "nist-p256")]
     pub curve: Curve,
 
@@ -147,15 +147,16 @@ impl CaCreateAction {
         // Refuse curves the SSH CA rejects before creating a key pair that would be left unused.
         match self.curve {
             Curve::NistP256 | Curve::NistP384 | Curve::NistP521 => {}
-            #[cfg(feature = "non-fips")]
             Curve::Ed25519 => {}
             #[cfg(feature = "non-fips")]
             Curve::X25519
             | Curve::X448
-            | Curve::Ed448
             | Curve::Secp256k1
             | Curve::Secp192k1
             | Curve::Secp224k1 => {
+                cli_bail!("an SSH CA key must use NIST P-256, P-384, P-521 or Ed25519")
+            }
+            Curve::Ed448 => {
                 cli_bail!("an SSH CA key must use NIST P-256, P-384, P-521 or Ed25519")
             }
         }

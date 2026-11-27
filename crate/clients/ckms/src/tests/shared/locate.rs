@@ -1,6 +1,8 @@
+use cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::extra::tagging::SYSTEM_TAG_SYMMETRIC_KEY;
+// CoverCrypt and EC key tests are non-FIPS.
+#[cfg(feature = "non-fips")]
 use cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::extra::tagging::{
     SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY,
-    SYSTEM_TAG_SYMMETRIC_KEY,
 };
 #[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
