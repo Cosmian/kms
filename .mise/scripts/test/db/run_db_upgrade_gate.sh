@@ -318,7 +318,7 @@ stop_host_kms() {
 # Start the old server (host binary with --old-kms, else release container).
 start_old() {
   if [ -n "${OLD_KMS}" ]; then
-    start_host_kms "${OLD_KMS}" "$1" "$2" "$3"
+    start_host_kms "${OLD_KMS}" "$2" "$3" "$4"
   else
     start_kms_container "$@"
   fi
