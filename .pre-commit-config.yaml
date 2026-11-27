@@ -374,7 +374,7 @@ repos:
       # ── Core server crates ────────────────────────────────────────────
       - id: test-cosmian_kms_server
         name: cargo test cosmian_kms_server
-        entry: cargo test -p cosmian_kms_server --lib --features non-fips --quiet
+        entry: cargo test -p cosmian_kms_server --lib --features non-fips,insecure --quiet
         language: system
         files: ^crate/server/
         pass_filenames: false
