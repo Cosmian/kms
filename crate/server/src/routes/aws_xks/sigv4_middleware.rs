@@ -157,9 +157,8 @@ where
 
         Box::pin(async move {
             let params = kms_server.params.aws_xks_params.clone().ok_or_else(|| {
-                xks_internal_error(
-                    "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set"
-                        .to_owned(),
+                actix_web::error::ErrorInternalServerError(
+                    "AWS XKS Sigv4 middleware should not be enabled if the aws_xks_params are not set",
                 )
             })?;
             let (actix_web_http_request, body): (actix_web::HttpRequest, actix_web::dev::Payload) =
@@ -190,7 +189,7 @@ where
                     .acquire()
                     .await
                     .map_err(|error| {
-                        xks_internal_error(format!(
+                        actix_web::error::ErrorInternalServerError(format!(
                             "SigV4 verification semaphore unexpectedly closed: {error}"
                         ))
                     })?;
@@ -205,7 +204,9 @@ where
                 })
                 .await
                 .map_err(|join_err| {
-                    xks_internal_error(format!("SigV4 verification task panicked: {join_err}"))
+                    actix_web::error::ErrorInternalServerError(format!(
+                        "SigV4 verification task panicked: {join_err}"
+                    ))
                 })?;
                 drop(permit);
 
@@ -269,15 +270,6 @@ async fn read_bounded_body(mut body: Payload, limit: usize) -> Result<Bytes, Err
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes.freeze())
-}
-
-/// A 5xx XKS reply: the detail is logged, the client only gets a generic message and request id.
-fn xks_internal_error(detail: String) -> Error {
-    XksErrorReply {
-        errorName: XksErrorName::Internal,
-        errorMessage: Some(detail),
-    }
-    .into()
 }
 
 fn enforce_sigv4_request_freshness<B>(

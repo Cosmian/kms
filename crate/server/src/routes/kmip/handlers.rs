@@ -388,11 +388,10 @@ pub(crate) async fn kmip_json(
             });
     let mut buf = Vec::with_capacity(512);
     if let Err(e) = serde_json::to_writer(&mut buf, &json) {
-        let (mut builder, message) = crate::routes::internal_error(
-            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("Failed to serialize response to JSON: {e}"),
-        );
-        return builder.json(serde_json::json!({ "error": message }));
+        error!(target: "kmip", "Failed to serialize response to JSON: {e}");
+        return HttpResponse::InternalServerError()
+            .content_type("application/json")
+            .body(r#"{"error":"internal serialization failure"}"#);
     }
     HttpResponse::Ok()
         .content_type("application/json")

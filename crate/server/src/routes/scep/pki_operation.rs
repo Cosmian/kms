@@ -28,7 +28,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
         },
     },
 };
-use cosmian_logger::{info, warn};
+use cosmian_logger::{error, info, warn};
 use openssl::{
     pkey::{Id, PKey, Private},
     sha::sha256,
@@ -188,10 +188,10 @@ pub(super) async fn pki_operation(
         Ok(material) => material,
         Err(e) => {
             // The caller is not authenticated: CA / key UIDs and permission details stay in the log.
-            return Ok(crate::routes::internal_error_response(
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("SCEP: the enrollment CA `{ca_uid}` cannot be used: {e}"),
-            ));
+            error!("SCEP: the enrollment CA `{ca_uid}` cannot be used: {e}");
+            return Ok(HttpResponse::InternalServerError()
+                .content_type("text/plain; charset=utf-8")
+                .body("the enrollment CA is not available"));
         }
     };
 

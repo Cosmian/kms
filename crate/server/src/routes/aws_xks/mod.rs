@@ -146,42 +146,6 @@ mod characterization_tests {
         );
     }
 
-    #[actix_web::test]
-    async fn xks_5xx_replies_hide_error_message() {
-        for (name, status, label) in [
-            (XksErrorName::Internal, 500_u16, "InternalException"),
-            (
-                XksErrorName::DependencyTimeout,
-                503,
-                "DependencyTimeoutException",
-            ),
-            (
-                XksErrorName::UnsupportedOperation,
-                501,
-                "UnsupportedOperationException",
-            ),
-        ] {
-            let response = actix_web::HttpResponse::from(reply(name, Some("secret")));
-            assert_eq!(response.status().as_u16(), status, "{label}");
-            let id = response
-                .headers()
-                .get("x-request-id")
-                .and_then(|v| v.to_str().ok())
-                .expect("x-request-id header")
-                .to_owned();
-            let body = actix_web::body::to_bytes(response.into_body())
-                .await
-                .expect("body");
-            let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
-            assert_eq!(json["errorName"], label);
-            assert_eq!(
-                json["errorMessage"],
-                format!("Internal Server Error (request id: {id})")
-            );
-            assert!(!String::from_utf8_lossy(&body).contains("secret"));
-        }
-    }
-
     #[test]
     fn characterization_xks_json_error_handler_deserialize_and_other() {
         let req = actix_test::TestRequest::default().to_http_request();

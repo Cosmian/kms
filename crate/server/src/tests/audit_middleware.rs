@@ -677,7 +677,7 @@ async fn reject_mode_returns_503_when_audit_unavailable() -> KResult<()> {
         "reject mode must return 503 when audit event cannot be queued"
     );
     let body = actix_web::test::read_body(res).await;
-    assert!(body.starts_with(b"Internal Server Error (request id: "));
+    assert_eq!(body.as_ref(), b"Service unavailable");
 
     let persisted = kms
         .database

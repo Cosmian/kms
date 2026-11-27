@@ -2,10 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{
     HttpMessage, HttpRequest, HttpResponse, get,
-    http::{
-        StatusCode,
-        header::{self, SET_COOKIE},
-    },
+    http::header::{self, SET_COOKIE},
     post, web,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -28,7 +25,6 @@ use crate::{
         reject_reserved_service_identity, request_cookie, validate_jwt_svid,
     },
     result::KResult,
-    routes::{internal_error, internal_error_json_response, internal_error_response},
 };
 
 fn random_b64url(rng: &KmsRng, len_bytes: usize) -> Result<String, ()> {
@@ -50,51 +46,33 @@ pub(crate) async fn login(
     kms: web::Data<Arc<KMS>>,
 ) -> HttpResponse {
     let Some(ref discovered) = oidc_runtime.discovered else {
-        return internal_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"OIDC is not configured or discovery failed at startup",
-        );
+        return HttpResponse::InternalServerError()
+            .body("OIDC is not configured or discovery failed at startup");
     };
 
     let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
-        None => {
-            return internal_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &"Client ID is missing",
-            );
-        }
+        None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
 
     let redirect_url = format!("{}/ui/callback", kms_url.as_str());
 
     let Ok(pkce_verifier) = random_b64url(&kms.rng, 32) else {
-        return internal_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"Failed to create PKCE verifier",
-        );
+        return HttpResponse::InternalServerError().body("Failed to create PKCE verifier");
     };
     let pkce_challenge = pkce_challenge_from_verifier(&pkce_verifier);
     let Ok(csrf_token) = random_b64url(&kms.rng, 16) else {
-        return internal_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"Failed to create CSRF token",
-        );
+        return HttpResponse::InternalServerError().body("Failed to create CSRF token");
     };
     let Ok(nonce) = random_b64url(&kms.rng, 16) else {
-        return internal_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"Failed to create nonce",
-        );
+        return HttpResponse::InternalServerError().body("Failed to create nonce");
     };
 
     let mut auth_url = match Url::parse(&discovered.authorization_endpoint) {
         Ok(u) => u,
         Err(e) => {
-            return internal_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Invalid authorization endpoint: {e}"),
-            );
+            return HttpResponse::InternalServerError()
+                .body(format!("Invalid authorization endpoint: {e}"));
         }
     };
 
@@ -117,10 +95,7 @@ pub(crate) async fn login(
         user_id: None,
     };
     let Ok(set_cookie) = session_cookie.set_cookie(&session) else {
-        return internal_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"Failed to create the session cookie",
-        );
+        return HttpResponse::InternalServerError().body("Failed to create the session cookie");
     };
 
     HttpResponse::Found()
@@ -137,10 +112,8 @@ pub(crate) async fn callback(
     kms_url: web::Data<String>,
 ) -> HttpResponse {
     let Some(ref discovered) = oidc_runtime.discovered else {
-        return internal_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"OIDC is not configured or discovery failed at startup",
-        );
+        return HttpResponse::InternalServerError()
+            .body("OIDC is not configured or discovery failed at startup");
     };
 
     let Ok(query) = web::Query::<HashMap<String, String>>::from_query(req.query_string()) else {
@@ -177,22 +150,12 @@ pub(crate) async fn callback(
 
     let client_id = match &oidc_runtime.config.client_id {
         Some(id) => id.clone(),
-        None => {
-            return internal_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &"Client ID is missing",
-            );
-        }
+        None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
 
     let issuer = match &oidc_runtime.config.issuer_url {
         Some(url) => url.clone(),
-        None => {
-            return internal_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &"Issuer URL is missing",
-            );
-        }
+        None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
     };
 
     let redirect_url = format!("{}/ui/callback", kms_url.as_str());
@@ -202,10 +165,7 @@ pub(crate) async fn callback(
         .redirect(reqwest::redirect::Policy::none())
         .build()
     else {
-        return internal_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"Failed to build HTTP client",
-        );
+        return HttpResponse::InternalServerError().body("Failed to build HTTP client");
     };
 
     // Exchange code for tokens using the cached token endpoint (no discovery fetch needed).
@@ -228,20 +188,16 @@ pub(crate) async fn callback(
     {
         Ok(r) => r,
         Err(e) => {
-            return internal_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Failed to exchange auth code: {e}"),
-            );
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to exchange auth code: {e}"));
         }
     };
 
     let json: Value = match resp.json().await {
         Ok(v) => v,
         Err(e) => {
-            return internal_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Failed to parse token response: {e}"),
-            );
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to parse token response: {e}"));
         }
     };
 
@@ -255,10 +211,11 @@ pub(crate) async fn callback(
             .get("error_description")
             .and_then(|v| v.as_str())
             .unwrap_or("(none)");
-        return internal_error_json_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("No id_token in response (error: {auth0_error}, description: {auth0_desc})"),
-        );
+        return HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": "No id_token in response",
+            "auth0_error": auth0_error,
+            "auth0_error_description": auth0_desc,
+        }));
     };
 
     // Validate the id_token using the JwksManager. The authorization_endpoint and
@@ -296,26 +253,20 @@ pub(crate) async fn callback(
             // Key unknown: the IdP may have rotated its signing keys since startup.
             // Force a refresh (throttled to 60s) and retry once.
             if let Err(e) = discovered.jwks_manager.refresh().await {
-                return internal_error_json_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    &format!("JWKS refresh failed: {e}"),
-                );
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": format!("JWKS refresh failed: {e}") }));
             }
             match discovered.jwks_manager.find(&kid) {
                 Ok(k) => k,
                 Err(e) => {
-                    return internal_error_json_response(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        &format!("JWKS lookup failed: {e}"),
-                    );
+                    return HttpResponse::InternalServerError()
+                        .json(serde_json::json!({ "error": format!("JWKS lookup failed: {e}") }));
                 }
             }
         }
         Err(e) => {
-            return internal_error_json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("JWKS lookup failed: {e}"),
-            );
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": format!("JWKS lookup failed: {e}") }));
         }
     };
     let Some(jwk) = jwk else {
@@ -492,15 +443,13 @@ pub(crate) async fn login_as(
     }
     let config = &auth_verifier_runtime.config;
     if !config.ui_login_enabled() {
-        return internal_error_json_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"The Auth Verifier server is not configured for the Web UI",
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "The Auth Verifier server is not configured for the Web UI" }),
         );
     }
     let Some(auth_verifier) = &auth_verifier_runtime.auth_verifier else {
-        return internal_error_json_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"The Auth Verifier server validator is not available",
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "The Auth Verifier server validator is not available" }),
         );
     };
     // Guaranteed non-empty by `ui_login_enabled()`.
@@ -508,23 +457,19 @@ pub(crate) async fn login_as(
         config.auth_verifier_url.as_deref(),
         config.auth_verifier_realm.as_deref(),
     ) else {
-        return internal_error_json_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"The Auth Verifier server is not configured for the Web UI",
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "The Auth Verifier server is not configured for the Web UI" }),
         );
     };
 
     let Ok(mut url) = Url::parse(server_url.trim_end_matches('/')) else {
-        return internal_error_json_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"Invalid Auth Verifier server URL",
-        );
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Invalid Auth Verifier server URL" }));
     };
     {
         let Ok(mut segments) = url.path_segments_mut() else {
-            return internal_error_json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &"Invalid Auth Verifier server URL: cannot be a base",
+            return HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": "Invalid Auth Verifier server URL: cannot be a base" }),
             );
         };
         segments.push("login");
@@ -534,10 +479,8 @@ pub(crate) async fn login_as(
     let client = match hardened_client_builder(config.auth_verifier_accept_invalid_certs).build() {
         Ok(c) => c,
         Err(e) => {
-            return internal_error_json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Failed to build HTTP client: {e}"),
-            );
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": format!("Failed to build HTTP client: {e}") }));
         }
     };
 
@@ -556,9 +499,8 @@ pub(crate) async fn login_as(
     {
         Ok(r) => r,
         Err(e) => {
-            return internal_error_json_response(
-                StatusCode::BAD_GATEWAY,
-                &format!("Failed to reach the Auth Verifier server: {e}"),
+            return HttpResponse::BadGateway().json(
+                serde_json::json!({ "error": format!("Failed to reach the Auth Verifier server: {e}") }),
             );
         }
     };
@@ -592,18 +534,16 @@ pub(crate) async fn login_as(
     let body_bytes = match response.bytes().await {
         Ok(b) => b,
         Err(e) => {
-            return internal_error_json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Failed to read login response: {e}"),
+            return HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": format!("Failed to read login response: {e}") }),
             );
         }
     };
     let result: AuthVerifierAuthenticationResult = match serde_json::from_slice(&body_bytes) {
         Ok(r) => r,
         Err(e) => {
-            return internal_error_json_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Failed to parse login response: {e}"),
+            return HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": format!("Failed to parse login response: {e}") }),
             );
         }
     };
@@ -617,7 +557,9 @@ pub(crate) async fn login_as(
         ),
         AuthVerifierAuthenticationNextStep::Authenticated => {
             let Some(token) = session_token else {
-                return internal_error_json_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Auth Verifier server did not set the `{AUTH_VERIFIER_SESSION_COOKIE}` session cookie"));
+                return HttpResponse::InternalServerError().json(
+                    serde_json::json!({ "error": format!("Auth Verifier server did not set the `{AUTH_VERIFIER_SESSION_COOKIE}` session cookie") }),
+                );
             };
 
             let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(auth_verifier, &token, Some(realm)).await
@@ -669,9 +611,8 @@ pub(crate) async fn login_svid(
     jwt_configurations: web::Data<Arc<Vec<JwtConfig>>>,
 ) -> HttpResponse {
     if !jwt_configurations.iter().any(|c| c.accept_spiffe_subject) {
-        return internal_error_json_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"SPIFFE JWT-SVID login is not enabled on this server",
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "SPIFFE JWT-SVID login is not enabled on this server" }),
         );
     }
 
@@ -743,9 +684,8 @@ pub(crate) async fn login_saml(
     kms_url: web::Data<String>,
 ) -> HttpResponse {
     let Some(realm) = auth_verifier_runtime.config.saml_session_realm() else {
-        return internal_error_json_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &"SAML single sign-on is not configured on this server",
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "SAML single sign-on is not configured on this server" }),
         );
     };
     match saml_login_url(kms_url.as_str(), realm) {
@@ -757,7 +697,7 @@ pub(crate) async fn login_saml(
                 .insert_header((SET_COOKIE, session_cookie.removal_cookie()))
                 .finish()
         }
-        Err(e) => internal_error_json_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
     }
 }
 
@@ -804,22 +744,19 @@ pub(crate) async fn logout(
     let mut logout_url = match Url::parse(url) {
         Ok(parsed_url) => parsed_url,
         Err(e) => {
-            let (mut builder, message) = internal_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Invalid logout URL: {e}"),
-            );
-            return builder
+            return HttpResponse::InternalServerError()
                 .append_header((SET_COOKIE, session_cookie.removal_cookie()))
-                .body(message);
+                .body(format!("Invalid logout URL: {e}"));
         }
     };
 
-    let Some(client_id) = oidc_runtime.config.client_id.clone() else {
-        let (mut builder, message) =
-            internal_error(StatusCode::INTERNAL_SERVER_ERROR, &"Client ID is missing");
-        return builder
-            .append_header((SET_COOKIE, session_cookie.removal_cookie()))
-            .body(message);
+    let client_id = match &oidc_runtime.config.client_id {
+        Some(id) => id.clone(),
+        None => {
+            return HttpResponse::InternalServerError()
+                .append_header((SET_COOKIE, session_cookie.removal_cookie()))
+                .body("Client ID is missing");
+        }
     };
     let redirect_url = format!("{}/ui/login", kms_url.as_str());
 
@@ -925,10 +862,8 @@ fn login_cookie(session_cookie: &UiSessionCookie, user_id: UserId) -> Option<Str
 }
 
 fn session_store_failure() -> HttpResponse {
-    internal_error_json_response(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        &"Failed to store user_id in session",
-    )
+    HttpResponse::InternalServerError()
+        .json(serde_json::json!({ "error": "Failed to store user_id in session" }))
 }
 
 #[get("/auth_method")]
@@ -1113,14 +1048,6 @@ mod tests {
         )
         .await;
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert!(resp.headers().contains_key("x-request-id"));
-        let body: serde_json::Value = test::read_body_json(resp).await;
-        assert!(
-            body["error"]
-                .as_str()
-                .is_some_and(|m| m.starts_with("Internal Server Error (request id: ")),
-            "{body}"
-        );
     }
 
     async fn whoami_status(

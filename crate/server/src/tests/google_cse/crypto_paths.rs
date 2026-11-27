@@ -293,8 +293,7 @@ async fn private_key_sign_unknown_algorithm() {
         "/google_cse/privatekeysign",
     )
     .await;
-    // Unsupported algorithm is a 5xx here: its detail is logged, not returned.
-    assert_failed(&reply, "Internal Server Error (request id: ");
+    assert_failed(&reply, "Padding algorithm not handled.");
 }
 
 #[tokio::test]
@@ -614,8 +613,10 @@ async fn privileged_private_key_decrypt_spki_mismatch() {
         "/google_cse/privilegedprivatekeydecrypt",
     )
     .await;
-    // The mismatch is an internal error: its detail is logged, not returned.
-    assert_failed(&reply, "Internal Server Error (request id: ");
+    assert_failed(
+        &reply,
+        "spki_hash does not match with the associated private key.",
+    );
 }
 
 #[tokio::test]

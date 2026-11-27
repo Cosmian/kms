@@ -74,13 +74,7 @@ impl actix_web::error::ResponseError for CryptoApiError {
             Self::DecryptionFailed => ("decryption_failed", "Decryption failed"),
             Self::Forbidden(_) => ("forbidden", "Access denied"),
             Self::NotFound(_) => ("not_found", "Key not found"),
-            Self::InternalError(detail) => {
-                let (mut builder, description) = crate::routes::internal_error(status, detail);
-                return builder.json(CryptoErrorBody {
-                    error: "internal_error".to_owned(),
-                    description,
-                });
-            }
+            Self::InternalError(_) => ("internal_error", "Internal server error"),
         };
 
         if status >= StatusCode::BAD_REQUEST {
@@ -203,6 +197,12 @@ mod characterization_tests {
                 "Decryption failed",
                 r#"{"error":"decryption_failed","description":"Decryption failed"}"#,
             ),
+            (
+                CryptoApiError::InternalError("i".to_owned()),
+                500,
+                "i",
+                r#"{"error":"internal_error","description":"Internal server error"}"#,
+            ),
         ] {
             assert_eq!(e.to_string(), display);
             let resp = e.error_response();
@@ -210,21 +210,6 @@ mod characterization_tests {
             let bytes = actix_web::body::to_bytes(resp.into_body()).await.unwrap();
             assert_eq!(String::from_utf8(bytes.to_vec()).unwrap(), body);
         }
-    }
-
-    #[tokio::test]
-    async fn internal_error_hides_details_behind_a_request_id() {
-        let resp = CryptoApiError::InternalError("i".to_owned()).error_response();
-        assert_eq!(resp.status().as_u16(), 500);
-        assert!(resp.headers().contains_key("x-request-id"));
-        let bytes = actix_web::body::to_bytes(resp.into_body()).await.unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(
-            body.starts_with(
-                r#"{"error":"internal_error","description":"Internal Server Error (request id: "#
-            ),
-            "{body}"
-        );
     }
 
     #[test]

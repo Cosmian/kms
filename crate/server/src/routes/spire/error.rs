@@ -1,6 +1,7 @@
 //! Shared error type for the SPIRE-compatible API routes.
 
 use actix_web::HttpResponse;
+use cosmian_logger::warn;
 use serde_json::json;
 
 use crate::error::KmsError;
@@ -35,11 +36,11 @@ impl actix_web::error::ResponseError for SpireApiError {
             Self::NotFound(m) => (actix_web::http::StatusCode::NOT_FOUND, m.clone()),
             Self::Forbidden(m) => (actix_web::http::StatusCode::FORBIDDEN, m.clone()),
             Self::InternalError(m) => {
-                let (mut builder, message) = crate::routes::internal_error(
+                warn!("SPIRE API internal error: {m}");
+                (
                     actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    m,
-                );
-                return builder.json(json!({"errors": [message]}));
+                    m.clone(),
+                )
             }
         };
         HttpResponse::build(status).json(json!({"errors": [msg]}))
@@ -48,25 +49,3 @@ impl actix_web::error::ResponseError for SpireApiError {
 
 /// Convenience alias for SPIRE API results.
 pub(crate) type SpireResult<T> = Result<T, SpireApiError>;
-
-#[cfg(test)]
-mod tests {
-    use actix_web::{ResponseError, body::to_bytes};
-
-    use super::SpireApiError;
-
-    #[actix_web::test]
-    async fn internal_errors_hide_details() {
-        let response = SpireApiError::InternalError("db at /x".to_owned()).error_response();
-        assert_eq!(response.status().as_u16(), 500);
-        assert!(response.headers().contains_key("x-request-id"));
-        let body = to_bytes(response.into_body()).await.expect("body");
-        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
-        assert!(
-            json["errors"][0]
-                .as_str()
-                .is_some_and(|m| m.starts_with("Internal Server Error (request id: "))
-        );
-        assert!(!String::from_utf8_lossy(&body).contains("db at /x"));
-    }
-}

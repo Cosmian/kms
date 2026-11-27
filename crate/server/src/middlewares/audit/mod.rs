@@ -32,16 +32,16 @@ use std::{
 };
 
 use actix_web::{
-    Error, HttpMessage,
+    Error, HttpMessage, HttpResponse,
     body::{BoxBody, EitherBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
-    http::StatusCode,
 };
 use client_ip::{extract_client_ip, extract_operation};
 pub(crate) use client_ip::{forwarded_for, resolve_client_ip};
 use cosmian_kms_access::audit::{
     AuditEventDraft, AuditResult, OperationAuditContext, RequestAuditContext, audit_now,
 };
+use cosmian_logger::error;
 pub(crate) use extensions::{
     BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid, KmipOperationName,
 };
@@ -57,7 +57,6 @@ use crate::{
     config::AuditFailureMode,
     core::{KMS, audit::AuditStore},
     middlewares::AuthenticatedUser,
-    routes::internal_error_response,
 };
 
 const UNAUTHENTICATED: &str = "unauthenticated";
@@ -187,13 +186,11 @@ where
             if let Some(drafts) = batch_drafts {
                 let all_queued = store.enqueue(drafts);
                 if !all_queued && failure_mode == AuditFailureMode::Reject {
+                    error!("audit: event(s) not queued — rejecting response (reject mode)");
                     let req = res.request().clone();
                     return Ok(ServiceResponse::new(
                         req,
-                        internal_error_response(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            &"audit: event(s) not queued (reject mode)",
-                        ),
+                        HttpResponse::ServiceUnavailable().body("Service unavailable"),
                     )
                     .map_into_right_body());
                 }
@@ -243,13 +240,11 @@ where
 
             let all_queued = store.enqueue(std::iter::once(draft));
             if !all_queued && failure_mode == AuditFailureMode::Reject {
+                error!("audit: event not queued — rejecting response (reject mode)");
                 let req = res.request().clone();
                 return Ok(ServiceResponse::new(
                     req,
-                    internal_error_response(
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        &"audit: event not queued (reject mode)",
-                    ),
+                    HttpResponse::ServiceUnavailable().body("Service unavailable"),
                 )
                 .map_into_right_body());
             }
