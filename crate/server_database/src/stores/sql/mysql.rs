@@ -357,11 +357,11 @@ impl MySqlPool {
     async fn sync_stored_state(&self) -> DbResult<()> {
         let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
         let update_sql = get_mysql_query!("update-object-state-json");
-        let rows: Vec<(String, String, Value, String)> = conn
+        let rows: Vec<(String, String, Value, String, String)> = conn
             .query(get_mysql_query!("select-objects-state-sync"))
             .await
             .map_err(DbError::from)?;
-        for (id, object_json, attributes, state) in rows {
+        for (id, object_json, attributes, state, attributes_text) in rows {
             if let Some((object, synced)) =
                 synced_state_json(&id, &state, &object_json, attributes.clone())
             {
@@ -372,7 +372,7 @@ impl MySqlPool {
                         synced.to_string(),
                         &id,
                         &object_json,
-                        attributes.to_string(),
+                        &attributes_text,
                         &state,
                     ),
                 )
