@@ -567,15 +567,25 @@ impl PgPool {
         for row in &rows {
             let id: String = row.try_get(0).map_err(DbError::from)?;
             let object_json: String = row.try_get(1).map_err(DbError::from)?;
-            let Json(attributes): Json<serde_json::Value> =
+            let Json(read_attributes): Json<serde_json::Value> =
                 row.try_get(2).map_err(DbError::from)?;
             let state: String = row.try_get(3).map_err(DbError::from)?;
             if let Some((object, attributes)) =
-                synced_state_json(&id, &state, &object_json, attributes)
+                synced_state_json(&id, &state, &object_json, read_attributes.clone())
             {
-                tx.execute(&update_stmt, &[&object, &Json(attributes), &id])
-                    .await
-                    .map_err(DbError::from)?;
+                tx.execute(
+                    &update_stmt,
+                    &[
+                        &object,
+                        &Json(attributes),
+                        &id,
+                        &object_json,
+                        &Json(read_attributes),
+                        &state,
+                    ],
+                )
+                .await
+                .map_err(DbError::from)?;
             }
         }
         tx.commit().await.map_err(DbError::from)

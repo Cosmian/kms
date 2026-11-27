@@ -7,7 +7,6 @@ use cosmian_kms_client::{
         requests::create_pqc_key_pair_request,
     },
 };
-#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::{
     pqc_private_key_pkcs8_to_raw, pqc_public_key_spki_to_raw,
 };

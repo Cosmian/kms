@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
@@ -9,6 +7,7 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_attributes::Attributes,
+            kmip_objects::Object,
             kmip_operations::Certify,
             kmip_types::{LinkType, LinkedObjectIdentifier, UniqueIdentifier},
         },
@@ -19,10 +18,9 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::trace;
 use openssl::pkey::{PKey, Public};
 
-#[cfg(feature = "non-fips")]
-use super::rfc9935;
 use super::{
     issuer::{Issuer, IssuerKey},
+    rfc9935,
     subject::Subject,
 };
 use crate::{
@@ -302,7 +300,6 @@ async fn issuer_for_self_signed_certificate<'a>(
         }
         Subject::KeypairAndSubjectName(unique_identifier, keypair_data, subject_name) => {
             // RFC 9935: KEM keys cannot self-sign — they must be issued by a signing CA.
-            #[cfg(feature = "non-fips")]
             {
                 let algo = if let Object::PrivateKey(sk) = &keypair_data.private_key_object {
                     sk.key_block.cryptographic_algorithm

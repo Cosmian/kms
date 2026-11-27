@@ -342,7 +342,6 @@ mod official_vectors {
         check_eddsa_groups(&crate::kat_vectors::ed25519_groups().unwrap(), Id::ED25519);
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn test_ed448_official_vectors() {
         check_eddsa_groups(&crate::kat_vectors::ed448_groups().unwrap(), Id::ED448);

@@ -308,7 +308,9 @@ fn group_description(group_id: &str) -> Option<&'static str> {
         // Key creation
         "key-creation/symmetric" => Some("AES (and ChaCha20 in non-FIPS) symmetric key creation."),
         "key-creation/rsa" => Some("RSA key pair generation (2048/3072/4096-bit)."),
-        "key-creation/ec" => Some("Elliptic curve key pair generation (NIST and non-FIPS curves)."),
+        "key-creation/ec" => {
+            Some("Elliptic curve key pair generation (NIST, Edwards and non-FIPS curves).")
+        }
         "key-creation/covercrypt" => Some("Covercrypt master key pair generation. Non-FIPS."),
         "key-creation/kem" => {
             Some("Configurable KEM key pair generation (ML-KEM, hybrid variants). Non-FIPS.")

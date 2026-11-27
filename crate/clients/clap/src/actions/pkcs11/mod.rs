@@ -92,6 +92,22 @@ pub enum Pkcs11Commands {
 }
 
 impl Pkcs11Commands {
+    /// Runs `verify`, which drives the library under test with its own KMS client and needs none
+    /// of the CLI's. `None` for the other commands.
+    ///
+    /// The CLI must not create its client first: in a FIPS build that loads the FIPS module in
+    /// this process, and a second statically linked OpenSSL (the one inside the library under
+    /// test) cannot initialize the same module ("library has no ciphers").
+    #[must_use]
+    pub fn run_verify_standalone(&self) -> Option<KmsCliResult<()>> {
+        match self {
+            Self::Verify { dll, conf, token } => {
+                Some(verify::run_verify(dll, conf.as_deref(), token.as_deref()))
+            }
+            Self::Capabilities { .. } | Self::Bench(_) => None,
+        }
+    }
+
     /// Execute the PKCS#11 command.
     ///
     /// # Errors

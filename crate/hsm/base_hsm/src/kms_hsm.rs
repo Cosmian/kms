@@ -78,6 +78,12 @@ fn generate_hsm_keypair(
                 .map_err(|e| InterfaceError::Default(e.to_string()))?;
             session.generate_ec_key_pair(sk_id, pk_id, curve, sensitive, Some(tags))?;
         }
+        HsmKeypairAlgorithm::Ed25519 => {
+            session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed25519, sensitive, Some(tags))?;
+        }
+        HsmKeypairAlgorithm::Ed448 => {
+            session.generate_ec_key_pair(sk_id, pk_id, EcCurve::Ed448, sensitive, Some(tags))?;
+        }
     }
     Ok(())
 }

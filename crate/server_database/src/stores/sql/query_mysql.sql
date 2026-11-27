@@ -306,7 +306,7 @@ WHERE NOT EXISTS (SELECT 1 FROM tags s WHERE s.id = objects.id AND SUBSTR(s.tag,
 SELECT id, object, attributes, state FROM objects WHERE state IS NOT NULL AND attributes IS NOT NULL;
 
 -- name: update-object-state-json
-UPDATE objects SET object=?, attributes=? WHERE id=?;
+UPDATE objects SET object=?, attributes=? WHERE id=? AND object=? AND attributes=CAST(? AS JSON) AND state=?;
 
 -- name: has-index
 SELECT 1

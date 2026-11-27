@@ -53,8 +53,8 @@ It constrains KMIP requests by validating their declared cryptographic parameter
 
 In particular, it allowlists:
 
-- Cryptographic algorithms (all builds): `AES`, `RSA`, `ECDSA`, `ECDH`, `EC`, `HMACSHA256`, `HMACSHA384`, `HMACSHA512`
-- Cryptographic algorithms (non-FIPS builds only): `ChaCha20Poly1305`, `Ed25519`, `SHAKE128`, `SHAKE256`, `ConfigurableKEM`, `MLKEM_512`, `MLKEM_768`, `MLKEM_1024`, `X25519MLKEM768`, `X448MLKEM1024`, `MLDSA_44`, `MLDSA_65`, `MLDSA_87`
+- Cryptographic algorithms (all builds): `AES`, `RSA`, `ECDSA`, `ECDH`, `EC`, `HMACSHA256`, `HMACSHA384`, `HMACSHA512`, `Ed25519`, `MLKEM_512`, `MLKEM_768`, `MLKEM_1024`, `X25519MLKEM768`, `MLDSA_44`, `MLDSA_65`, `MLDSA_87`
+- Cryptographic algorithms (non-FIPS builds only): `ChaCha20Poly1305`, `SHAKE128`, `SHAKE256`, `ConfigurableKEM`, `X448MLKEM1024`
 - Hash functions: `SHA256`, `SHA384`, `SHA512`, `SHA3256`, `SHA3384`, `SHA3512`
 - Signature algorithms: `SHA256WithRSAEncryption`, `SHA384WithRSAEncryption`, `SHA512WithRSAEncryption`, `RSASSAPSS`, `ECDSAWithSHA256`, `ECDSAWithSHA384`, `ECDSAWithSHA512`
 - Curves: `P256`, `P384`, `P521`, `CURVE25519`, `CURVE448`

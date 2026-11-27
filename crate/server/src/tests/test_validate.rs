@@ -1,7 +1,7 @@
 // ── PQC X.509 Certificate Chain Validation Tests (RFC 9881 / RFC 9935) ────────────
 //
 // These tests validate PQC certificate chains using the KMIP Validate operation.
-// All functions are cfg(feature = "non-fips") because PQC algorithms are not FIPS-approved.
+// PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) are served by the FIPS provider: runs in both builds.
 //
 // RFC references:
 //   RFC 9881 — ML-DSA in X.509: keyUsage MUST be critical, MUST include digitalSignature
@@ -23,7 +23,6 @@
 //   - Certificates supplied out-of-order → sorted internally, still valid
 //   - All three ML-DSA variants (44, 65, 87) as roots → all valid
 //   - All three ML-KEM variants (512, 768, 1024) as CA-issued leaves → all valid
-#[cfg(feature = "non-fips")]
 mod pqc_validate_tests {
     use std::sync::Arc;
 

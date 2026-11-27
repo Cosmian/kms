@@ -98,7 +98,6 @@ fn test_hsm_idemia_sphere_all() -> HResult<()> {
     shared::rsa_sign_all_algorithms(&slot)?;
     shared::rsa_pss_sign_all_algorithms(&slot)?;
     shared::ecdsa_sign_all_curves_and_hashes(&slot)?;
-    #[cfg(feature = "non-fips")]
     shared::eddsa_sign_all_curves(&slot)?;
     shared::concurrent_sign_does_not_degrade(&slot)?;
     shared::get_key_metadata(&slot)?;

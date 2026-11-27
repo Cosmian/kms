@@ -83,6 +83,8 @@ pub(crate) async fn test_mac() -> CosmianResult<()> {
     Ok(())
 }
 
+// HMAC-SHA-1 is outside the conservative FIPS KMIP allowlist.
+#[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_mac_sha1() -> CosmianResult<()> {
     log_init(None);

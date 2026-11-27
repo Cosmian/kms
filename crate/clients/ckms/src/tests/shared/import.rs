@@ -13,7 +13,9 @@ use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
 
-use crate::tests::utils::{ckms_bin, owner_config};
+use crate::tests::utils::ckms_bin;
+#[cfg(feature = "non-fips")]
+use crate::tests::utils::owner_config;
 #[cfg(feature = "non-fips")]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,

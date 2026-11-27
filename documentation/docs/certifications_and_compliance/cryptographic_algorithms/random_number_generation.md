@@ -23,8 +23,8 @@ This page covers every random byte the server produces, then post-quantum (PQC) 
 | Do ML-KEM and ML-DSA key generation use `KmsRng`? | **Yes.** When `rng` is provided, 64-byte (ML-KEM) and 32-byte (ML-DSA) seeds are drawn from `KmsRng` and injected into OpenSSL |
 | Do SLH-DSA and hybrid KEM key generation use `KmsRng`? | **No.** SLH-DSA seed parameter is testing-only in OpenSSL; hybrid KEM composite keygen does not expose a seed parameter |
 | Is the entropy source ESV-validated? | Not claimed. Entropy comes from the operating system through OpenSSL, and no ESV certificate is referenced |
-| Is PQC key generation routed to a FIPS provider? | No. PQC algorithms are available in non-FIPS builds only |
-| Can a customer-supplied OpenSSL build satisfy ESV/FIPS 140-3 for PQC today? | Only in part. The CMVP-validated OpenSSL FIPS Provider 3.5.9 (Certificate #5586, FIPS 140-3) lists ML-KEM, ML-DSA and SLH-DSA, but it takes its entropy from outside the module (no ESV is referenced), and Eviden KMS does not route PQC to a FIPS provider |
+| Is PQC key generation routed to a FIPS provider? | Yes in FIPS builds: the process-wide default properties are `fips=yes`, so ML-KEM, ML-DSA, SLH-DSA and X25519MLKEM768 are served by the FIPS provider. `X448MLKEM1024` and `ConfigurableKEM` are available in non-FIPS builds only |
+| Can a customer-supplied OpenSSL build satisfy ESV/FIPS 140-3 for PQC today? | Only in part. The CMVP-validated OpenSSL FIPS Provider 3.5.9 (Certificate #5586, FIPS 140-3) lists ML-KEM, ML-DSA and SLH-DSA, but it takes its entropy from outside the module (no ESV is referenced). FIPS builds of Eviden KMS route PQC to it through the process-wide `fips=yes` default properties |
 | Can upgrading the vendored OpenSSL version alone close the gap? | No. FIPS/ESV certification is bound to one exact validated build via a CMVP certificate number; newer source code (for example the 3.6.5 main library) is never itself validated |
 | Does a FIPS-140-3-validated OpenSSL version automatically mean its entropy source is ESV-certified? | No. FIPS 140-3 module validation and Entropy Source Validation (ESV) are independent CMVP programs; OpenSSL's FIPS provider places the entropy source outside its module boundary regardless of version |
 | What is the governing NIST standard for KEM (ML-KEM / hybrid-KEM) entropy specifically? | NIST SP 800-227 (Sept 2025): RS4 requires SP 800-90A/B/C-approved random bits; RS2 requires following FIPS 140-3 guidance. Neither is met — see [What SP 800-227 requires that is not implemented in source code](#what-sp-800-227-requires-that-is-not-implemented-in-source-code) |
@@ -242,8 +242,9 @@ cargo test -p cosmian_kms_crypto --lib --features non-fips pqc
 
 ### Completed in Eviden KMS
 
-1. **Seed injection for ML-KEM and ML-DSA**: `pqc_keygen_seeded` draws 64 bytes (ML-KEM) or 32 bytes (ML-DSA) from `KmsRng`
-   and passes it via `OSSL_PARAM` to `EVP_PKEY_generate`.
+1. **Seed injection for ML-KEM and ML-DSA**: `pqc_keygen` draws 64 bytes (ML-KEM) or 32 bytes (ML-DSA) from `KmsRng`
+   and imports the key pair from that seed with `EVP_PKEY_fromdata` (the provider runs its pairwise consistency test on
+   import).
 2. **Safe OpenSSL Migration (Issue #894)**: Replaced raw BIO serialization (`evp_pkey_to_pkcs8_der`, `evp_pkey_to_spki_der`)
    and raw buffer extraction with safe native `openssl::pkey::PKey` methods.
 
@@ -258,11 +259,10 @@ cargo test -p cosmian_kms_crypto --lib --features non-fips pqc
    (KeyGen, EncapDecap), ML-DSA and SLH-DSA (KeyGen, SigGen, SigVer). Earlier certificates (#4985, version
    3.1.2) predate OpenSSL's PQC support. The module remains subject to its Security Policy (approved mode,
    operating environment) and to the caveat that it gives no assurance on the strength of generated keys.
-3. **Callers that actually request the FIPS provider for PQC**: the PQC keygen functions accept
-   an optional property query such as `fips=yes` (and check the `fips-indicator`), but every production caller
-   passes `None`, and `pqc` (`crate/crypto/src/crypto/mod.rs`) is gated entirely behind the `non-fips` Cargo
-   feature and compiles out of FIPS-mode builds. Both would need to change before the validated FIPS provider
-   could be consulted for PQC key generation. Not scheduled.
+3. **Callers that actually request the FIPS provider for PQC**: done in FIPS builds. `pqc`
+   (`crate/crypto/src/crypto/mod.rs`) compiles in every build and the process-wide `fips=yes` default properties
+   route ML-KEM, ML-DSA, SLH-DSA and X25519MLKEM768 to the validated FIPS provider; X448MLKEM1024 is refused in
+   FIPS builds. The ESV certificate (item 1) remains outstanding.
 4. **Upstream Hybrid KEM Seeding**: contributing or awaiting OpenSSL support for composite keygen seeding if
    hybrid KEMs are ever to use external entropy sources.
 
@@ -308,18 +308,17 @@ text is not reproduced here.
 
 Mapping each entropy/FIPS-relevant requirement to Eviden KMS's current code:
 
-- **RS2 — not met.** `pqc` (`crate/crypto/src/crypto/mod.rs`) is gated entirely behind
-  `#[cfg(feature = "non-fips")]` and is absent from every FIPS-mode build. RS2 cannot be attempted in Eviden's
-  default build configuration because the PQC code does not exist in that build at all.
+- **RS2 — not demonstrated.** `pqc` (`crate/crypto/src/crypto/mod.rs`) compiles in every build and FIPS builds
+  run ML-KEM, ML-DSA, SLH-DSA and X25519MLKEM768 on the FIPS provider, so RS2 can be attempted; no RS2 evidence
+  is claimed.
 - **RS4 — not met, two independent gaps:**
   1. `KmsRng` (`crate/crypto/src/crypto/rng/mod.rs`) draws from OpenSSL's `RAND_bytes` with no SP 800-90B
      ESV-validated entropy source backing it (its own doc comment states this explicitly).
-  2. **Library support exists; deliberately not wired to callers.** `pqc_keygen_seeded`, `pqc_keygen` and
-     `pqc_keygen_raw` (`crate/crypto/src/crypto/pqc/mod.rs`) accept an optional OpenSSL property query (e.g.
-     `"fips=yes"`) and seeded keygen checks the `fips-indicator`, failing closed. Every production caller passes
-     `None`, so the default provider is always selected, and `pqc` compiles out of FIPS builds. The validated
-     provider shipped by the FIPS build (3.5.9, #5586) lists the PQC algorithms, so the blocker is now this
-     repository: a caller passing `"fips=yes"` and a build change, not the existence of a validated provider.
+  2. **Library support exists; routed by process-wide properties.** `pqc_keygen` and `pqc_keygen_raw`
+     (`crate/crypto/src/crypto/pqc/mod.rs`) accept an optional OpenSSL property query (e.g. `"fips=yes"`). Every
+     production caller passes `None`; in a FIPS build the process-wide `fips=yes` default properties (set by
+     `enforce_fips_provider_only`) select the FIPS provider shipped by the build (3.5.9, #5586), which lists the
+     PQC algorithms. The remaining gap is RS4-1 above, not the code path.
 - **RS5 — already met for Eviden's own code; not applicable beyond it.** `generate_pqc_seed`
   (`crate/crypto/src/crypto/pqc/mod.rs`) returns a `Zeroizing<Vec<u8>>`, so the seed Eviden generates
   and hands to OpenSSL is destroyed on drop. The additional intermediate values RS5 covers (matrix `A`, NTT
@@ -331,18 +330,16 @@ Mapping each entropy/FIPS-relevant requirement to Eviden KMS's current code:
 
 **What should change in source code, concretely:**
 
-1. **Done in the library; not wired to callers.** `pqc_keygen_seeded`, `pqc_keygen` and `pqc_keygen_raw`
-   (`crate/crypto/src/crypto/pqc/mod.rs`) now take an optional OpenSSL property query (for example
-   `"fips=yes"`), and seeded keygen verifies the provider's `fips-indicator`, failing closed. This closes gap
-   RS4-2 at library level. What remains is a server-side configuration or caller that supplies a non-null query.
-   It does not by itself achieve RS4 compliance (the entropy-source half, RS4-1, remains unmet — see item 3),
-   and it has no effect until a qualifying provider exists (none does, per the existing "Can upgrading the
-   vendored OpenSSL version alone close the gap?" section of this page).
-2. Remove the `#[cfg(feature = "non-fips")]` gate on `pub mod pqc;` (`crate/crypto/src/crypto/mod.rs` lines
-   25-26) so PQC key generation compiles in FIPS-mode builds — a prerequisite for item 1 to ever take effect,
-   and for RS2 to be attempted at all, in a FIPS-mode build. This is already tracked as item 3 of the page's
-   existing "Remaining to reach ESV / CMVP validation" list; this plan does not duplicate that list, only
-   cross-references it.
+1. **Done in the library; not wired to callers.** `pqc_keygen` and `pqc_keygen_raw`
+   (`crate/crypto/src/crypto/pqc/mod.rs`) take an optional OpenSSL property query (for example
+   `"fips=yes"`). Seeded keygen no longer checks the provider's `fips-indicator`: no production caller passes a
+   query, and FIPS approval comes from the global `fips=yes` default properties. This closes gap
+   RS4-2 at library level; in FIPS builds the process-wide `fips=yes` default properties route PQC to the
+   validated provider (3.5.9, #5586). It does not by itself achieve RS4 compliance (the entropy-source half,
+   RS4-1, remains unmet — see item 3).
+2. **Done.** The `non-fips` gate on `pub mod pqc;` (`crate/crypto/src/crypto/mod.rs`) is removed: PQC key
+   generation compiles in FIPS builds. `X448MLKEM1024` (not served by the FIPS provider) is refused there, and
+   `ConfigurableKEM` stays non-FIPS.
 3. **No source-code change can close RS4-1.** An SP 800-90B-compliant entropy source is a CMVP-lab-tested
    property of specific deployment hardware/OS, obtained via the ESV submission process described in
    [What an ESV certificate requires](#what-an-esv-certificate-requires) below — not a code change. State this
@@ -396,12 +393,10 @@ Only under conditions none of which are met today, and only partially:
      source on the customer's specific deployment hardware/OS (per the previous section, OpenSSL's own policy
      explicitly does not — this would have to be the customer's own, separate CMVP submission binding their
      specific hardware RNG).
-  3. Eviden KMS's code must actually request the FIPS provider for PQC operations. The PQC keygen functions
-     (`crate/crypto/src/crypto/pqc/mod.rs`) now accept an optional OpenSSL property query (for example
-     `fips=yes`) and, for seeded ML-KEM/ML-DSA keygen, verify the `fips-indicator` result, failing closed. But
-     every production caller passes `None`, and `pqc` is gated entirely behind `#[cfg(feature = "non-fips")]`
-     (`crate/crypto/src/crypto/mod.rs`) so it compiles out of FIPS-mode builds. A validated customer OpenSSL
-     build would therefore still not be consulted for PQC key generation without a caller and a build change.
+  3. Eviden KMS's code must request the FIPS provider for PQC operations. In a FIPS build it does: `pqc`
+     (`crate/crypto/src/crypto/mod.rs`) compiles in every build, and the process-wide `fips=yes` default
+     properties (set by `enforce_fips_provider_only`) resolve ML-KEM, ML-DSA, SLH-DSA and X25519MLKEM768 to the
+     FIPS provider.
 - Vendors do take the OpenSSL FIPS provider source, patch/rebuild it, and submit it for their own CMVP
   certificate under their own name (e.g., "Philips FIPS Provider based on the OpenSSL FIPS Provider",
   CMVP Certificate #5224; a Progress Software "LoadMaster FIPS Object Module based on the OpenSSL FIPS

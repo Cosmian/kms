@@ -250,8 +250,37 @@ pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     };
     common_attributes.set_tags(vendor_id, tags)?;
 
+    // Unrestricted authorizes no operation in a FIPS build: standard PQC keys get explicit masks.
+    let masks = match algorithm {
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768 => Some((
+            CryptographicUsageMask::Decrypt | CryptographicUsageMask::UnwrapKey,
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::WrapKey,
+        )),
+        CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87
+        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => {
+            Some((CryptographicUsageMask::Sign, CryptographicUsageMask::Verify))
+        }
+        _ => None,
+    };
     let private_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
+        cryptographic_usage_mask: masks.map(|(private, _)| private),
         key_format_type: Some(KeyFormatType::PKCS8),
         object_type: Some(ObjectType::PrivateKey),
         sensitive: sensitive.then_some(true),
@@ -261,6 +290,7 @@ pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 
     let public_key_attributes = Attributes {
         cryptographic_algorithm: Some(algorithm),
+        cryptographic_usage_mask: masks.map(|(_, public)| public),
         key_format_type: Some(KeyFormatType::PKCS8),
         object_type: Some(ObjectType::PublicKey),
         activation_date: Some(time_normalize()?),
@@ -283,7 +313,7 @@ pub fn create_pqc_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 ///
 /// # Errors
 /// Returns an error for an unknown name, for an algorithm that cannot sign (ML-KEM and hybrid
-/// KEMs) or that the build does not support (non-FIPS algorithms in a FIPS build).
+/// KEMs) or that the build does not support (`rsa1024` and `nist-p192` in a FIPS build).
 pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     vendor_id: &str,
     algorithm: &str,
@@ -312,7 +342,6 @@ pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
             None,
         )
     };
-    // Always `None` in a FIPS build (ML-DSA / SLH-DSA are non-FIPS).
     if let Some(pqc_algorithm) = pqc_signing_algorithm(algorithm) {
         let mut request = create_pqc_key_pair_request(vendor_id, &tags, pqc_algorithm, sensitive)?;
         if let Some(attributes) = request.private_key_attributes.as_mut() {
@@ -332,9 +361,7 @@ pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         "rsa1024" => rsa(1024),
         #[cfg(feature = "non-fips")]
         "nist-p192" => ec(RecommendedCurve::P192),
-        #[cfg(feature = "non-fips")]
         "ed25519" => ec(RecommendedCurve::CURVEED25519),
-        #[cfg(feature = "non-fips")]
         "ed448" => ec(RecommendedCurve::CURVEED448),
         name if name.contains("kem") => Err(KmipError::Default(format!(
             "{name} is a key encapsulation algorithm: its key cannot sign a certificate signing request"
@@ -346,7 +373,6 @@ pub fn create_signing_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 }
 
 /// The ML-DSA / SLH-DSA algorithm named like the `certify --algorithm` values.
-#[cfg(feature = "non-fips")]
 fn pqc_signing_algorithm(name: &str) -> Option<CryptographicAlgorithm> {
     Some(match name {
         "ml-dsa-44" => CryptographicAlgorithm::MLDSA_44,
@@ -366,10 +392,4 @@ fn pqc_signing_algorithm(name: &str) -> Option<CryptographicAlgorithm> {
         "slh-dsa-shake-256f" => CryptographicAlgorithm::SLHDSA_SHAKE_256f,
         _ => return None,
     })
-}
-
-/// No ML-DSA / SLH-DSA in a FIPS build.
-#[cfg(not(feature = "non-fips"))]
-const fn pqc_signing_algorithm(_name: &str) -> Option<CryptographicAlgorithm> {
-    None
 }

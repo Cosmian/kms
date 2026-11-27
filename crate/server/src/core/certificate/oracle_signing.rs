@@ -8,12 +8,13 @@
 //! signed by the HSM, and the signature is re-inserted. The result is verified against the real
 //! public key before being returned.
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
         kmip_operations::Sign,
-        kmip_types::{CryptographicParameters, DigitalSignatureAlgorithm, UniqueIdentifier},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+            UniqueIdentifier,
+        },
     },
     cosmian_kms_crypto::openssl::x509_signing_digest,
 };
@@ -55,16 +56,14 @@ pub(crate) enum X509SignatureAlgorithm {
     EcdsaWithSha256,
     EcdsaWithSha384,
     EcdsaWithSha512,
-    #[cfg(feature = "non-fips")]
     Ed25519,
-    #[cfg(feature = "non-fips")]
     Ed448,
 }
 
 impl X509SignatureAlgorithm {
     /// RSA gives `Sha256WithRsa`; EC gives ECDSA with the digest of [`x509_signing_digest`]
     /// (RFC 5480 §4: SHA-384 for P-384, SHA-512 for P-521, SHA-256 otherwise); Ed25519/Ed448
-    /// give the matching `EdDSA` variant (non-FIPS builds only).
+    /// give the matching `EdDSA` variant.
     pub(crate) fn for_public_key<T: HasPublic>(key: &PKeyRef<T>) -> KResult<Self> {
         match key.id() {
             Id::RSA => Ok(Self::Sha256WithRsa),
@@ -73,9 +72,7 @@ impl X509SignatureAlgorithm {
                 Nid::SHA512 => Self::EcdsaWithSha512,
                 _ => Self::EcdsaWithSha256,
             }),
-            #[cfg(feature = "non-fips")]
             Id::ED25519 => Ok(Self::Ed25519),
-            #[cfg(feature = "non-fips")]
             Id::ED448 => Ok(Self::Ed448),
             id => Err(KmsError::NotSupported(format!(
                 "X.509 signing with an HSM key supports RSA, EC and EdDSA keys only, got {id:?}"
@@ -92,7 +89,6 @@ impl X509SignatureAlgorithm {
             Self::EcdsaWithSha256 => DigitalSignatureAlgorithm::ECDSAWithSHA256,
             Self::EcdsaWithSha384 => DigitalSignatureAlgorithm::ECDSAWithSHA384,
             Self::EcdsaWithSha512 => DigitalSignatureAlgorithm::ECDSAWithSHA512,
-            #[cfg(feature = "non-fips")]
             Self::Ed25519 | Self::Ed448 => {
                 return CryptographicParameters {
                     cryptographic_algorithm: Some(if self == Self::Ed25519 {
@@ -117,7 +113,6 @@ impl X509SignatureAlgorithm {
             Self::Sha256WithRsa | Self::EcdsaWithSha256 => MessageDigest::sha256(),
             Self::EcdsaWithSha384 => MessageDigest::sha384(),
             Self::EcdsaWithSha512 => MessageDigest::sha512(),
-            #[cfg(feature = "non-fips")]
             Self::Ed25519 | Self::Ed448 => MessageDigest::null(),
         }
     }
@@ -142,9 +137,7 @@ impl X509SignatureAlgorithm {
             Self::EcdsaWithSha256 => (rfc5912::ECDSA_WITH_SHA_256, None),
             Self::EcdsaWithSha384 => (rfc5912::ECDSA_WITH_SHA_384, None),
             Self::EcdsaWithSha512 => (rfc5912::ECDSA_WITH_SHA_512, None),
-            #[cfg(feature = "non-fips")]
             Self::Ed25519 => (der::oid::db::rfc8410::ID_ED_25519, None),
-            #[cfg(feature = "non-fips")]
             Self::Ed448 => (der::oid::db::rfc8410::ID_ED_448, None),
         };
         AlgorithmIdentifierOwned { oid, parameters }
@@ -668,7 +661,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "non-fips")]
     fn eddsa_certificate_csr_and_crl_resign() {
         resign_all_structures(&PKey::generate_ed25519().unwrap(), "1.3.101.112");
         resign_all_structures(&PKey::generate_ed448().unwrap(), "1.3.101.113");

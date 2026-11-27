@@ -14,11 +14,9 @@ pub enum Curve {
     NistP521,
     #[cfg(feature = "non-fips")]
     X25519,
-    #[cfg(feature = "non-fips")]
     Ed25519,
     #[cfg(feature = "non-fips")]
     X448,
-    #[cfg(feature = "non-fips")]
     Ed448,
     #[cfg(feature = "non-fips")]
     Secp256k1,
@@ -36,11 +34,9 @@ impl From<Curve> for RecommendedCurve {
             Curve::NistP521 => Self::P521,
             #[cfg(feature = "non-fips")]
             Curve::X25519 => Self::CURVE25519,
-            #[cfg(feature = "non-fips")]
             Curve::Ed25519 => Self::CURVEED25519,
             #[cfg(feature = "non-fips")]
             Curve::X448 => Self::CURVE448,
-            #[cfg(feature = "non-fips")]
             Curve::Ed448 => Self::CURVEED448,
             #[cfg(feature = "non-fips")]
             Curve::Secp256k1 => Self::SECP256K1,

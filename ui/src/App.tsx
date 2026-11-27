@@ -370,7 +370,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="sign" element={<ECSignForm />} />
                             <Route path="verify" element={<ECVerifyForm />} />
                         </Route>
-                        <Route path="pqc" element={<NonFipsRoute />}>
+                        <Route path="pqc">
                             <Route path="keys/create" element={<PqcKeysCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"pqc"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="pqc" />} />
@@ -411,7 +411,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                                 <Route path="set" element={<SetRotationPolicyForm />} />
                                 <Route path="get" element={<GetRotationPolicyForm />} />
                             </Route>
-                            <Route path="pqc" element={<NonFipsRoute />}>
+                            <Route path="pqc">
                                 <Route path="set" element={<SetRotationPolicyForm />} />
                                 <Route path="get" element={<GetRotationPolicyForm />} />
                             </Route>

@@ -1,5 +1,3 @@
-#[cfg(feature = "non-fips")]
-use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 use cosmian_kms_client::{
     KmsClient,
     kmip_2_1::{
@@ -7,7 +5,9 @@ use cosmian_kms_client::{
         kmip_objects::{Certificate, Object},
         kmip_operations::{Destroy, Get},
         kmip_types::{RecommendedCurve, UniqueIdentifier},
-        requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
+        requests::{
+            create_ec_key_pair_request, create_pqc_key_pair_request, create_rsa_key_pair_request,
+        },
     },
     reexport::cosmian_kms_client_utils::certificate_utils::{
         Algorithm, CertificationSource, CertifyRequestParams, build_certify_request,
@@ -156,13 +156,11 @@ fn assert_baseline(x509: &X509, expected_subject_cn: &str, expected_issuer_cn: &
 /// Extract the X.509 text representation and check for key usage bits.
 /// The `openssl` crate with `default-features = false` does not expose
 /// `X509::key_usage()`, so we parse the text output instead.
-#[cfg(feature = "non-fips")]
 fn cert_text(x509: &X509) -> String {
     String::from_utf8_lossy(&x509.to_text().unwrap()).to_string()
 }
 
 /// Assert that the certificate's keyUsage extension contains the given usage string.
-#[cfg(feature = "non-fips")]
 fn assert_key_usage_contains(x509: &X509, usage: &str) {
     let text = cert_text(x509);
     // Look in the X509v3 Key Usage section
@@ -178,7 +176,6 @@ fn assert_key_usage_contains(x509: &X509, usage: &str) {
 }
 
 /// Assert that the certificate's keyUsage extension does NOT contain the given usage string.
-#[cfg(feature = "non-fips")]
 fn assert_key_usage_not_contains(x509: &X509, usage: &str) {
     let text = cert_text(x509);
     let ku_section = text
@@ -265,7 +262,6 @@ async fn test_certify_keypair_self_signed_ec() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_keypair_self_signed_ed25519() {
     init_test_logging();
@@ -290,7 +286,6 @@ async fn test_certify_keypair_self_signed_ed25519() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_keypair_self_signed_mldsa() {
     init_test_logging();
@@ -318,7 +313,6 @@ async fn test_certify_keypair_self_signed_mldsa() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_keypair_self_signed_slhdsa() {
     init_test_logging();
@@ -397,7 +391,6 @@ async fn test_certify_keypair_ca_signed_ec() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_ed25519() {
     init_test_logging();
@@ -423,7 +416,6 @@ async fn test_certify_keypair_ca_signed_ed25519() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_mldsa() {
     init_test_logging();
@@ -451,7 +443,6 @@ async fn test_certify_keypair_ca_signed_mldsa() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_slhdsa() {
     init_test_logging();
@@ -480,7 +471,6 @@ async fn test_certify_keypair_ca_signed_slhdsa() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_mlkem() {
     init_test_logging();
@@ -544,7 +534,6 @@ async fn certify_pubkey(
             None,
         )
         .unwrap(),
-        #[cfg(feature = "non-fips")]
         Algorithm::Ed25519 => create_ec_key_pair_request(
             VENDOR_ID_COSMIAN,
             None,
@@ -638,7 +627,6 @@ async fn test_certify_pubkey_self_signed_ec() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_pubkey_self_signed_ed25519() {
     init_test_logging();
@@ -715,7 +703,6 @@ async fn test_certify_pubkey_ca_signed_ec() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_ed25519() {
     init_test_logging();
@@ -741,7 +728,6 @@ async fn test_certify_pubkey_ca_signed_ed25519() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_mldsa() {
     init_test_logging();
@@ -796,7 +782,6 @@ async fn test_certify_pubkey_ca_signed_mldsa() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_slhdsa() {
     init_test_logging();
@@ -851,7 +836,6 @@ async fn test_certify_pubkey_ca_signed_slhdsa() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_mlkem() {
     init_test_logging();
@@ -1003,7 +987,6 @@ async fn test_certify_renewal_self_signed_ec() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_renewal_self_signed_ed25519() {
     init_test_logging();
@@ -1080,7 +1063,6 @@ async fn test_certify_renewal_ca_signed_ec() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_renewal_ca_signed_ed25519() {
     init_test_logging();
@@ -1182,7 +1164,6 @@ async fn test_certify_csr_ca_signed_ec() {
     res.cleanup(&client).await;
 }
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_csr_ca_signed_ed25519() {
     init_test_logging();
@@ -1207,7 +1188,6 @@ async fn test_certify_csr_ca_signed_ed25519() {
 // Phase 7 — Negative tests
 // ===========================================================================
 
-#[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_negative_kem_self_sign_rejected() {
     init_test_logging();

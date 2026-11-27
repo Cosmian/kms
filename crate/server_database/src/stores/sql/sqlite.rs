@@ -480,7 +480,14 @@ impl SqlitePool {
                             {
                                 tx.execute(
                                     update_sql,
-                                    rusqlite::params![object, attributes.to_string(), id],
+                                    rusqlite::params![
+                                        object,
+                                        attributes.to_string(),
+                                        id,
+                                        object_json,
+                                        attributes_json,
+                                        state
+                                    ],
                                 )?;
                             }
                         }
@@ -2148,8 +2155,40 @@ mod tests {
     use cosmian_kms_interfaces::PermissionsStore;
     use tempfile::TempDir;
 
-    use super::SqlitePool;
+    use super::{SqlitePool, sqlite_converted_queries};
     use crate::{DbError, error::DbResult};
+
+    /// The state-sync `UPDATE` must not overwrite a row a client rewrote after the sync read it.
+    #[test]
+    fn test_state_json_update_skips_concurrently_rewritten_row() -> DbResult<()> {
+        let conn = rusqlite::Connection::open_in_memory()?;
+        conn.execute(
+            "CREATE TABLE objects (id TEXT, object TEXT, attributes TEXT, state TEXT)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO objects VALUES ('u', 'obj-v1', '{\"State\":\"A\"}', 'Active')",
+            [],
+        )?;
+        let sql = sqlite_converted_queries()?
+            .get("update-object-state-json")
+            .ok_or_else(|| DbError::DatabaseError("query not found".to_owned()))?;
+        // A client rewrites the row after the sync read it.
+        conn.execute("UPDATE objects SET object='obj-v2' WHERE id='u'", [])?;
+        let stale = rusqlite::params!["synced", "{}", "u", "obj-v1", "{\"State\":\"A\"}", "Active"];
+        if conn.execute(sql, stale)? != 0 {
+            return Err(DbError::DatabaseError(
+                "stale sync overwrote a rewritten row".to_owned(),
+            ));
+        }
+        let fresh = rusqlite::params!["synced", "{}", "u", "obj-v2", "{\"State\":\"A\"}", "Active"];
+        if conn.execute(sql, fresh)? != 1 {
+            return Err(DbError::DatabaseError(
+                "sync skipped an unchanged row".to_owned(),
+            ));
+        }
+        Ok(())
+    }
 
     /// Fail unless the `crls` table holds exactly `expected` issuers.
     async fn expect_crl_issuers(pool: &SqlitePool, expected: usize) -> DbResult<()> {

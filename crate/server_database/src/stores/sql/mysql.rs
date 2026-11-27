@@ -362,12 +362,22 @@ impl MySqlPool {
             .await
             .map_err(DbError::from)?;
         for (id, object_json, attributes, state) in rows {
-            if let Some((object, attributes)) =
-                synced_state_json(&id, &state, &object_json, attributes)
+            if let Some((object, synced)) =
+                synced_state_json(&id, &state, &object_json, attributes.clone())
             {
-                conn.exec_drop(update_sql, (object, attributes.to_string(), &id))
-                    .await
-                    .map_err(DbError::from)?;
+                conn.exec_drop(
+                    update_sql,
+                    (
+                        object,
+                        synced.to_string(),
+                        &id,
+                        &object_json,
+                        attributes.to_string(),
+                        &state,
+                    ),
+                )
+                .await
+                .map_err(DbError::from)?;
             }
         }
         Ok(())

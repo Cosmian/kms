@@ -972,7 +972,6 @@ fn encrypt_with_public_key(
         | KeyFormatType::Raw => {
             // Check for KEM: if the key's algorithm is ML-KEM or hybrid KEM, perform encapsulation
             // instead of standard encryption.
-            #[cfg(feature = "non-fips")]
             {
                 let key_algo = key_block
                     .cryptographic_algorithm()
@@ -1042,7 +1041,6 @@ fn encrypt_with_public_key(
 
 /// A KEM encapsulation generates its own shared secret: refuse plaintext rather than
 /// silently ignoring it.
-#[cfg(feature = "non-fips")]
 fn reject_kem_plaintext(request: &Encrypt) -> KResult<()> {
     if request.data.as_ref().is_some_and(|data| !data.is_empty()) {
         return Err(KmsError::InvalidRequest(
@@ -1057,14 +1055,13 @@ fn reject_kem_plaintext(request: &Encrypt) -> KResult<()> {
 /// The `Encrypt` response of every KEM public key: the shared secret and the encapsulation
 /// packed as a serialized tuple in `Data`. The encapsulation is a ciphertext, so it must not
 /// travel in `IVCounterNonce`, which carries public cipher metadata (an IV/counter/nonce).
-#[cfg(feature = "non-fips")]
 fn kem_encrypt_response(
     uid: &str,
     request: &Encrypt,
     shared_secret: Zeroizing<Vec<u8>>,
     encapsulation: Zeroizing<Vec<u8>>,
 ) -> KResult<EncryptResponse> {
-    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::pack_kem_encapsulation;
+    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::pack_kem_encapsulation;
 
     Ok(EncryptResponse {
         unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),

@@ -85,12 +85,6 @@ fn crypt2pay_all(aes_gcm_check: fn(&Arc<SlotManager>) -> HResult<()>) -> HResult
     Ok(())
 }
 
-#[cfg(not(feature = "non-fips"))]
-fn ec_signatures(slot: &Arc<SlotManager>) -> HResult<()> {
-    shared::ecdsa_sign_all_curves_and_hashes(slot)
-}
-
-#[cfg(feature = "non-fips")]
 fn ec_signatures(slot: &Arc<SlotManager>) -> HResult<()> {
     shared::ecdsa_sign_all_curves_and_hashes(slot)?;
     shared::eddsa_sign_all_curves(slot)

@@ -36,7 +36,6 @@ pub(crate) enum SshSignatureAlgorithm {
     EcdsaSha256,
     EcdsaSha384,
     EcdsaSha512,
-    #[cfg(feature = "non-fips")]
     Ed25519,
 }
 
@@ -52,9 +51,7 @@ impl SshSignatureAlgorithm {
             X509SignatureAlgorithm::EcdsaWithSha256 => Ok(Self::EcdsaSha256),
             X509SignatureAlgorithm::EcdsaWithSha384 => Ok(Self::EcdsaSha384),
             X509SignatureAlgorithm::EcdsaWithSha512 => Ok(Self::EcdsaSha512),
-            #[cfg(feature = "non-fips")]
             X509SignatureAlgorithm::Ed25519 => Ok(Self::Ed25519),
-            #[cfg(feature = "non-fips")]
             X509SignatureAlgorithm::Ed448 => Err(KmsError::NotSupported(
                 "OpenSSH CA signing with Ed448 is not supported".to_owned(),
             )),
@@ -78,7 +75,6 @@ impl SshSignatureAlgorithm {
                     "OpenSSH ECDSA signature requires a NIST EC key".to_owned(),
                 )),
             },
-            #[cfg(feature = "non-fips")]
             Self::Ed25519 => Ok("ssh-ed25519"),
         }
     }
@@ -88,7 +84,6 @@ impl SshSignatureAlgorithm {
             Self::RsaSha256 | Self::EcdsaSha256 => MessageDigest::sha256(),
             Self::EcdsaSha384 => MessageDigest::sha384(),
             Self::EcdsaSha512 => MessageDigest::sha512(),
-            #[cfg(feature = "non-fips")]
             Self::Ed25519 => MessageDigest::null(),
         }
     }
@@ -117,7 +112,6 @@ impl SshSignatureAlgorithm {
                 digital_signature_algorithm: Some(DigitalSignatureAlgorithm::ECDSAWithSHA512),
                 ..CryptographicParameters::default()
             },
-            #[cfg(feature = "non-fips")]
             Self::Ed25519 => CryptographicParameters {
                 cryptographic_algorithm: Some(
                     cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm::Ed25519,
@@ -165,7 +159,6 @@ pub(crate) fn open_ssh_public_key(key: &PKey<Public>) -> KResult<String> {
             put_string(&mut output, &point)?;
             output
         }
-        #[cfg(feature = "non-fips")]
         Id::ED25519 => {
             let mut output = Vec::new();
             put_string(&mut output, b"ssh-ed25519")?;
@@ -406,7 +399,6 @@ fn verify_signature(
     signature: &[u8],
 ) -> KResult<()> {
     let mut verifier = match algorithm {
-        #[cfg(feature = "non-fips")]
         SshSignatureAlgorithm::Ed25519 => Verifier::new_without_digest(key)?,
         _ => Verifier::new(algorithm.digest(), key)?,
     };
@@ -485,9 +477,7 @@ pub(crate) fn validate_subject_algorithm(public_key: &PublicKey) -> KResult<()> 
             }
             Ok(())
         }
-        Algorithm::Ecdsa { .. } => Ok(()),
-        #[cfg(feature = "non-fips")]
-        Algorithm::Ed25519 => Ok(()),
+        Algorithm::Ecdsa { .. } | Algorithm::Ed25519 => Ok(()),
         _ => Err(KmsError::InvalidRequest(
             "SSH subject public-key algorithm is not supported".to_owned(),
         )),
@@ -503,10 +493,9 @@ pub(crate) fn validate_ca_key_algorithm(key: &PKey<Private>) -> KResult<()> {
             )?)?;
             Ok(())
         }
-        #[cfg(feature = "non-fips")]
         Id::ED25519 => Ok(()),
         _ => Err(KmsError::NotSupported(
-            "SSH CA key must be RSA-3072+, NIST ECDSA, or Ed25519 in non-FIPS mode".to_owned(),
+            "SSH CA key must be RSA-3072+, NIST ECDSA, or Ed25519".to_owned(),
         )),
     }
 }
@@ -628,7 +617,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "non-fips")]
     #[test]
     fn ed25519_certificate_round_trips_as_openssh() -> Result<(), Box<dyn std::error::Error>> {
         crate::openssl_providers::init_openssl_providers_for_tests();

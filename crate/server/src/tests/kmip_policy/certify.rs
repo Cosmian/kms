@@ -89,7 +89,6 @@ fn csr_sha3_rsa_signature_is_identified_and_refused_under_default_policy() {
 
 /// An ML-DSA-44 public key (right length, arbitrary bytes: `OpenSSL` only checks the length) is
 /// identified by its SPKI algorithm and accepted by the DEFAULT allowlist.
-#[cfg(feature = "non-fips")]
 #[test]
 fn ml_dsa_public_key_is_identified_by_spki_under_default_policy() {
     use openssl::pkey::Public;

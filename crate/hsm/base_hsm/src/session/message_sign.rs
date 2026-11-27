@@ -77,9 +77,9 @@ impl Session {
         }
 
         let mechanism = match algorithm {
-            HsmSigningAlgorithm::Eddsa => CKM_EDDSA,
-            #[cfg(feature = "non-fips")]
-            HsmSigningAlgorithm::Ed25519 | HsmSigningAlgorithm::Ed448 => CKM_EDDSA,
+            HsmSigningAlgorithm::Eddsa
+            | HsmSigningAlgorithm::Ed25519
+            | HsmSigningAlgorithm::Ed448 => CKM_EDDSA,
             HsmSigningAlgorithm::RsaPkcsV15 => CKM_RSA_PKCS,
             HsmSigningAlgorithm::Sha256WithRsa => CKM_SHA256_RSA_PKCS,
             HsmSigningAlgorithm::Sha384WithRsa => CKM_SHA384_RSA_PKCS,

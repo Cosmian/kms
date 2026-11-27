@@ -328,13 +328,7 @@ async fn test_ssh_ca_create_options() -> CosmianResult<()> {
     let err = run_ckms_expect_error(
         &owner,
         &[
-            "ssh",
-            "ca",
-            "create",
-            "--curve",
-            "secp256k1",
-            "--tag",
-            &rejected,
+            "ssh", "ca", "create", "--curve", "ed448", "--tag", &rejected,
         ],
     )?;
     assert!(err.contains("an SSH CA key must use"), "{err}");
