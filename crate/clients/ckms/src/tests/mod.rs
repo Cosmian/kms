@@ -30,10 +30,6 @@ mod mac;
 mod opaque_object;
 #[cfg(all(feature = "non-fips", not(target_os = "windows")))]
 mod pgp;
-// FIPS: the FIPS-built libcosmian_pkcs11 fails `C_GetInterfaceList` (CKR_FUNCTION_FAILED), so
-// both JWT tests fail, and `test_pkcs11_verify_fails_without_server` would pass for the same
-// reason rather than a real check; none ran in FIPS before #1522 and the cause is not yet investigated.
-#[cfg(feature = "non-fips")]
 #[cfg(not(target_os = "windows"))]
 mod pkcs11;
 mod pqc;

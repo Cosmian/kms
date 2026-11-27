@@ -14,6 +14,11 @@
 ### UI
 - The PQC pages and menu are shown in FIPS mode ([#1522](https://github.com/Cosmian/kms/issues/1522))
 
+## Bug Fixes
+
+### CLI
+- `ckms pkcs11 verify` no longer builds a KMS client before loading the library under test: in a FIPS build that client loaded the FIPS module in the CLI process, where the library's own statically linked OpenSSL then found no ciphers and `C_GetInterfaceList` returned `CKR_FUNCTION_FAILED`. `ckms pkcs11 capabilities` and `bench` still need a client in the CLI process and remain affected in FIPS builds ([#1522](https://github.com/Cosmian/kms/issues/1522))
+
 ## Refactor
 
 ### Crypto
