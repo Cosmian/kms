@@ -26,7 +26,7 @@
 
 ## Documentation
 
-- Document ML-KEM, ML-DSA, SLH-DSA, `X25519MLKEM768`, Ed25519 and Ed448 as FIPS-mode algorithms (algorithms, KMIP policy, PKI, RNG, HSM support and the 5.x to 6.0 upgrade notes)
+- Document ML-KEM, ML-DSA, SLH-DSA, `X25519MLKEM768`, Ed25519 and Ed448 as FIPS-mode algorithms (algorithms, KMIP policy, PKI, RNG, HSM support and the 5.x to 5.30 upgrade notes)
 
 ---
 

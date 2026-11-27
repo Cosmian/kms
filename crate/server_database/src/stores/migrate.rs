@@ -98,26 +98,6 @@ impl FromStr for Version {
     }
 }
 
-/// Version stamped by builds of this release made before its rename; it was never released.
-const UNRELEASED_PRE_RENAME_VERSION: Version = Version(6, 0, 0);
-
-/// A database carrying the unreleased pre-rename stamp is read as the version just before 5.30.0 by any
-/// 5.x server from 5.30.0 on, so the 5.30.0 steps whose marker is missing still run (a marker makes
-/// a step a no-op) and the next `set_db_version` rewrites the stamp. A 6.x or later server compares it normally.
-fn parse_recorded_version(recorded: &str, target: Version) -> DbResult<Version> {
-    let version = recorded.parse::<Version>()?;
-    Ok(
-        if version == UNRELEASED_PRE_RENAME_VERSION
-            && target >= Version(5, 30, 0)
-            && target < UNRELEASED_PRE_RENAME_VERSION
-        {
-            Version(5, 29, 0)
-        } else {
-            version
-        },
-    )
-}
-
 fn newer_database_error(recorded: &str, target: &str) -> DbError {
     db_error!(
         "Database version {recorded} is newer than this KMS server version {target}: \
@@ -331,7 +311,7 @@ pub(crate) trait Migrate: DbParameters {
                 baseline
             }
         };
-        let recorded_version = parse_recorded_version(recorded, target_version)?;
+        let recorded_version = recorded.parse::<Version>()?;
         if recorded_version > target_version {
             return Err(newer_database_error(recorded, target));
         }
@@ -357,7 +337,7 @@ pub(crate) trait Migrate: DbParameters {
         let result = async {
             let target_version = target.parse::<Version>()?;
             if let Some(recorded) = self.get_db_version().await? {
-                let recorded_version = parse_recorded_version(&recorded, target_version)?;
+                let recorded_version = recorded.parse::<Version>()?;
                 if !clear_database {
                     if recorded_version > target_version {
                         return Err(newer_database_error(&recorded, target));
@@ -564,37 +544,6 @@ mod tests {
         db_ensure!(
             database.get_db_state().await? == Some(DbState::Ready),
             "The resumed migration must finish ready"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_pre_rename_stamp_is_read_below_5_30_0_by_5_x_servers() -> DbResult<()> {
-        for target in ["5.30.0", "5.30.1", "5.31.0"] {
-            let database = InMemoryMigrationBackend::default();
-            database.set_db_version("6.0.0").await?;
-            database.set_db_state(DbState::Ready).await?;
-            let applied = database.bootstrap(false, target).await?;
-            db_ensure!(
-                applied.contains(&MigrationStep::StoredStateSync),
-                "{target} must still run the 5.30.0 steps whose marker is missing"
-            );
-            db_ensure!(
-                database.get_db_version().await?.as_deref() == Some(target),
-                "The pre-rename stamp must be rewritten to {target}"
-            );
-        }
-
-        let database = InMemoryMigrationBackend::default();
-        database.set_db_version("6.0.0").await?;
-        database.set_db_state(DbState::Ready).await?;
-        db_ensure!(
-            database.bootstrap(false, "5.29.0").await.is_err(),
-            "A server older than 5.30.0 must refuse the database"
-        );
-        db_ensure!(
-            database.bootstrap(false, "6.0.0").await.is_ok(),
-            "A server at 6.0.0 compares the stamp normally"
         );
         Ok(())
     }
