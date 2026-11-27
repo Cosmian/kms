@@ -432,7 +432,7 @@ sequenceDiagram
 
 After the Mistral agent, adversarial and outage scenarios it delegates to the standalone suites: SDS delivery (step 16), `test:spire:pki` (17), `test:spire:jwt-svid` (18), `test:spire:kmip` (19) and `test:spire:vault-transit-seal` (20).
 
-Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with an API token, so that the PKI CA key is owned by `default_username` (`kms-default-user`), as `routes/spire/pki.rs` requires. `test_data/spire/config/kms.toml` sets `api_token_id = "spire-api-token"`; once the KMS is up, the task creates that symmetric key with a random 256-bit value (`ckms sym keys create --bytes-b64`) through the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin`, signed by the test CA; trusted via `[tls] clients_ca_cert_file`), then writes a second `ckms` configuration whose `access_token` is that value (`spire_write_api_token_conf` in `.mise/lib/spire_test.sh`). Every later `ckms` step on the CA key uses the token configuration. The KMS maps a valid API token to `default_username`; mTLS, JWT or session identities equal to `default_username` are refused with 401, so the admin certificate can no longer own the CA key. The key is looked up per request, so it may be created after the KMS started.
+Token-less `ckms` provisioning (PKI CA `certify`, AppRole creation, `grant_spire_pki_certify.sh`) in `test:spire`, `:pki`, `:sds` and `:jwt-svid` authenticates with an API token, so that the PKI CA key is owned by `default_username` (`kms-default-user`), as `routes/spire/pki.rs` requires. `test_data/spire/config/kms.toml` sets `api_token_id = "spire-api-token"`; once the KMS is up, the task creates that symmetric key with a random 256-bit value (`ckms sym keys create --bytes-b64`) through the mTLS client certificate `test_data/spire/certs/admin.crt` (CN `admin`, signed by the test CA; trusted via `[tls] clients_ca_cert_file`). SOPS provisions the admin client from the complete `test_data/configs/client/pem_cert.toml` fixture, substituting the KMS URL and SPIRE admin certificate/key paths. It then copies the complete `test_data/configs/client/spire_api_token.toml` fixture and substitutes its `server_url` and `access_token` (`spire_write_api_token_conf` in `.mise/lib/spire_test.sh`). That fixture sets `accept_invalid_certs = true` because the test KMS certificate's CA is not installed in the system trust store. Every later `ckms` step on the CA key uses the token configuration. The KMS maps a valid API token to `default_username`; mTLS, JWT or session identities equal to `default_username` are refused with 401, so the admin certificate can no longer own the CA key. The key is looked up per request, so it may be created after the KMS started.
 
 #### Architecture Overview
 
@@ -915,6 +915,40 @@ sequenceDiagram
 ```
 
 To run it by hand: `mise run test:interop:openbao-auth-verifier --variant non-fips`.
+
+### `test:interop:sops`
+
+**Description:** SOPS native key-source interoperability against a KMS configured with the
+Vault-compatible Transit API. The non-FIPS-only task starts the Auth Verifier and KMS from the
+complete SPIRE fixtures and uses the complete PEM-mTLS client fixture with the SPIRE admin
+certificate to provision AppRole and API-token access. It verifies SOPS encryption, decryption,
+and `updatekeys` rotation for both `hc_vault_transit` and `pgp`. The Transit client trusts the
+fixture CA via `VAULT_CACERT`. SOPS, GnuPG, and `gnupg-pkcs11-scd` come from the pinned Nix shell
+(`WITH_SOPS=1`); the OpenPGP scenario uses the KMS PKCS#11 smartcard provider and the complete
+API-token client fixture `test_data/configs/client/spire_api_token.toml`. On failure, the script
+identifies the active encryption, decryption, metadata, or rotation check in the CI log.
+
+```mermaid
+sequenceDiagram
+    participant Test as test:interop:sops
+    participant Auth as Auth Verifier
+    participant KMS as Cosmian KMS
+    participant SOPS as SOPS
+    participant GPG as GnuPG
+
+    Test->>Auth: start from the complete test fixture
+    Test->>KMS: start Vault-compatible Transit API
+    Test->>Auth: create AppRole through the KMS auth proxy
+    Test->>KMS: create API-token key with admin mTLS
+    Test->>KMS: log in AppRole and create Transit keys
+    Test->>SOPS: encrypt and decrypt YAML with hc_vault_transit
+    Test->>SOPS: updatekeys to the second Transit key
+    Test->>KMS: create RSA key and certificate tagged gnupg-card
+    Test->>GPG: attach the smartcard key to an OpenPGP identity
+    Test->>SOPS: encrypt, decrypt and updatekeys with pgp
+```
+
+To run it by hand: `mise run test:interop:sops --variant non-fips`.
 
 ### `test:interop:openbao-kmip`
 

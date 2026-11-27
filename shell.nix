@@ -47,6 +47,8 @@ let
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
   # GnuPG smartcard PKCS#11 test: gnupg-pkcs11-scd + opensc (pkcs11-tool) on Linux
   withGnupgPkcs11 = (builtins.getEnv "WITH_GNUPG_PKCS11") == "1";
+  # SOPS interoperability tests: SOPS and GnuPG are provided by the pinned nixpkgs.
+  withSops = (builtins.getEnv "WITH_SOPS") == "1";
   # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
   withAws = (builtins.getEnv "WITH_AWS") == "1";
   # IRIS mTLS test / Vault secret backend test: Docker CLI must be available inside the nix-shell to pull and run containers
@@ -59,6 +61,9 @@ let
       }
     else
       pkgs.rust-bin.stable.latest.default;
+  # The pinned Nixpkgs predates the Rust version required by the authentication
+  # submodule. SOPS tests keep the host toolchain selected by rust-toolchain.toml.
+  rustToolchainInputs = if withSops then [ ] else [ rustToolchain ];
   # FIPS provider build (CMVP-validated version) - used for FIPS builds
   opensslFipsStatic = pkgs.callPackage ./nix/openssl.nix { static = true; };
   # Main OpenSSL with legacy provider - used for non-FIPS builds
@@ -92,7 +97,9 @@ pkgs.mkShell {
     pkgs.openssl.dev
     pkgs.pkg-config
     pkgs.gcc
-    rustToolchain
+  ]
+  ++ rustToolchainInputs
+  ++ [
     opensslFipsBootstrap
     # zlib is needed on macOS in Nix pure mode (-nodefaultlibs strips system /usr/lib).
     # Including it here puts its path into NIX_LDFLAGS so the Nix cc-wrapper can find -lz.
@@ -171,9 +178,14 @@ pkgs.mkShell {
   ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
   # GnuPG smartcard test: gnupg-pkcs11-scd bridges GnuPG to the provider; opensc provides
   # pkcs11-tool for the raw CKA_ID cross-check.
-  ++ pkgs.lib.optionals (withGnupgPkcs11 && pkgs.stdenv.isLinux) [
+  ++ pkgs.lib.optionals ((withGnupgPkcs11 || withSops) && pkgs.stdenv.isLinux) [
     pkgs.gnupg-pkcs11-scd
     pkgs.opensc
+  ]
+  # SOPS interoperability tests use the same pinned GnuPG toolchain.
+  ++ pkgs.lib.optionals withSops [
+    pkgs.sops
+    pkgs.gnupg
   ]
   # AWS secret backend test: include awscli2 for SSM parameter management
   ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ]
@@ -254,14 +266,14 @@ pkgs.mkShell {
         # here caused "libstdc++.so.6: cannot open shared object file" whenever
         # the server dlopen'd the HSM's PKCS#11 library (surfaced by
         # `mise run test:pkcs11:tool`).
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
         # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
         if [ "$(uname)" = "Linux" ]; then
           unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
         fi
       else
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
 
       # Preload bootstrap so even statically linked libcrypto gets providers + properties
@@ -296,14 +308,14 @@ pkgs.mkShell {
       if [ "''${WITH_HSM:-}" = "1" ]; then
         # See the FIPS branch above: softhsm2's PKCS#11 module needs libstdc++.so.6
         # at dlopen time, so the gcc lib path must stay on LD_LIBRARY_PATH here too.
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         # On Linux, clear Nix linker flags to avoid OpenSSL confusion with multiple lib paths.
         # On macOS, NIX_LDFLAGS must be kept so the linker can find zlib and other system libs.
         if [ "$(uname)" = "Linux" ]; then
           unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
         fi
       else
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
     fi
 

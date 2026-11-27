@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# SOPS interoperability tests for the KMS Vault Transit and OpenPGP sources.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/../../common.sh"
+REPO_ROOT="$(get_repo_root)"
+source "${REPO_ROOT}/.mise/lib/kms_build.sh"
+source "${REPO_ROOT}/.mise/lib/pkcs11_helpers.sh"
+source "${REPO_ROOT}/.mise/lib/spire_test.sh"
+
+init_build_env "$@"
+setup_test_logging
+require_cmd sops
+require_cmd gpg
+require_cmd gnupg-pkcs11-scd
+require_cmd curl
+require_cmd python3
+
+TEST_DATA="${REPO_ROOT}/test_data/spire"
+WORK_DIR="$(mktemp -d /tmp/kms-sops-XXXXXX)"
+AUTH_PID=""
+KMS_PID=""
+CURRENT_TEST_STEP="setup"
+GNUPGHOME="${WORK_DIR}/gnupg"
+export GNUPGHOME
+mkdir -m 700 "${GNUPGHOME}"
+
+cleanup() {
+  local rc=$?
+  if [ "${rc}" -ne 0 ]; then
+    print_warning "Test failed during: ${CURRENT_TEST_STEP}"
+    [ -s "${WORK_DIR}/auth.log" ] && tail -n 40 "${WORK_DIR}/auth.log" >&2 || true
+    [ -s "${WORK_DIR}/kms.log" ] && tail -n 40 "${WORK_DIR}/kms.log" >&2 || true
+  fi
+  [ -n "${KMS_PID}" ] && kill "${KMS_PID}" 2>/dev/null || true
+  [ -n "${AUTH_PID}" ] && kill "${AUTH_PID}" 2>/dev/null || true
+  rm -rf "${WORK_DIR}"
+  exit "${rc}"
+}
+trap cleanup EXIT
+
+spire_ensure_certs "${TEST_DATA}"
+AUTH_BIN="$(spire_build_auth_verifier "${REPO_ROOT}")"
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+kms_build_all
+
+cp "${TEST_DATA}/config/auth_verifier.toml" "${WORK_DIR}/auth.toml"
+cp "${TEST_DATA}/config/kms.toml" "${WORK_DIR}/kms.toml"
+sed -i.bak \
+  -e "s|sqlite:///tmp/auth-verifier-spire-test.db|sqlite://${WORK_DIR}/auth.db|" \
+  "${WORK_DIR}/auth.toml"
+sed -i.bak \
+  -e "s|/tmp/kms-spire-test|${WORK_DIR}/kms-data|" \
+  "${WORK_DIR}/kms.toml"
+rm -f "${WORK_DIR}"/*.bak
+mkdir -p "${WORK_DIR}/kms-data"
+
+"${AUTH_BIN}" "${WORK_DIR}/auth.toml" >"${WORK_DIR}/auth.log" 2>&1 &
+AUTH_PID=$!
+wait_for_port 127.0.0.1 8443 60
+"$(get_kms_bin)" --config "${WORK_DIR}/kms.toml" >"${WORK_DIR}/kms.log" 2>&1 &
+KMS_PID=$!
+wait_for_port 127.0.0.1 9998 120
+
+ADMIN_CKMS_CONF=""
+ckms_approle() {
+  "$(get_ckms_bin)" --conf-path "${ADMIN_CKMS_CONF}" --accept-invalid-certs vault approle "$@" \
+    --auth-verifier-url "https://localhost:8443" \
+    --admin-user admin --admin-password change_me
+}
+
+CURRENT_TEST_STEP="AppRole client config"
+ADMIN_CKMS_CONF="${WORK_DIR}/ckms-admin.toml"
+cp "${REPO_ROOT}/test_data/configs/client/pem_cert.toml" "${ADMIN_CKMS_CONF}" ||
+  print_error "cannot copy the mTLS client config fixture"
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" server_url '"https://localhost:9998"'
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" accept_invalid_certs "true"
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" tls_client_pem_cert_path "\"${TEST_DATA}/certs/admin.crt\""
+_spire_set_toml_value "${ADMIN_CKMS_CONF}" tls_client_pem_key_path "\"${TEST_DATA}/certs/admin.key\""
+ROLE_NAME="sops-test"
+ckms_approle create-role "${ROLE_NAME}" --token-ttl 3600 --token-policies default >/dev/null
+ROLE_ID="$(ckms_approle get-role-id "${ROLE_NAME}" | tr -d '[:space:]')"
+SECRET_ID="$(ckms_approle generate-secret-id "${ROLE_NAME}" | awk '/^secret_id:/{print $2}')"
+LOGIN="$(curl -sf --insecure -X POST \
+  -d "{\"role_id\":\"${ROLE_ID}\",\"secret_id\":\"${SECRET_ID}\"}" \
+  https://localhost:9998/v1/auth/approle/login)"
+VAULT_TOKEN="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["auth"]["client_token"])' "${LOGIN}")"
+export VAULT_ADDR="https://localhost:9998" VAULT_TOKEN
+export VAULT_CACERT="${TEST_DATA}/certs/ca.crt"
+
+CURRENT_TEST_STEP="KMS API-token client config"
+CKMS_CONF="$(spire_write_api_token_conf "${VAULT_ADDR}" "${ADMIN_CKMS_CONF}")"
+export CKMS_CONF
+
+kms_transit() {
+  local method="$1" path="$2" body="${3:-}"
+  curl -sf --insecure -X "${method}" -H "X-Vault-Token: ${VAULT_TOKEN}" \
+    ${body:+-d "${body}"} "${VAULT_ADDR}/v1/transit/${path}"
+}
+
+print_header "SOPS Vault Transit source"
+kms_transit POST "keys/sops-v1" '{"type":"aes256-gcm96"}' >/dev/null
+kms_transit POST "keys/sops-v2" '{"type":"aes256-gcm96"}' >/dev/null
+mkdir -p "${WORK_DIR}/transit"
+cat >"${WORK_DIR}/transit/.sops.yaml" <<EOF
+creation_rules:
+  - path_regex: \\.yaml$
+    hc_vault_transit_uri: https://localhost:9998/v1/transit/keys/sops-v1
+EOF
+printf 'database:\n  password: transit-secret\n' >"${WORK_DIR}/transit/secrets.yaml"
+pushd "${WORK_DIR}/transit" >/dev/null
+CURRENT_TEST_STEP="Transit SOPS encryption"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
+CURRENT_TEST_STEP="Transit encrypted metadata check"
+grep -q 'sops:' secrets.yaml
+CURRENT_TEST_STEP="Transit decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: transit-secret'; then
+  print_error "Transit decryption did not preserve the password"
+fi
+cat >.sops.yaml <<EOF2
+creation_rules:
+  - path_regex: \\.yaml$
+    hc_vault_transit_uri: https://localhost:9998/v1/transit/keys/sops-v2
+EOF2
+CURRENT_TEST_STEP="Transit key rotation"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
+CURRENT_TEST_STEP="Transit post-rotation decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: transit-secret'; then
+  print_error "Transit post-rotation decryption did not preserve the password"
+fi
+popd >/dev/null
+
+print_header "SOPS OpenPGP source"
+mkdir -p "${WORK_DIR}/pgp"
+PKCS11_LIB="$(get_cosmian_pkcs11_lib)"
+CURRENT_TEST_STEP="OpenPGP RSA key creation"
+PGP_RSA_JSON="$(
+  COSMIAN_KMS_CLI_FORMAT=json "$(get_ckms_bin)" rsa keys create \
+    --size_in_bits 2048 --tag gnupg-card
+)"
+PGP_PUBLIC_KEY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["public_key_unique_identifier"])' "${PGP_RSA_JSON}")"
+CURRENT_TEST_STEP="OpenPGP certificate certification"
+"$(get_ckms_bin)" certificates certify \
+  --public-key-id-to-certify "${PGP_PUBLIC_KEY_ID}" \
+  --subject-name "CN=SOPS PKCS#11 CI" \
+  --days 1095 \
+  --tag gnupg-card >/dev/null
+cat >"${GNUPGHOME}/gnupg-pkcs11-scd.conf" <<EOF
+providers cosmian
+provider-cosmian-library ${PKCS11_LIB}
+provider-cosmian-allow-protected-auth
+EOF
+cat >"${GNUPGHOME}/gpg-agent.conf" <<EOF
+scdaemon-program $(command -v gnupg-pkcs11-scd)
+EOF
+gpgconf --kill gpg-agent || true
+gpg-connect-agent 'scd learn --force' /bye
+gpg --card-status >/dev/null
+gpg --batch --quick-generate-key \
+  "SOPS PKCS#11 CI <sops-pkcs11-ci@example.com>" card default 0
+PGP_MASTER_FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys sops-pkcs11-ci@example.com | awk -F: '$1 == "fpr" {print $10; exit}')"
+gpg --batch --list-secret-keys "${PGP_MASTER_FINGERPRINT}" | grep -q '>'
+cat >"${WORK_DIR}/pgp/.sops.yaml" <<EOF
+creation_rules:
+  - path_regex: \\.yaml$
+    pgp: ${PGP_MASTER_FINGERPRINT}
+EOF
+printf 'database:\n  password: pgp-secret\n' >"${WORK_DIR}/pgp/secrets.yaml"
+pushd "${WORK_DIR}/pgp" >/dev/null
+CURRENT_TEST_STEP="OpenPGP SOPS encryption"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops -e --in-place secrets.yaml
+CURRENT_TEST_STEP="OpenPGP encrypted metadata check"
+grep -q 'sops:' secrets.yaml
+CURRENT_TEST_STEP="OpenPGP decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: pgp-secret'; then
+  print_error "OpenPGP decryption did not preserve the password"
+fi
+CURRENT_TEST_STEP="OpenPGP key rotation"
+SOPS_CONFIG="${PWD}/.sops.yaml" sops updatekeys --yes secrets.yaml
+CURRENT_TEST_STEP="OpenPGP post-rotation decryption and plaintext check"
+if ! SOPS_CONFIG="${PWD}/.sops.yaml" sops -d secrets.yaml | grep -Fq 'password: pgp-secret'; then
+  print_error "OpenPGP post-rotation decryption did not preserve the password"
+fi
+popd >/dev/null
+
+print_success "SOPS Vault Transit and OpenPGP round-trips passed"
