@@ -1,8 +1,8 @@
 ## Release guidance
 
-### Why this needs a major version
+### Why existing integrations need a check before upgrading
 
-**Release this work as 5.30.0, rather than another 5.x update, because existing integrations may need changes before they can safely upgrade.** A request that worked on the old server can now fail, and a batch can stop earlier than it did before. The major version makes that upgrade requirement visible to operators; it is not just a change of label for internal Rust code.
+**Check existing integrations before upgrading to 5.30.0, because they may need changes.** A request that worked on the old server can now fail, and a batch can stop earlier than it did before. Operators should treat this release as an upgrade that needs client testing.
 
 Most of these changes correct behaviour that did not follow KMIP. They remain bug fixes, not a new interpretation of the protocol. However, a client can still depend on the old behaviour even when that behaviour was wrong. We must keep the specification-correct behaviour and give users a clear migration boundary, rather than silently preserving incompatible exceptions.
 
@@ -23,7 +23,7 @@ The main changes to check before upgrading are:
 
 **Before production rollout, test the real client workflow against 5.30.0:** create or register, locate and retrieve, use the key, rotate it, then revoke and destroy it. Passing updated repository tests does not prove that an unchanged third-party product will work. In particular, a test fixture named after a vendor is not evidence that the vendor's deployed product has been tested.
 
-The major version is an upgrade warning, not permission to ship defects or weaken KMIP requirements. It does not by itself mean that a database schema migration is required, and it is not a claim that every existing client is incompatible.
+This warning is not permission to ship defects or weaken KMIP requirements. It does not by itself mean that a database schema migration is required, and it is not a claim that every existing client is incompatible.
 
 ## Bug Fixes
 
