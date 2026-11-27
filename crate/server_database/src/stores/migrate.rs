@@ -98,14 +98,20 @@ impl FromStr for Version {
     }
 }
 
-/// Builds of this release made before its version was renamed stamped databases with an unreleased
-/// version; the 5.30.0 server reads that stamp as its own version and rewrites it after startup.
-/// Only 5.30.0 does this, so a later server still refuses a database from a newer release.
+/// Version stamped by builds of this release made before its rename; it was never released.
+const UNRELEASED_PRE_RENAME_VERSION: Version = Version(6, 0, 0);
+
+/// A database carrying the unreleased pre-rename stamp is read as the version just before 5.30.0 by any
+/// 5.x server from 5.30.0 on, so the 5.30.0 steps whose marker is missing still run (a marker makes
+/// a step a no-op) and the next `set_db_version` rewrites the stamp. A 6.x or later server compares it normally.
 fn parse_recorded_version(recorded: &str, target: Version) -> DbResult<Version> {
     let version = recorded.parse::<Version>()?;
     Ok(
-        if version == Version(6, 0, 0) && target == Version(5, 30, 0) {
-            target
+        if version == UNRELEASED_PRE_RENAME_VERSION
+            && target >= Version(5, 30, 0)
+            && target < UNRELEASED_PRE_RENAME_VERSION
+        {
+            Version(5, 29, 0)
         } else {
             version
         },
@@ -563,22 +569,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pre_rename_stamp_is_accepted_only_by_5_30_0() -> DbResult<()> {
-        let database = InMemoryMigrationBackend::default();
-        database.set_db_version("6.0.0").await?;
-        database.set_db_state(DbState::Ready).await?;
-        database.bootstrap(false, "5.30.0").await?;
-        db_ensure!(
-            database.get_db_version().await?.as_deref() == Some("5.30.0"),
-            "The pre-rename stamp must be rewritten to 5.30.0"
-        );
+    async fn test_pre_rename_stamp_is_read_below_5_30_0_by_5_x_servers() -> DbResult<()> {
+        for target in ["5.30.0", "5.30.1", "5.31.0"] {
+            let database = InMemoryMigrationBackend::default();
+            database.set_db_version("6.0.0").await?;
+            database.set_db_state(DbState::Ready).await?;
+            let applied = database.bootstrap(false, target).await?;
+            db_ensure!(
+                applied.contains(&MigrationStep::StoredStateSync),
+                "{target} must still run the 5.30.0 steps whose marker is missing"
+            );
+            db_ensure!(
+                database.get_db_version().await?.as_deref() == Some(target),
+                "The pre-rename stamp must be rewritten to {target}"
+            );
+        }
 
         let database = InMemoryMigrationBackend::default();
         database.set_db_version("6.0.0").await?;
         database.set_db_state(DbState::Ready).await?;
         db_ensure!(
-            database.bootstrap(false, "5.30.1").await.is_err(),
-            "Any other server must still refuse a newer database"
+            database.bootstrap(false, "5.29.0").await.is_err(),
+            "A server older than 5.30.0 must refuse the database"
+        );
+        db_ensure!(
+            database.bootstrap(false, "6.0.0").await.is_ok(),
+            "A server at 6.0.0 compares the stamp normally"
         );
         Ok(())
     }
