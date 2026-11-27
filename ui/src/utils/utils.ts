@@ -11,7 +11,7 @@ export const docsUrl = (path: string, hash?: string): string =>
     `${DOCS_BASE_URL}/key_management_system/${path}.html${hash ? `#${hash}` : ""}`;
 
 /** Strip HTML tags from error responses (server may return HTML error pages). */
-const stripHtml = (text: string): string =>
+export const stripHtml = (text: string): string =>
     text
         .replace(/<[^>]*>/g, "")
         .replace(/\s+/g, " ")
@@ -231,11 +231,10 @@ export const getTextRequest = async (path: string, serverUrl: string) => {
     return await response.text();
 };
 
-export const getNoTTLVRequest = async (path: string, serverUrl: string) => {
+export const getNoTTLVRequest = async (path: string, serverUrl: string, timeoutMs = 30_000) => {
     const kmsUrl = serverUrl + path;
 
     const controller = new AbortController();
-    const timeoutMs = 30_000;
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
     const response = await fetch(kmsUrl, {
@@ -253,30 +252,6 @@ export const getNoTTLVRequest = async (path: string, serverUrl: string) => {
     }
 
     return await response.json();
-};
-
-export const getNoTTLVRequestWithTimeout = async (path: string, serverUrl: string, timeoutMs: number) => {
-    const kmsUrl = serverUrl + path;
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-        const response = await fetch(kmsUrl, {
-            method: "GET",
-            credentials: "include",
-            signal: controller.signal,
-            headers: {},
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`${response.status}: ${stripHtml(errorText)}`);
-        }
-
-        return await response.json();
-    } finally {
-        clearTimeout(timeoutHandle);
-    }
 };
 
 export const downloadFile = (data: string | Uint8Array, filename: string, mimeType: string) => {

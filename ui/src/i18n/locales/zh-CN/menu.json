@@ -141,6 +141,7 @@
     "access-rights/obtained": "我获得的",
     "access-rights/crypto-officer": "加密官",
     "hsm-status": "HSM 状态",
+    "server-health": "服务器健康状态",
     "kv-secrets": "密钥值 (KV)",
     "hyperscalers": "云服务提供商",
     "azure": "Azure",

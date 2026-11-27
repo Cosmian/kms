@@ -7,6 +7,8 @@ export type LayoutOutletContext = {
     /** True when the server runs in FIPS mode, or when that is not (yet) known: fail closed. */
     isFips: boolean;
     features?: UiFeatures;
+    /** Lets a page publish a health reading it has just fetched, so that the footer marker agrees with it. */
+    reportHealth: (status: string, latencyMs: number | null) => void;
 };
 
 /**

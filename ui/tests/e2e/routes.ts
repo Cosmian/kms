@@ -168,6 +168,12 @@ const LOCATE_ROUTES: Route[] = [{ name: "locate", path: "/ui/locate" }];
 // ── Secrets (KV) ─────────────────────────────────────────────────────────────
 const KV_ROUTES: Route[] = [{ name: "Secrets (KV)", path: "/ui/kv-secrets" }];
 
+// ── Server Health ────────────────────────────────────────────────────────────
+const SERVER_HEALTH_ROUTES: Route[] = [{ name: "Server Health", path: "/ui/server-health" }];
+
+// ── HSM Status ───────────────────────────────────────────────────────────────
+const HSM_STATUS_ROUTES: Route[] = [{ name: "HSM Status", path: "/ui/hsm-status" }];
+
 // ── MAC routes ───────────────────────────────────────────────────────────────
 const MAC_ROUTES: Route[] = [
     { name: "compute", path: "/ui/mac/compute" },
@@ -221,6 +227,8 @@ export const ALL_ROUTES: { section: string; routes: Route[] }[] = [
     { section: "Derive Key", routes: DERIVE_KEY_ROUTE },
     { section: "Locate", routes: LOCATE_ROUTES },
     { section: "Secrets (KV)", routes: KV_ROUTES },
+    { section: "Server Health", routes: SERVER_HEALTH_ROUTES },
+    { section: "HSM Status", routes: HSM_STATUS_ROUTES },
     { section: "MAC", routes: MAC_ROUTES },
     { section: "FPE", routes: FPE_ROUTES },
     { section: "Anonymize", routes: TOKENIZE_ROUTES },

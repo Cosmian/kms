@@ -15,8 +15,8 @@
         "authDisabledDescription": "Ce serveur KMS a été démarré sans méthode d'authentification configurée.",
         "wasmUnavailableTitle": "WebAssembly n'est pas disponible. Il est peut-être bloqué par une extension, désactivé manuellement, ou restreint par une politique de sécurité.",
         "wasmUnavailableDescription": "Veuillez activer WASM dans votre navigateur et actualiser cette page pour pouvoir utiliser l'interface du KMS. Dans Firefox, vous pouvez l'activer en définissant <code>javascript.options.wasm</code> = true dans <code>about:config</code>.",
-        "healthDb": "Santé DB : {{status}}",
-        "healthDbWithLatency": "Santé DB : {{status}} ({{latency}} ms)",
+        "health": "Santé : {{status}}",
+        "healthWithLatency": "Santé : {{status}} ({{latency}} ms)",
         "unavailable": "Indisponible"
     },
     "notFound": {

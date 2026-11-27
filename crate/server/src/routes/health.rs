@@ -7,7 +7,7 @@ use std::{
 };
 
 use actix_web::{
-    HttpRequest, HttpResponse, get,
+    HttpRequest, HttpResponse,
     web::{Data, Query},
 };
 use cosmian_kms_interfaces::InterfaceResult;
@@ -55,7 +55,7 @@ pub(crate) struct HealthResponse {
 }
 
 #[derive(Deserialize)]
-struct HealthQuery {
+pub(crate) struct HealthQuery {
     /// Answer HTTP 503 when the node is `DEGRADED` too, so that a load balancer takes it out of
     /// its pool.
     #[serde(default)]
@@ -74,7 +74,9 @@ struct HealthQuery {
 /// - `DEGRADED` answers HTTP 200, or HTTP 503 with `?strict=true`. `DOWN` always answers 503.
 /// - For SQL databases, performs a lightweight `SELECT 1`.
 /// - For Redis-Findex (non-FIPS builds), performs a lightweight health check.
-#[get("/health")]
+///
+/// Registered by `start_kms_server::public_endpoints`, which makes it readable by the Web UI
+/// when it is served from another origin.
 pub(crate) async fn get_health(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,

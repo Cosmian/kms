@@ -240,6 +240,20 @@ Example response from a two-node cluster:
 | `nodes[].leader` | Whether this node is the leader shown for the cluster. |
 | `leader` | Node ID of the leader, or `null` when there is none yet (just after start-up, or in the seconds after the leader stopped). |
 
+### Web UI
+
+The **Server Health** page of the Web UI (`Server Health` in the menu, or `/ui/server-health`) shows the same
+information as the two endpoints above: the global status, each dependency and the live nodes. The footer of every page
+shows the status as a marker (🟢 `UP`, 🟡 `DEGRADED`, 🔴 `DOWN` or unreachable) that links to the page. The page
+refreshes when you press **Refresh**, or at the period chosen in **Auto-refresh** (every 5, 10 or 30 seconds, or every
+minute; manual by default). The chosen period is remembered by the browser, and the refresh pauses while the browser tab
+is hidden.
+
+!!! note
+    Each refresh sends two requests (`GET /health`, public, and `GET /cluster/status`, authenticated), and the server
+    logs and audits each of them. The refresh does not extend the Web UI session: its cookie has a fixed lifetime of
+    24 hours.
+
 ### Metric
 
 When OpenTelemetry metrics are enabled, each node exports the gauge `kms.cluster.nodes`: the number of live nodes,

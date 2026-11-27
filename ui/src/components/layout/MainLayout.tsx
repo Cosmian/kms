@@ -10,7 +10,8 @@ import Sidebar from "./Sidebar";
 import type { LayoutOutletContext } from "./NonFipsRoute";
 import { fetchUiConfig, type UiFeatures } from "../../utils/uiConfig";
 import LanguageSwitcher from "../common/LanguageSwitcher";
-import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "../../utils/utils";
+import { AuthMethod, getNoTTLVRequest } from "../../utils/utils";
+import { fetchHealth, healthMarker } from "../../utils/health";
 
 type MainLayoutProps = {
     isDarkMode: boolean;
@@ -45,30 +46,24 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         };
     }, [authMethod, serverUrl, userId]);
 
-    const normalizedServerHealth = (serverHealth ?? "").trim().toUpperCase();
-    const isServerHealthy = normalizedServerHealth === "UP";
     // Fail closed: until the server reports it is NOT in FIPS mode (or if /server-info is
     // unavailable), hide and block the features that do not exist in a FIPS build.
     const isFips = serverInfo?.fips_mode ?? true;
 
     const serverHealthLabel =
         serverHealthLatencyMs === null
-            ? t("main.healthDb", { status: serverHealth })
-            : t("main.healthDbWithLatency", { status: serverHealth, latency: serverHealthLatencyMs });
-    const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
+            ? t("main.health", { status: serverHealth })
+            : t("main.healthWithLatency", { status: serverHealth, latency: serverHealthLatencyMs });
 
     const fetchServerInfo = useCallback(async () => {
         if (authMethod != "JWT" || userId) {
             try {
                 // Fetch /server-info first: it decides which features are available (FIPS mode),
-                // so it must not depend on /version or /health succeeding.
+                // so it must not depend on /version succeeding.
                 const info = await getNoTTLVRequest("/server-info", serverUrl);
                 setServerInfo(info as ServerInfo);
                 const version = await getNoTTLVRequest("/version", serverUrl);
                 setServerVersion(version);
-                const health = await getNoTTLVRequestWithTimeout("/health", serverUrl, 2_000);
-                setServerHealth(health?.status ?? t("main.unavailable"));
-                setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
                 // Fetch the authenticated username via /me (runs through auth middleware).
                 // This correctly returns the cert CN for CERT auth.
                 try {
@@ -82,8 +77,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 }
             } catch {
                 setServerVersion(t("main.unavailable"));
-                setServerHealth(t("main.unavailable"));
-                setServerHealthLatencyMs(null);
             } finally {
                 setLoading(false);
             }
@@ -91,6 +84,24 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             setLoading(false);
         }
     }, [authMethod, serverUrl, t, userId]);
+
+    // /health is public and may be slow (the server bounds its HSM probes to 2 s): it has its own
+    // request, so a DEGRADED, DOWN or unreachable node never hides the version or delays the page.
+    const fetchServerHealth = useCallback(async () => {
+        try {
+            const health = await fetchHealth(serverUrl, 5_000);
+            setServerHealth(health.status);
+            setServerHealthLatencyMs(health.latency_ms);
+        } catch {
+            setServerHealth(t("main.unavailable"));
+            setServerHealthLatencyMs(null);
+        }
+    }, [serverUrl, t]);
+
+    const reportHealth = useCallback((status: string, latencyMs: number | null) => {
+        setServerHealth(status);
+        setServerHealthLatencyMs(latencyMs);
+    }, []);
 
     const downloadCliUrl = "/download-cli";
 
@@ -115,8 +126,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
 
     useEffect(() => {
         fetchServerInfo();
+        fetchServerHealth();
         determineDownloadTarget();
-    }, [determineDownloadTarget, fetchServerInfo]);
+    }, [determineDownloadTarget, fetchServerHealth, fetchServerInfo]);
 
     const handleLogout = async () => {
         await logout();
@@ -223,31 +235,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                         {loading || features === null ? (
                             <Spin size="large" />
                         ) : (
-                            <Outlet context={{ isFips, features } satisfies LayoutOutletContext} />
+                            <Outlet context={{ isFips, features, reportHealth } satisfies LayoutOutletContext} />
                         )}
                     </Layout.Content>
                     <Footer
-                        version={(() => {
-                            const version = serverVersion
-                                ? (() => {
-                                      try {
-                                          return `${serverVersion}`;
-                                      } catch {
-                                          return serverVersion;
-                                      }
-                                  })()
-                                : serverVersion;
-
-                            if (!serverHealth) {
-                                return version;
-                            }
-
-                            if (!version) {
-                                return `${serverHealthMarker} ${serverHealthLabel}`;
-                            }
-
-                            return `${version} — ${serverHealthMarker} ${serverHealthLabel}`;
-                        })()}
+                        version={serverVersion}
+                        health={
+                            serverHealth ? (
+                                <Link to="/server-health" data-testid="footer-health">
+                                    {healthMarker(serverHealth)} {serverHealthLabel}
+                                </Link>
+                            ) : undefined
+                        }
                     />
                 </Layout>
             </Layout>

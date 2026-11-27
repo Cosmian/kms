@@ -141,6 +141,7 @@
     "access-rights/obtained": "Obtenus",
     "access-rights/crypto-officer": "Crypto Officer",
     "hsm-status": "État du HSM",
+    "server-health": "Santé du serveur",
     "kv-secrets": "Secrets (KV)",
     "hyperscalers": "Fournisseurs cloud",
     "azure": "Azure",

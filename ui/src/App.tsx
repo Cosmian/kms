@@ -46,6 +46,7 @@ import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
 import HsmStatus from "./actions/Objects/HsmStatus";
+import ServerHealth from "./actions/Objects/ServerHealth";
 import KvSecrets from "./actions/Secrets/KvSecrets";
 import GeneratePassword from "./actions/Secrets/GeneratePassword";
 import SshCa from "./actions/Secrets/SshCa";
@@ -471,6 +472,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         <Route element={<FeatureRoute feature="kv" />}>
                             <Route path="kv-secrets" element={<KvSecrets />} />
                         </Route>
+                        <Route path="server-health" element={<ServerHealth />} />
                         <Route path="ssh-certificate" element={<SshCertificate />} />
                         <Route path="ssh-ca" element={<SshCa />} />
                         <Route path="generate-password" element={<GeneratePassword />} />

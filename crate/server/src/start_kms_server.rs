@@ -18,7 +18,10 @@ use actix_files::Files;
 use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer, Scope,
     body::MessageBody,
-    dev::{ServerHandle, ServiceFactory, ServiceRequest, ServiceResponse, Transform},
+    dev::{
+        HttpServiceFactory, ServerHandle, ServiceFactory, ServiceRequest, ServiceResponse,
+        Transform,
+    },
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
@@ -1913,6 +1916,7 @@ pub async fn prepare_kms_server(
                 "/pgp{_:.*}",
                 "/fpe{_:.*}",
                 "/mac{_:.*}",
+                "/fpe{_:.*}",
                 "/cc{_:.*}",
                 "/secret-data{_:.*}",
                 "/opaque-object{_:.*}",
@@ -1927,6 +1931,8 @@ pub async fn prepare_kms_server(
                 "/rotation-policy{_:.*}",
                 "/hsm-status",
                 "/kv-secrets{_:.*}",
+                "/hsm-status{_:.*}",
+                "/server-health{_:.*}",
                 "/ssh-certificate{_:.*}",
                 "/ssh-ca{_:.*}",
                 "/generate-password{_:.*}",
@@ -1986,8 +1992,7 @@ pub async fn prepare_kms_server(
         // browser cannot satisfy for static assets.
         app = app
             .service(root_redirect::root_redirect_to_ui)
-            .service(health::get_health)
-            .service(get_version)
+            .service(public_endpoints(&kms_server_for_http.params.cors_allowed_origins))
             // Public CRL distribution point (no authentication, RFC 5280 §3).
             // Registered directly on the app (not in a scope) so it takes priority over
             // the default catch-all scope without interfering with other routes.
@@ -2295,6 +2300,21 @@ fn allowed_origins_cors(allowed_origins: &[String]) -> Cors {
             .allow_any_header()
             .supports_credentials(),
         |cors, origin| cors.allowed_origin(origin),
+    )
+}
+
+/// `GET /health` and `GET /version`: public (no authentication), and read by the Web UI from the
+/// browser. When the UI is served from another origin (development, E2E tests) they must answer
+/// it like the other UI endpoints; without the CORS headers the browser blocks the answer, and
+/// the footer cannot show the version or the health.
+pub(crate) fn public_endpoints(cors_allowed_origins: &[String]) -> impl HttpServiceFactory + use<> {
+    (
+        web::resource("/health")
+            .wrap(allowed_origins_cors(cors_allowed_origins))
+            .route(web::get().to(health::get_health)),
+        web::resource("/version")
+            .wrap(allowed_origins_cors(cors_allowed_origins))
+            .route(web::get().to(get_version)),
     )
 }
 
@@ -2931,6 +2951,66 @@ mod tests {
             .to_request();
         let response = test::call_service(&app, anonymous).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// `/health` and `/version` are read by the Web UI from the browser: when it is served from
+    /// another origin (development, E2E tests) they must answer that origin like the other UI
+    /// endpoints. Another origin gets no CORS headers, and callers without an `Origin` header
+    /// (load balancers, `curl`) are not affected.
+    #[actix_web::test]
+    async fn health_and_version_answer_the_cors_origins_of_the_web_ui() {
+        use actix_web::{
+            http::{StatusCode, header},
+            test,
+        };
+
+        let kms = crate::tests::test_utils::test_kms()
+            .await
+            .expect("test KMS");
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(kms))
+                .service(public_endpoints(&["http://ui.example".to_owned()])),
+        )
+        .await;
+
+        for path in ["/health", "/version"] {
+            let allowed = test::TestRequest::get()
+                .uri(path)
+                .insert_header((header::ORIGIN, "http://ui.example"))
+                .to_request();
+            let response = test::call_service(&app, allowed).await;
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            assert_eq!(
+                response.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+                Some(&header::HeaderValue::from_static("http://ui.example")),
+                "{path}"
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::ACCESS_CONTROL_ALLOW_CREDENTIALS),
+                Some(&header::HeaderValue::from_static("true")),
+                "{path}"
+            );
+
+            let other = test::TestRequest::get()
+                .uri(path)
+                .insert_header((header::ORIGIN, "http://other.example"))
+                .to_request();
+            let response = test::call_service(&app, other).await;
+            assert!(
+                response
+                    .headers()
+                    .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                    .is_none(),
+                "{path}: another origin must not be able to read the answer"
+            );
+
+            let no_origin = test::TestRequest::get().uri(path).to_request();
+            let response = test::call_service(&app, no_origin).await;
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+        }
     }
 
     /// Security regression (S24): the KV JSON extractor accepts any Content-Type for Vault
