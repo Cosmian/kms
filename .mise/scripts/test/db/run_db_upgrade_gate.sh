@@ -227,6 +227,11 @@ probe_kmip_port() {
 # Probe the KMS container on its published port.
 probe_container_kmip() {
   [ "$(docker inspect --format '{{.State.Running}}' "${KMS_CONTAINER}" 2>/dev/null || true)" = "true" ] || return 1
+  # The published port can be missing right after `docker run --detach` under load: resolve it on every probe.
+  local addr
+  addr="$(docker port "${KMS_CONTAINER}" 9998/tcp 2>/dev/null | head -n 1)" || true
+  [ -n "${addr}" ] || return 1
+  KMS_HOST_PORT="${addr##*:}"
   probe_kmip_port "${KMS_HOST_PORT}"
 }
 
@@ -269,20 +274,11 @@ start_kms_container() {
     --publish 127.0.0.1::9998 "${vol_args[@]}" "${image}" "${db_args[@]}" \
     "${tls_args[@]}" \
     --clients-ca-cert-file "${cert_dir}/ca/ca.crt" ${KEK_ACTIVE:+"${KEK_ID}"} >/dev/null
-  local addr
-  addr="$(docker port "${KMS_CONTAINER}" 9998/tcp | head -n 1)"
-  KMS_HOST_PORT="${addr##*:}"
-  # shortcut: one retry; fips 5.9.0 on SQLite sometimes never starts serving (logs stop after the UI threads), cause unknown, replace by a root-cause fix when found.
   if ! wait_for_command 60 probe_container_kmip; then
     docker logs "${KMS_CONTAINER}" >"${log_file}" 2>&1 || true
     tail -n 30 "${log_file}" >&2 || true
-    if [ -z "${old_version}" ] || [ -n "${START_RETRIED:-}" ]; then return 1; fi
-    print_warning "KMS container ${image} did not start; retrying once"
-    START_RETRIED=1
-    local rc=0
-    start_kms_container "$@" || rc=$?
-    START_RETRIED=""
-    return "${rc}"
+    echo "container ${KMS_CONTAINER} port='${KMS_HOST_PORT:-}' state: $(docker inspect --format '{{json .State}}' "${KMS_CONTAINER}" 2>&1)" >&2
+    return 1
   fi
 }
 
