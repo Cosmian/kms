@@ -815,6 +815,7 @@ Crate path: `crate/server`
 | `warn` | `failed to bind dependant {dep_uid} to its row: {e}, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid`, `e` | - |
 | `warn` | `SECURITY: no key_encryption_key is configured: objects are stored without server-side KEK wrapping and are not bound to their database row. Configure a KEK for production deployments.` | `src/start_kms_server.rs` | - | - |
 | `info` | `bound {bound} stored objects to their row` | `src/core/wrapping/wrap.rs` | `bound` | - |
+| `warn` | `SECURITY: audit logging is disabled: KMIP (HTTP and socket) and provider requests are not recorded. Enable it with --audit-enable (KMS_AUDIT_ENABLE) for production deployments.` | `src/start_kms_server.rs` | - | Enable audit logging for production deployments, see [Audit logging](./audit-logs.md). |
 
 ### `cosmian_kms_server_database`
 

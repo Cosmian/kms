@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use actix_web::{HttpMessage, HttpRequest};
 use base64::{
     Engine,
     engine::{general_purpose, general_purpose::URL_SAFE_NO_PAD},
@@ -47,7 +48,7 @@ use crate::{
     },
     error::KmsError,
     kms_ensure,
-    middlewares::UserId,
+    middlewares::{AuthMethod, AuthenticatedUser, UserId},
     result::KResult,
     routes::google_cse::{
         build_google_cse_url,
@@ -276,12 +277,26 @@ pub struct WrapResponse {
     pub wrapped_key: String,
 }
 
+/// Records the CSE user in the request extensions so that the audit middleware attributes the
+/// event to it: tokens are validated here, not by a middleware.
+fn record_cse_user(req_http: &HttpRequest, user: &str, kms: &KMS) {
+    req_http.extensions_mut().insert(AuthenticatedUser {
+        username: UserId::from(user),
+        auth_method: if kms.params.google_cse.disable_tokens_validation {
+            AuthMethod::DefaultUser
+        } else {
+            AuthMethod::OidcJwt
+        },
+    });
+}
+
 /// Validates the provided authentication and authorization tokens, and extracts the content.
 ///
 /// This function takes the authentication and authorization tokens from the request,
 /// along with the CSE configuration, application context, and optional roles. It performs
 /// validation on the tokens and extracts the relevant content if the validation is successful.
 async fn get_user_and_resource_name(
+    req_http: &HttpRequest,
     roles: &[Role],
     authentication_token: &str,
     authorization_token: &str,
@@ -290,6 +305,7 @@ async fn get_user_and_resource_name(
 ) -> KResult<(String, Option<Vec<u8>>)> {
     if kms.params.google_cse.disable_tokens_validation {
         debug!("no token validation");
+        record_cse_user(req_http, &kms.params.default_username, kms);
         Ok((kms.params.default_username.clone(), None))
     } else {
         debug!("validate_tokens");
@@ -301,6 +317,7 @@ async fn get_user_and_resource_name(
             Some(roles),
         )
         .await?;
+        record_cse_user(req_http, &token_extracted_content.user, kms);
         Ok((
             token_extracted_content.user,
             token_extracted_content.resource_name,
@@ -323,6 +340,7 @@ async fn get_user_and_resource_name(
 /// # Errors
 /// This function can return an error if there is a problem with the encryption process or if the tokens validation fails.
 pub async fn wrap(
+    req_http: &HttpRequest,
     request: WrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
@@ -334,6 +352,7 @@ pub async fn wrap(
 
     // get the user and resource name
     let (user, resource_name) = get_user_and_resource_name(
+        req_http,
         roles,
         &request.authentication,
         &request.authorization,
@@ -381,6 +400,7 @@ pub struct UnwrapResponse {
 /// # Errors
 /// This function can return an error if there is a problem with the decryption process or if the tokens validation fails.
 pub async fn unwrap(
+    req_http: &HttpRequest,
     request: UnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
@@ -392,6 +412,7 @@ pub async fn unwrap(
 
     // get the user and resource name
     let (user, resource_name) = get_user_and_resource_name(
+        req_http,
         roles,
         &request.authentication,
         &request.authorization,
@@ -464,6 +485,7 @@ pub struct PrivateKeySignResponse {
 /// # Errors
 /// This function can return an error if there is a problem with the encryption process or if the tokens validation fails.
 pub async fn private_key_sign(
+    req_http: &HttpRequest,
     request: PrivateKeySignRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
@@ -473,6 +495,7 @@ pub async fn private_key_sign(
 
     // get the user and resource name
     let (user, _resource_name) = get_user_and_resource_name(
+        req_http,
         roles,
         &request.authentication,
         &request.authorization,
@@ -553,6 +576,7 @@ pub struct PrivateKeyDecryptResponse {
 /// # Errors
 /// This function can return an error if there is a problem with the decryption process or if the tokens validation fails.
 pub async fn private_key_decrypt(
+    req_http: &HttpRequest,
     request: PrivateKeyDecryptRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
@@ -562,6 +586,7 @@ pub async fn private_key_decrypt(
 
     // get the user and resource name
     let (user, _resource_name) = get_user_and_resource_name(
+        req_http,
         roles,
         &request.authentication,
         &request.authorization,
@@ -674,6 +699,7 @@ pub struct DigestResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if decryption or digest creation fails
 pub async fn digest(
+    req_http: &HttpRequest,
     request: DigestRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
@@ -695,6 +721,7 @@ pub async fn digest(
     let user = authorization_token.email.ok_or_else(|| {
         KmsError::Unauthorized("Authorization token should contain an email".to_owned())
     })?;
+    record_cse_user(req_http, &user, kms);
 
     debug!("encode base64 wrapped_dek");
     let dek_data = cse_wrapped_key_decrypt(
@@ -770,6 +797,7 @@ pub struct PrivilegedWrapResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if encryption fails
 pub async fn privileged_wrap(
+    req_http: &HttpRequest,
     request: PrivilegedWrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
@@ -777,6 +805,7 @@ pub async fn privileged_wrap(
     debug!("entering");
 
     let user = authenticate_privileged_user(&request.authentication, cse_config, kms).await?;
+    record_cse_user(req_http, &user, kms);
 
     debug!("wrap dek");
     let resource_name = request.resource_name.into_bytes();
@@ -811,6 +840,7 @@ pub struct PrivilegedUnwrapResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect or if decryption fails
 pub async fn privileged_unwrap(
+    req_http: &HttpRequest,
     request: PrivilegedUnwrapRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
@@ -829,6 +859,7 @@ pub async fn privileged_unwrap(
         .await?;
     }
     let user = kms.params.default_username.clone();
+    record_cse_user(req_http, &user, kms);
     let resource_name = request.resource_name;
 
     debug!("unwrap key");
@@ -882,12 +913,14 @@ pub struct PrivilegedPrivateKeyDecryptResponse {
 /// # Errors
 /// Will return `KmsError` if if authentication with tokens is incorrect, or if decryption fails
 pub async fn privileged_private_key_decrypt(
+    req_http: &HttpRequest,
     request: PrivilegedPrivateKeyDecryptRequest,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<PrivilegedPrivateKeyDecryptResponse> {
     debug!("entering");
     let user = authenticate_privileged_user(&request.authentication, cse_config, kms).await?;
+    record_cse_user(req_http, &user, kms);
 
     debug!("check algorithm");
 
@@ -1077,13 +1110,14 @@ pub struct RewrapResponse {
 /// # Errors
 /// Returns `KmsError` if authentication fails, the key material is invalid, or if encryption fails.
 pub async fn rewrap(
+    req_http: &HttpRequest,
     request: RewrapRequest,
     kacls_url: &str,
     cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMS>,
 ) -> KResult<RewrapResponse> {
     // SECURITY: the URL is validated (SSRF) and its resolved address pinned in the client.
-    rewrap_with_client(request, kacls_url, cse_config, kms, kacls_client).await
+    rewrap_with_client(req_http, request, kacls_url, cse_config, kms, kacls_client).await
 }
 
 /// [`rewrap`], with the client used to reach the original KACLS produced by `connect`
@@ -1092,6 +1126,7 @@ pub async fn rewrap(
 /// # Errors
 /// Same as [`rewrap`], plus any error returned by `connect`.
 pub(crate) async fn rewrap_with_client<F>(
+    req_http: &HttpRequest,
     request: RewrapRequest,
     kacls_url: &str,
     cse_config: &Arc<Option<GoogleCseConfig>>,
@@ -1119,6 +1154,7 @@ where
     let user = token.email.ok_or_else(|| {
         KmsError::Unauthorized("Authorization token must contain an email.".to_owned())
     })?;
+    record_cse_user(req_http, &user, kms);
 
     // Fetch RSA private key from current KMS
     debug!("retrieving RSA private key from KMS");

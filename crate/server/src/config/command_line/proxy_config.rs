@@ -69,7 +69,11 @@ pub struct ProxyConfig {
 impl Display for ProxyConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(url) = &self.url {
-            write!(f, "Proxy URL: {url}, ")?;
+            write!(
+                f,
+                "Proxy URL: {}, ",
+                cosmian_kms_server_database::redact_connection_string(url)
+            )?;
         } else {
             write!(f, "No Proxy URL, ")?;
         }
@@ -86,8 +90,8 @@ impl Display for ProxyConfig {
             write!(f, "No Basic Auth Password, ")?;
         }
 
-        if let Some(header) = &self.custom_auth_header {
-            write!(f, "Custom Auth Header: {header}, ")?;
+        if let Some(_header) = &self.custom_auth_header {
+            write!(f, "Custom Auth Header: [****], ")?;
         } else {
             write!(f, "No Custom Auth Header, ")?;
         }

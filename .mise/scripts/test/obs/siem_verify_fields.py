@@ -68,7 +68,8 @@ _ALL_FIELDS: frozenset[str] = frozenset(_REQUIRED_FIELDS) | frozenset(_OPTIONAL_
 # Valid KMIP operation names emitted by KMS.
 # Includes both KMIP operation names (injected by operation handlers) and
 # HTTP-route-level fallback names (extracted from the request path when a
-# KMIP request fails before operation dispatch — see middlewares/audit.rs).
+# KMIP request fails before operation dispatch — see middlewares/audit/mod.rs).
+# Unnamed requests are recorded as `METHOD /route/pattern` (see `_ROUTE_FALLBACK_RE`).
 _VALID_OPERATIONS: frozenset[str] = frozenset(
     {
         # ── HTTP route fallbacks (pre-dispatch failures) ──────────────────────
@@ -106,6 +107,15 @@ _VALID_OPERATIONS: frozenset[str] = frozenset(
         'audit:eviction',
     }
 )
+
+# `METHOD /route/pattern` fallback for requests that name no KMIP operation,
+# e.g. `POST /kmip/2_1` (pre-dispatch failure) or `POST /ms_dke/{key_name}/decrypt`.
+_ROUTE_FALLBACK_RE = re.compile(r'^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) /\S*$')
+
+
+def _is_valid_operation(op: str) -> bool:
+    return op in _VALID_OPERATIONS or _ROUTE_FALLBACK_RE.match(op) is not None
+
 
 # 64-hex hash pattern (SHA-256 hex-encoded).
 _HEX64_RE = re.compile(r'^[0-9a-f]{64}$')
@@ -170,7 +180,7 @@ def verify_jsonl_fields(
         op = ev.get('operation', '')
         if not isinstance(op, str) or not op:
             _fail(f"{label}[{i}]: 'operation' must be a non-empty string")
-        if op not in _VALID_OPERATIONS:
+        if not _is_valid_operation(op):
             _fail(
                 f"{label}[{i}]: 'operation' value {op!r} is not a known KMS operation. "
                 f"Expected one of: {sorted(_VALID_OPERATIONS)}"
@@ -277,7 +287,7 @@ def verify_es_fields(
         op = ev.get('operation', '')
         if not isinstance(op, str) or not op:
             _fail(f"{label}[{i}]: 'operation' must be a non-empty string")
-        if op not in _VALID_OPERATIONS:
+        if not _is_valid_operation(op):
             _fail(
                 f"{label}[{i}]: 'operation' value {op!r} is not a known KMS operation"
             )

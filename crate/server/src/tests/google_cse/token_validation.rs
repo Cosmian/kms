@@ -909,6 +909,7 @@ async fn rewrap_migrates_dek_between_two_kacls() {
     let two_kacls = Box::pin(two_kacls(&rsa)).await;
     let cse_config_a = Arc::new(Some(two_kacls.config_a));
     let rewrapped = rewrap_with_client(
+        &actix_web::test::TestRequest::default().to_http_request(),
         RewrapRequest {
             authorization: migration_authz_token(&rsa, Some(USER), "migrator", DRIVE_RESOURCE),
             original_kacls_url: two_kacls.original_kacls_url,
@@ -970,6 +971,7 @@ async fn rewrap_fails_when_original_kacls_refuses() {
     let two_kacls = Box::pin(two_kacls(&rsa)).await;
     let cse_config_a = Arc::new(Some(two_kacls.config_a));
     let result = rewrap_with_client(
+        &actix_web::test::TestRequest::default().to_http_request(),
         RewrapRequest {
             authorization: migration_authz_token(
                 &rsa,

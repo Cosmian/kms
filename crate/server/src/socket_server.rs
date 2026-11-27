@@ -11,6 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use cosmian_kms_access::audit::{AuditResult, audit_now};
 use cosmian_logger::{debug, error, info, trace, warn};
 use openssl::ssl::{SslAcceptor, SslStream, SslVerifyMode};
 use tokio::{
@@ -24,7 +25,8 @@ use crate::{
     error::KmsError,
     kms_bail,
     middlewares::{
-        UserId, names_reserved_identity, user_from_client_certificate, verified_issuers,
+        BatchItemAuditContext, UserId, enqueue_socket_events, names_reserved_identity,
+        user_from_client_certificate, verified_issuers,
     },
     result::{KResult, KResultHelper},
     tls_config::{TlsConfig, configure_client_cert_verification, create_base_openssl_acceptor},
@@ -152,7 +154,7 @@ impl SocketServer {
         command_receiver: mpsc::Receiver<KResult<()>>,
     ) -> KResult<()>
     where
-        F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
+        F: Fn(&str, Option<&str>, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
         let server_config = self.server_config.clone();
@@ -196,7 +198,7 @@ impl SocketServer {
         pre_bound_listener: Option<TcpListener>,
     ) -> KResult<JoinHandle<()>>
     where
-        F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
+        F: Fn(&str, Option<&str>, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
         let addr = format!("{}:{}", self.host, self.port);
         let server_config = self.server_config.clone();
@@ -234,7 +236,7 @@ impl SocketServer {
         pre_bound_listener: Option<TcpListener>,
     ) -> Result<(), KmsError>
     where
-        F: Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
+        F: Fn(&str, Option<&str>, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync + 'static,
     {
         // Use the pre-bound listener when given (eliminates the TOCTOU race between
         // probing a free port and re-binding it later); otherwise bind fresh by address.
@@ -465,7 +467,7 @@ fn accept_tls<'a>(
 fn handle_client(
     kms_server: &Arc<KMS>,
     server_config: &Arc<SslAcceptor>,
-    handler: &Arc<impl Fn(&str, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync>,
+    handler: &Arc<impl Fn(&str, Option<&str>, &[u8], Arc<KMS>) -> Vec<u8> + Send + Sync>,
     inflight_bytes: &Arc<Semaphore>,
     stream: &mut TcpStream,
 ) -> KResult<()> {
@@ -475,18 +477,44 @@ fn handle_client(
         .map_or_else(|_| "[N/A]".to_owned(), |sa| sa.to_string());
     debug!("socket server: client connected from {}", peer_addr);
 
+    let client_ip = stream.peer_addr().ok().map(|sa| sa.ip().to_string());
     let mut tls_stream = accept_tls(server_config, stream, SOCKET_HANDSHAKE_TIMEOUT)?;
 
     loop {
         let Some((request, permit)) = read_request(&mut tls_stream, inflight_bytes)? else {
             break;
         };
-        let username = client_username(&tls_stream)?;
-        reject_default_username_collision(&username, &kms_server.params.default_username)?;
+        let username = match client_username(&tls_stream).and_then(|username| {
+            reject_default_username_collision(&username, &kms_server.params.default_username)?;
+            Ok(username)
+        }) {
+            Ok(username) => username,
+            Err(e) => {
+                let _audited = enqueue_socket_events(
+                    kms_server,
+                    None,
+                    client_ip.as_deref(),
+                    audit_now(),
+                    Instant::now(),
+                    vec![BatchItemAuditContext {
+                        operation: "RequestMessage".to_owned(),
+                        object_uid: None,
+                        algorithm: None,
+                        result: Some(AuditResult::Failure("authentication failed".to_owned())),
+                    }],
+                );
+                return Err(e);
+            }
+        };
         debug!("socket server: received request ({} bytes)", request.len());
 
         // Process the request
-        let response = handler(username.as_str(), &request, kms_server.clone());
+        let response = handler(
+            username.as_str(),
+            client_ip.as_deref(),
+            &request,
+            kms_server.clone(),
+        );
         // Return the request bytes to the budget before the (client-paced) response write.
         drop(request);
         drop(permit);

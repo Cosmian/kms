@@ -990,3 +990,204 @@ async fn audit_records_crypto_api_operations() -> KResult<()> {
     std::fs::remove_file(&path).ok();
     Ok(())
 }
+
+/// Reads back every event of a JSONL audit file.
+fn read_audit_events(path: &std::path::Path) -> Vec<cosmian_kms_access::audit::AuditEvent> {
+    let file = std::fs::File::open(path).expect("audit file not created");
+    std::io::BufRead::lines(std::io::BufReader::new(file))
+        .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+        .collect()
+}
+
+/// Regression (#1494 F-030): requests that name no KMIP operation (provider routes) are
+/// recorded as `METHOD /route/pattern`, with the key taken from the path.
+#[tokio::test]
+async fn audit_records_provider_route_pattern_and_key() -> KResult<()> {
+    let path = temp_path("provider_route");
+    std::fs::remove_file(&path).ok();
+    let store = AuditStore::start(&path, 128).expect("cannot start audit store");
+    let app = actix_test::init_service(
+        actix_web::App::new()
+            .wrap(crate::middlewares::AuditMiddleware::new(
+                Some(store.clone()),
+                vec![],
+                AuditFailureMode::Continue,
+            ))
+            .service(
+                actix_web::web::resource("/ms_dke/{key_name}/decrypt")
+                    .route(actix_web::web::post().to(actix_web::HttpResponse::Ok)),
+            ),
+    )
+    .await;
+    let res = call_service(
+        &app,
+        actix_test::TestRequest::post()
+            .uri("/ms_dke/k1/decrypt")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    store.flush().await;
+    let events = read_audit_events(&path);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].operation, "POST /ms_dke/{key_name}/decrypt");
+    assert_eq!(events[0].object_uid.as_deref(), Some("k1"));
+    assert_eq!(events[0].result, AuditResult::Success);
+
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}
+
+/// Regression (#1494 F-030): a request refused by the `SigV4` middleware (an `Err`, not a
+/// response) is still audited, as the unauthenticated principal.
+#[tokio::test]
+async fn audit_records_rejected_sigv4_request() -> KResult<()> {
+    use crate::routes::aws_xks::{self, AwsXksConfig};
+
+    let path = temp_path("sigv4_rejected");
+    std::fs::remove_file(&path).ok();
+    let store = AuditStore::start(&path, 128).expect("cannot start audit store");
+
+    let mut config = test_utils::https_clap_config();
+    config.aws_xks_config = AwsXksConfig {
+        enable: true,
+        region: Some("us-east-1".to_owned()),
+        service: Some("kms-xks-proxy".to_owned()),
+        sigv4_access_key_id: Some("AKIDEXAMPLE".to_owned()),
+        sigv4_secret_access_key: Some("secret".to_owned()),
+    };
+    let kms = test_utils::test_kms_with_config(config).await?;
+    let app = actix_test::init_service(
+        actix_web::App::new()
+            .app_data(actix_web::web::Data::new(kms.clone()))
+            .wrap(crate::middlewares::AuditMiddleware::new(
+                Some(store.clone()),
+                vec![],
+                AuditFailureMode::Continue,
+            ))
+            .service(
+                actix_web::web::scope("/aws")
+                    .wrap(aws_xks::Sigv4MWare::new(kms.clone()))
+                    .service(aws_xks::get_health_status),
+            ),
+    )
+    .await;
+    let res = actix_test::try_call_service(
+        &app,
+        actix_test::TestRequest::post()
+            .uri("/aws/kms/xks/v1/health")
+            .set_json(serde_json::json!({}))
+            .to_request(),
+    )
+    .await;
+    let status = match res {
+        Ok(res) => res.status(),
+        Err(e) => e.as_response_error().status_code(),
+    };
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    store.flush().await;
+    let events = read_audit_events(&path);
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0].user, "unauthenticated");
+    assert_eq!(events[0].operation, "POST /aws/kms/xks/v1/health");
+    assert_eq!(
+        events[0].result,
+        AuditResult::Failure("401 Unauthorized".to_owned())
+    );
+
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}
+
+/// Regression (#1494 F-030): Google CSE validates its tokens inside the operations, so the
+/// operations record the user for the audit middleware.
+#[tokio::test]
+async fn audit_records_google_cse_principal() -> KResult<()> {
+    let path = temp_path("google_cse_principal");
+    std::fs::remove_file(&path).ok();
+    let store = AuditStore::start(&path, 128).expect("cannot start audit store");
+    let (app, _kms) =
+        test_utils::test_app_with_audit(store.clone(), AuditFailureMode::default()).await;
+
+    let _res = call_service(
+        &app,
+        actix_test::TestRequest::post()
+            .uri("/google_cse/wrap")
+            .set_json(serde_json::json!({
+                "authentication": "x",
+                "authorization": "x",
+                "key": "wHrlNOTI9mU6PBdqiq7EQA==",
+                "reason": ""
+            }))
+            .to_request(),
+    )
+    .await;
+
+    store.flush().await;
+    let events = read_audit_events(&path);
+    assert_eq!(events.len(), 1, "{events:?}");
+    // Token validation is disabled in the test configuration: the default user is recorded.
+    assert_eq!(events[0].user, "admin");
+    assert_eq!(events[0].operation, "POST /google_cse/wrap");
+
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}
+
+/// Regression (#1494 F-030): requests served by the KMIP socket server are audited too,
+/// with the client IP, and an undecodable request is recorded as a failed `RequestMessage`.
+#[tokio::test]
+async fn socket_requests_are_audited() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::TTLV;
+
+    use crate::middlewares::UserId;
+
+    let path = temp_path("socket");
+    std::fs::remove_file(&path).ok();
+    let mut config = test_utils::https_clap_config();
+    config.audit.audit_enable = true;
+    config.audit.audit_channel_capacity = 128;
+    config.audit.file.audit_file_path = Some(path.clone());
+    let kms = test_utils::test_kms_with_config(config).await?;
+
+    let create_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let ttlv = to_ttlv(&single_op_message(Operation::Create(Box::new(
+        create_request,
+    ))))?;
+    let bytes = TTLV::to_bytes(&ttlv, KmipFlavor::Kmip2)?;
+    let user = UserId::from("alice");
+
+    let response =
+        crate::routes::kmip::handle_ttlv_bytes(&user, Some("10.1.2.3"), &bytes, &kms).await;
+    assert_ne!(response.len(), 0);
+    let _undecodable =
+        crate::routes::kmip::handle_ttlv_bytes(&user, Some("10.1.2.3"), b"not ttlv", &kms).await;
+
+    kms.audit_store
+        .as_ref()
+        .expect("audit is enabled")
+        .flush()
+        .await;
+    let events = read_audit_events(&path);
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert_eq!(events[0].operation, "Create");
+    assert_eq!(events[0].user, "alice");
+    assert_eq!(events[0].client_ip.as_deref(), Some("10.1.2.3"));
+    assert_eq!(events[0].result, AuditResult::Success);
+    assert!(events[0].object_uid.is_some());
+    assert_eq!(events[1].operation, "RequestMessage");
+    assert!(matches!(events[1].result, AuditResult::Failure(_)));
+
+    std::fs::remove_file(&path).ok();
+    Ok(())
+}

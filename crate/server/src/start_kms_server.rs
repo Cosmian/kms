@@ -656,13 +656,13 @@ fn start_socket_server(
     let tokio_handle = Handle::current();
     let socket_server_handle = socket_server.start_threaded(
         kms_server.clone(),
-        move |username, request, kms_server| {
+        move |username, client_ip, request, kms_server| {
             trace!("request: {username} ({} bytes)", request.len());
             // Handle the TTLV bytes received from the socket server
             // tokio: run async code in the current thread
             tokio_handle.block_on(async {
                 // Handle the TTLV bytes
-                handle_ttlv_bytes(&UserId::from(username), request, &kms_server).await
+                handle_ttlv_bytes(&UserId::from(username), client_ip, request, &kms_server).await
             })
         },
         command_receiver,
@@ -1218,6 +1218,13 @@ pub async fn prepare_kms_server(
             "SECURITY: rate_limit_per_second is not set: request rate limiting is disabled."
         );
     }
+    if kms_server.audit_store.is_none() {
+        cosmian_logger::warn!(
+            "SECURITY: audit logging is disabled: KMIP (HTTP and socket) and provider requests \
+             are not recorded. Enable it with --audit-enable (KMS_AUDIT_ENABLE) for production \
+             deployments."
+        );
+    }
 
     // Determine the address to bind the server to.
     let address = format!(
@@ -1583,10 +1590,16 @@ pub async fn prepare_kms_server(
                 ));
         }
 
+        let audit_middleware = AuditMiddleware::new(
+            kms_server_for_http.audit_store.clone(),
+            kms_server_for_http.params.audit_trusted_proxy_cidrs.clone(),
+            kms_server_for_http.params.audit_failure_mode.clone(),
+        );
         if kms_server_for_http.params.google_cse_routes_enabled() {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))
+                .wrap(audit_middleware.clone())
                 .wrap(Cors::permissive())
                 .service(google_cse::digest)
                 .service(google_cse::private_key_sign)
@@ -1634,6 +1647,7 @@ pub async fn prepare_kms_server(
                         spire_default_username.clone(),
                     ),
                 ))
+                .wrap(audit_middleware.clone())
                 .wrap(ms_dke_cors())
                 .service(ms_dke::version)
                 .service(ms_dke::get_key)
@@ -1651,6 +1665,7 @@ pub async fn prepare_kms_server(
                 )
                 .wrap(Cors::permissive())
                 .wrap(aws_xks::Sigv4MWare::new(kms_server.clone()))
+                .wrap(audit_middleware.clone())
                 .service(aws_xks::get_health_status)
                 .service(aws_xks::get_key_metadata)
                 .service(aws_xks::encrypt)
@@ -1690,6 +1705,7 @@ pub async fn prepare_kms_server(
                     !kms_server.params.azure_ekm.disable_client_auth && use_cert_auth,
                     from_fn(tls_auth_fn),
                 ))
+                .wrap(audit_middleware)
                 .wrap(
                     // EKM is a server-to-server mTLS API: deny all browser cross-origin requests.
                     Cors::default(),

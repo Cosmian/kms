@@ -248,8 +248,8 @@ impl Display for MainDBConfig {
                     f,
                     "redis-findex: {}, password: [****]",
                     self.database_url
-                        .as_ref()
-                        .map_or("[INVALID URL]", |url| url.as_str()),
+                        .as_deref()
+                        .map_or_else(|| "[INVALID URL]".to_owned(), mask_db_url_password),
                 ),
                 unknown => write!(f, "Unknown database type: {unknown}"),
             }?;
@@ -501,5 +501,19 @@ mod tests {
             url, masked,
             "Invalid URL must be returned unchanged without panic"
         );
+    }
+
+    /// The Redis URL password never reaches the startup `Debug`/`Display` dumps.
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn redis_url_password_is_masked() {
+        let cfg = MainDBConfig {
+            database_type: Some("redis-findex".to_owned()),
+            database_url: Some("redis://:redis-secret@localhost:6379".to_owned()),
+            ..Default::default()
+        };
+        let dump = format!("{cfg:?}");
+        assert!(!dump.contains("redis-secret"), "{dump}");
+        assert!(dump.contains("redis://:****@localhost:6379"), "{dump}");
     }
 }
