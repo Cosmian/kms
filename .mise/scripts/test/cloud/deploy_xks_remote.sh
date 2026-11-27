@@ -93,11 +93,11 @@ if [ -n "$conf" ]; then
   # Drop an opt-in a cancelled run left behind (tagged lines only), then keep a pristine backup.
   sudo rm -f "${conf}.bak"
   sudo sed -i "\|${tag}\$|d" "$conf"
-  if ! sudo grep -q '^insecure_allow_unauthenticated' "$conf"; then
+  if ! sudo grep -q '^[[:space:]]*insecure_allow_unauthenticated' "$conf"; then
     sudo cp -f "$conf" "${conf}.bak"
     line="insecure_allow_unauthenticated = true ${tag}"
-    if sudo grep -q '^\[http\]' "$conf"; then
-      sudo sed -i "/^\[http\]/a ${line}" "$conf"
+    if sudo grep -q '^[[:space:]]*\[http\]' "$conf"; then
+      sudo sed -i "/^[[:space:]]*\[http\]/a ${line}" "$conf"
     else
       printf '\n[http]\n%s\n' "$line" | sudo tee -a "$conf" >/dev/null
     fi
@@ -183,5 +183,7 @@ for _ in $(seq 1 60); do
 done
 
 echo "Server did not return the expected HTTP ${EXPECTED_HTTP_CODE} within 180 s." >&2
+echo "Capturing remote service error diagnostics before rollback ..." >&2
+ssh "${SSH_OPTS[@]}" "${REMOTE}" "sudo journalctl -u cosmian_kms --since '3 minutes ago' -o cat --no-pager | grep -E 'ERROR|Error:|refusing to start|start KMS server' | tail -n 25" || true
 rollback_deployment
 exit 1
