@@ -601,7 +601,7 @@ repos:
         name: cargo test workspace (Cargo.lock / Cargo.toml changed)
         entry: >-
           bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
-          cargo test --lib --workspace --features non-fips --quiet'
+          cargo test --lib --workspace --features non-fips,cosmian_kms_server/insecure --quiet'
         language: system
         files: ^Cargo\.(lock|toml)$
         pass_filenames: false
@@ -613,7 +613,7 @@ repos:
         name: cargo test workspace (fips, manual)
         entry: >-
           bash -c 'ulimit -n 65536 2>/dev/null || ulimit -n "$(ulimit -Hn)" 2>/dev/null || true;
-          cargo test --lib --workspace --quiet'
+          cargo test --lib --workspace --features cosmian_kms_server/insecure --quiet'
         language: system
         types: [rust]
         pass_filenames: false
