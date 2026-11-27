@@ -6,18 +6,22 @@ import MainLayout from "../../../src/components/layout/MainLayout";
 import ServerHealth from "../../../src/actions/Objects/ServerHealth";
 import { smokeRender } from "../test-utils";
 
+/** `smokeRender` with `initialUserId` points the layout at this server; MainLayout fetches nothing until it has one. */
+const AUTH_SERVER_URL = "http://localhost:9998";
+
 const json = (payload: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(payload), { status }));
 
 /** Answers each endpoint from `routes`; anything else is a 404. */
 const stubServer = (routes: Record<string, () => Promise<Response>>) => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => (routes[String(input)] ?? (() => json({}, 404)))());
+    const fetchMock = vi.fn((input: RequestInfo | URL) => (routes[String(input).replace(AUTH_SERVER_URL, "")] ?? (() => json({}, 404)))());
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
 };
 
 const UP = () => json({ status: "UP", latency_ms: 1, dependencies: { database: { name: "sqlite", status: "UP", latency_ms: 1 } } });
 const NO_NODES = () => json({ nodes: [], leader: null });
-const healthCalls = (fetchMock: ReturnType<typeof stubServer>) => fetchMock.mock.calls.filter(([url]) => String(url) === "/health").length;
+const healthCalls = (fetchMock: ReturnType<typeof stubServer>) =>
+    fetchMock.mock.calls.filter(([url]) => String(url).replace(AUTH_SERVER_URL, "") === "/health").length;
 
 /** In-memory localStorage, so that a test neither reads nor leaves a stored period. */
 const stubStorage = (initial: Record<string, string> = {}) => {
@@ -266,11 +270,12 @@ test("a refresh on the page updates the footer marker too", async () => {
         withRoutes: true,
         path: "/",
         outlet: React.createElement(ServerHealth),
+        initialUserId: "admin",
     });
     await waitFor(() => expect(screen.getByTestId("footer-health")).toHaveTextContent("🟢 Health: UP"));
 
     status = "DEGRADED";
-    fireEvent.click(screen.getByTestId("submit-btn"));
+    fireEvent.click(await screen.findByTestId("submit-btn"));
     await waitFor(() => expect(screen.getByTestId("footer-health")).toHaveTextContent("🟡 Health: DEGRADED"));
 });
 
@@ -288,10 +293,11 @@ test("a failed refresh on the page marks the footer as unavailable", async () =>
         withRoutes: true,
         path: "/",
         outlet: React.createElement(ServerHealth),
+        initialUserId: "admin",
     });
     await waitFor(() => expect(screen.getByTestId("footer-health")).toHaveTextContent("🟢 Health: UP"));
 
     reachable = false;
-    fireEvent.click(screen.getByTestId("submit-btn"));
+    fireEvent.click(await screen.findByTestId("submit-btn"));
     await waitFor(() => expect(screen.getByTestId("footer-health")).toHaveTextContent("🔴 Health: Unavailable"));
 });
