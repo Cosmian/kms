@@ -4691,7 +4691,7 @@ paths:
             Cache-Control:
               schema:
                 type: string
-                const: "private, no-store"
+                const: private, no-store
           content:
             application/json:
               schema:
