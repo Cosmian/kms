@@ -9,7 +9,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{KmipOperation, kmip_objects::Object},
 };
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore, UserId};
+use cosmian_kms_interfaces::{ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId};
 use openssl::x509::X509;
 use rusqlite::{Connection, types::Value};
 use tempfile::TempDir;
@@ -21,7 +21,9 @@ use crate::{
         SqlitePool,
         migrate::{
             DbParameters, DbState, MIGRATION_STEPS, Migrate,
-            MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
+            MigrationStep::{
+                self, CertificateSerialTagBackfill, StoredStateSync, WrappingKeyIdBackfill,
+            },
         },
     },
 };
@@ -467,7 +469,7 @@ async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
         ("5.24.0", None, &BOTH_STEPS),
         ("5.28.0", None, &[CertificateSerialTagBackfill]),
         ("5.29.0", None, &[]),
-        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS[..3]),
     ];
     for (fixture, recorded, expected) in fixtures {
         let version = recorded.map_or_else(
@@ -494,7 +496,7 @@ async fn test_sqlite_migration_released_fixtures() -> DbResult<()> {
             .map_err(|error| db_error!("Fixture {version}: {error}"))?;
         assert_ready(&pool, TARGET).await?;
         let markers: &[MigrationStep] = if recorded.is_some() {
-            &MIGRATION_STEPS
+            &MIGRATION_STEPS[..3]
         } else {
             &BOTH_STEPS
         };
@@ -625,4 +627,177 @@ async fn test_sqlite_migration_lock_serializes_instances() -> DbResult<()> {
     assert_serial_tag(&second, true, false).await?;
     assert_fixture_preserved(&first, &path, &original).await?;
     assert_fixture_preserved(&second, &path, &original).await
+}
+
+const SYNC_TARGET: &str = "5.30.0";
+
+fn state_rows(path: &Path) -> DbResult<Vec<[String; 4]>> {
+    let connection = Connection::open(path)?;
+    let mut statement =
+        connection.prepare("SELECT id, state, object, attributes FROM objects ORDER BY id")?;
+    let rows = statement.query_map([], |row| {
+        Ok([row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?])
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// One entry per key-block embedded attribute map of `object`: its `State`, if any.
+fn embedded_states(object: &serde_json::Value) -> Vec<Option<&serde_json::Value>> {
+    object
+        .as_object()
+        .into_iter()
+        .flat_map(|variant| variant.values())
+        .filter_map(|value| value.pointer("/KeyBlock/KeyValue/Attributes"))
+        .map(|attributes| attributes.get("State"))
+        .collect()
+}
+
+fn remove_states(object: &mut serde_json::Value, attributes: &mut serde_json::Value) {
+    if let Some(attributes) = attributes.as_object_mut() {
+        attributes.remove("State");
+    }
+    for value in object
+        .as_object_mut()
+        .into_iter()
+        .flat_map(|m| m.values_mut())
+    {
+        if let Some(embedded) = value
+            .pointer_mut("/KeyBlock/KeyValue/Attributes")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            embedded.remove("State");
+        }
+    }
+}
+
+/// The 5.30.0 `StoredStateSync` contract for one `(object, attributes)` row: the attributes carry the
+/// state the read path reports, the embedded attributes too (except a destroyed object's payload),
+/// and nothing but `State` values differs. A row whose JSON does not parse is left untouched.
+pub(super) fn assert_state_synced(
+    id: &str,
+    column: &str,
+    before: (&str, &str),
+    after: (&str, &str),
+) -> DbResult<()> {
+    let parse = |(object, attributes): (&str, &str)| {
+        Some((
+            serde_json::from_str::<serde_json::Value>(object).ok()?,
+            serde_json::from_str::<serde_json::Value>(attributes).ok()?,
+        ))
+    };
+    let (
+        Some((mut before_object, mut before_attributes)),
+        Some((mut after_object, mut after_attributes)),
+    ) = (parse(before), parse(after))
+    else {
+        db_ensure!(
+            before == after,
+            "Row {id} with unparsable JSON was modified"
+        );
+        return Ok(());
+    };
+    let column = State::try_from(column).map_err(|error| db_error!("Row {id}: {error}"))?;
+    let attributes_state = before_attributes
+        .get("State")
+        .and_then(|state| serde_json::from_value::<State>(state.clone()).ok());
+    let expected = serde_json::to_value(ObjectWithMetadata::stored_state_precedence(
+        column,
+        attributes_state,
+    ))?;
+    db_ensure!(
+        after_attributes.get("State") == Some(&expected),
+        "Row {id}: attributes State must be {expected}, got {:?}",
+        after_attributes.get("State")
+    );
+    let before_embedded = embedded_states(&before_object);
+    let after_embedded = embedded_states(&after_object);
+    if matches!(column, State::Destroyed | State::Destroyed_Compromised) {
+        db_ensure!(
+            before_embedded == after_embedded,
+            "Row {id}: a destroyed object payload must keep its embedded State"
+        );
+    } else {
+        db_ensure!(
+            before_embedded.len() == after_embedded.len()
+                && after_embedded.iter().all(|state| *state == Some(&expected)),
+            "Row {id}: embedded State must be {expected}, got {after_embedded:?}"
+        );
+    }
+    remove_states(&mut before_object, &mut before_attributes);
+    remove_states(&mut after_object, &mut after_attributes);
+    db_ensure!(
+        before_object == after_object && before_attributes == after_attributes,
+        "Row {id}: something other than State changed (object {}, attributes {})",
+        before_object != after_object,
+        before_attributes != after_attributes
+    );
+    Ok(())
+}
+
+/// `StoredStateSync` rewrites only `State` values, runs once, and leaves every other column alone.
+#[tokio::test]
+async fn test_sqlite_migration_stored_state_sync() -> DbResult<()> {
+    let fixtures: [(&str, &[MigrationStep]); 2] = [
+        ("5.28.0", &[CertificateSerialTagBackfill, StoredStateSync]),
+        ("5.29.0", &[StoredStateSync]),
+    ];
+    for (fixture, expected) in fixtures {
+        let (_directory, path) = copy_fixture(fixture)?;
+        let before = state_rows(&path)?;
+        let original = preserved_data(&path)?;
+        let (pool, applied) =
+            SqlitePool::instantiate_at_version(&path, false, Some(1), SYNC_TARGET).await?;
+        expect_steps(&applied, expected)
+            .map_err(|error| db_error!("Fixture {fixture}: {error}"))?;
+        assert_ready(&pool, SYNC_TARGET).await?;
+
+        let after = state_rows(&path)?;
+        db_ensure!(
+            before.len() == after.len(),
+            "Fixture {fixture} changed its row count"
+        );
+        let mut changed = 0;
+        for (old, new) in before.iter().zip(&after) {
+            db_ensure!(
+                old[0] == new[0] && old[1] == new[1],
+                "Fixture {fixture}: row {} changed id or state column",
+                old[0]
+            );
+            assert_state_synced(&old[0], &old[1], (&old[2], &old[3]), (&new[2], &new[3]))
+                .map_err(|error| db_error!("Fixture {fixture}: {error}"))?;
+            changed += usize::from(old != new);
+        }
+        db_ensure!(changed > 0, "Fixture {fixture} has no drifted row to sync");
+        let destroyed = after
+            .iter()
+            .find(|row| row[0] == "bulk_destroyed")
+            .ok_or_else(|| db_error!("Fixture {fixture} lost bulk_destroyed"))?;
+        db_ensure!(
+            serde_json::from_str::<serde_json::Value>(&destroyed[3])?.get("State")
+                == Some(&serde_json::json!("Destroyed")),
+            "Fixture {fixture}: bulk_destroyed attributes must now say Destroyed"
+        );
+        let [_, tags, access] = preserved_data(&path)?;
+        db_ensure!(
+            tags == original[1] && access == original[2],
+            "Fixture {fixture}: tags or permissions changed"
+        );
+        let objects: Vec<(String, String)> = after
+            .iter()
+            .map(|row| (row[0].clone(), row[1].clone()))
+            .collect();
+        assert_store_objects_and_grants(&pool, &objects, false).await?;
+
+        let migrated = complete_data(&path)?;
+        drop(pool);
+        let (pool, applied) =
+            SqlitePool::instantiate_at_version(&path, false, Some(1), SYNC_TARGET).await?;
+        expect_steps(&applied, &[])?;
+        db_ensure!(
+            migrated == complete_data(&path)?,
+            "Fixture {fixture}: reopening changed migrated rows"
+        );
+        assert_ready(&pool, SYNC_TARGET).await?;
+    }
+    Ok(())
 }

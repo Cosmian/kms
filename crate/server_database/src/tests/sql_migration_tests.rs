@@ -8,8 +8,8 @@ use url::Url;
 use uuid::Uuid;
 
 use super::sqlite_migration_tests::{
-    assert_markers, assert_ready, assert_serial_tag, assert_store_objects_and_grants,
-    assert_wrapped_key_found, expect_steps,
+    assert_markers, assert_ready, assert_serial_tag, assert_state_synced,
+    assert_store_objects_and_grants, assert_wrapped_key_found, expect_steps,
 };
 use crate::{
     db_ensure, db_error,
@@ -18,7 +18,9 @@ use crate::{
         MySqlPool, PgPool,
         migrate::{
             MIGRATION_STEPS, Migrate,
-            MigrationStep::{self, CertificateSerialTagBackfill, WrappingKeyIdBackfill},
+            MigrationStep::{
+                self, CertificateSerialTagBackfill, StoredStateSync, WrappingKeyIdBackfill,
+            },
         },
     },
 };
@@ -70,6 +72,8 @@ trait MigrationFixture {
              DROP TABLE IF EXISTS objects; \
              DROP TABLE IF EXISTS parameters; \
              DROP TABLE IF EXISTS crypto_officer_activations; \
+             DROP TABLE IF EXISTS object_state_event_tombstones; \
+             DROP TABLE IF EXISTS object_state_events; \
              DROP TABLE IF EXISTS crls; \
              DROP TABLE IF EXISTS gcm_invocations; \
              DROP TABLE IF EXISTS cluster_nodes;",
@@ -372,7 +376,7 @@ async fn released_fixtures<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
     let cases: [(&str, Option<&str>, &[MigrationStep]); 3] = [
         ("5.24.0", None, &BOTH_STEPS),
         ("5.28.0", None, &[CertificateSerialTagBackfill]),
-        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS),
+        ("5.20.0", Some("5.14.0"), &MIGRATION_STEPS[..3]),
     ];
     for (version, recorded, expected) in cases {
         fixture.restore(version).await?;
@@ -385,7 +389,7 @@ async fn released_fixtures<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
             .map_err(|error| db_error!("Fixture {version} recorded {recorded:?}: {error}"))?;
         assert_ready(&pool, TARGET).await?;
         let markers: &[MigrationStep] = if recorded.is_some() {
-            &MIGRATION_STEPS
+            &MIGRATION_STEPS[..3]
         } else {
             &BOTH_STEPS
         };
@@ -491,7 +495,10 @@ async fn lock_serializes_instances<F: MigrationFixture>(fixture: &F) -> DbResult
         "Unexpected lock timeout: {error}"
     );
     drop(held);
-    expect_steps(&second.bootstrap(false, "5.30.0").await?, &[])?;
+    expect_steps(
+        &second.bootstrap(false, "5.30.0").await?,
+        &[StoredStateSync],
+    )?;
     assert_ready(&second, "5.30.0").await
 }
 
@@ -499,6 +506,7 @@ async fn shared_migration_scenarios<F: MigrationFixture>(fixture: &F) -> DbResul
     empty_database_is_stamped(fixture).await?;
     step_by_step_matches_direct_and_reopens_clean(fixture).await?;
     released_fixtures(fixture).await?;
+    stored_state_sync(fixture).await?;
     newer_database_is_refused(fixture).await?;
     clear_database(fixture).await?;
     lock_serializes_instances(fixture).await
@@ -527,7 +535,7 @@ async fn postgresql_5_14_fixture(fixture: &PostgresFixture) -> DbResult<()> {
         "The 5.14.0 fixture must start with a json attributes column"
     );
     let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
-    expect_steps(&applied, &MIGRATION_STEPS)?;
+    expect_steps(&applied, &MIGRATION_STEPS[..3])?;
     let after = fixture
         .rows(
             "SELECT data_type FROM information_schema.columns \
@@ -540,10 +548,95 @@ async fn postgresql_5_14_fixture(fixture: &PostgresFixture) -> DbResult<()> {
         "The 5.14.0 fixture attributes column was not converted to jsonb"
     );
     assert_ready(&pool, TARGET).await?;
-    assert_markers(&pool, &MIGRATION_STEPS).await?;
+    assert_markers(&pool, &MIGRATION_STEPS[..3]).await?;
     assert_wrapped_key_found(&pool).await?;
     assert_serial_tag(&pool, true, false).await?;
     assert_fixture_preserved(fixture, &pool, &original).await
+}
+
+fn cell(row: &[Option<String>], index: usize) -> DbResult<&str> {
+    row.get(index)
+        .and_then(Option::as_deref)
+        .ok_or_else(|| db_error!("Missing column {index} in a state-sync row"))
+}
+
+/// `StoredStateSync` on a database recorded at 5.29.0: exactly that step runs, only `State`
+/// values change, and a reopen applies nothing.
+async fn stored_state_sync<F: MigrationFixture>(fixture: &F) -> DbResult<()> {
+    const SYNC_TARGET: &str = "5.30.0";
+    let select = format!(
+        "SELECT id, state, object, {} FROM objects ORDER BY id",
+        F::ATTRIBUTES_TEXT
+    );
+    fixture.restore("5.28.0").await?;
+    let (pool, applied) = fixture.open(false, Some(1), TARGET).await?;
+    expect_steps(&applied, &[CertificateSerialTagBackfill])?;
+    drop(pool);
+    let before = fixture.rows(&select).await?;
+    let original = fixture.preserved_data().await?;
+
+    let (pool, applied) = fixture.open(false, Some(1), SYNC_TARGET).await?;
+    expect_steps(&applied, &[StoredStateSync])?;
+    assert_ready(&pool, SYNC_TARGET).await?;
+    assert_markers(
+        &pool,
+        &[
+            WrappingKeyIdBackfill,
+            CertificateSerialTagBackfill,
+            StoredStateSync,
+        ],
+    )
+    .await?;
+    let after = fixture.rows(&select).await?;
+    db_ensure!(
+        before.len() == after.len(),
+        "The sync changed the row count"
+    );
+    let mut changed = 0;
+    for (old, new) in before.iter().zip(&after) {
+        let id = cell(old, 0)?;
+        db_ensure!(
+            id == cell(new, 0)? && cell(old, 1)? == cell(new, 1)?,
+            "Row {id} changed id or state column"
+        );
+        assert_state_synced(
+            id,
+            cell(old, 1)?,
+            (cell(old, 2)?, cell(old, 3)?),
+            (cell(new, 2)?, cell(new, 3)?),
+        )?;
+        changed += usize::from(old != new);
+    }
+    db_ensure!(changed > 0, "The 5.28.0 fixture has no drifted row to sync");
+    let destroyed = after
+        .iter()
+        .find(|row| cell(row, 0).is_ok_and(|id| id == "bulk_destroyed"))
+        .ok_or_else(|| db_error!("The fixture lost bulk_destroyed"))?;
+    db_ensure!(
+        serde_json::from_str::<serde_json::Value>(cell(destroyed, 3)?)?.get("State")
+            == Some(&serde_json::json!("Destroyed")),
+        "bulk_destroyed attributes must now say Destroyed"
+    );
+    let [_, tags, access] = fixture.preserved_data().await?;
+    db_ensure!(
+        tags == original[1] && access == original[2],
+        "Tags or permissions changed"
+    );
+    let mut objects = Vec::with_capacity(after.len());
+    for row in &after {
+        objects.push((cell(row, 0)?.to_owned(), cell(row, 1)?.to_owned()));
+    }
+    assert_store_objects_and_grants(&pool, &objects, false).await?;
+
+    let migrated = fixture.complete_data().await?;
+    drop(pool);
+    let (pool, applied) = fixture.open(false, Some(1), SYNC_TARGET).await?;
+    expect_steps(&applied, &[])?;
+    db_ensure!(
+        fixture.complete_data().await? == migrated,
+        "Reopening changed migrated rows"
+    );
+    assert_ready(&pool, SYNC_TARGET).await
 }
 
 async fn postgresql_reopen_does_not_rebuild_index(fixture: &PostgresFixture) -> DbResult<()> {

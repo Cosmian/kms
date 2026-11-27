@@ -38,7 +38,7 @@ Every runnable test task is a **leaf script** under `.mise/tasks/test/<group>/<n
 
 A leaf that cannot run here (unsupported `--variant`, missing tool, Docker, cluster, credentials or submodule) is skipped with its reason instead of failing. In CI (`CI=true`) the local probes (`nix`, `docker`, `cmd`, `file`, Kubernetes) are not evaluated, so the leaf runs and fails on its own, and a missing secret of an upstream leaf calls `print_error` before the skip, so a green upstream leg proves its leaves ran. The summary lists the `[PASS]`, `[SKIP]` and `[FAIL]` leaves; `run_test_leaves` returns 1 if any leaf failed, and a failing leaf never stops the others.
 
-Tasks that no group `_default` lists are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `k8s:hsm`, `pki:scep-apple`, `db:upgrade-sqlite`), helpers called by leaves (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
+Tasks that no group `_default` lists are not part of `test`: manual or hardware-bound runs (`hsm:luna`, `hsm:matrix`, `k8s:hsm`, `pki:scep-apple`, `db:upgrade`), helpers called by leaves (`obs:audit-fixture`, `hsm:jose`, the `spire:*` sub-tasks) and image builders (`k8s:*-image`, `pkg:musl-*`). Run them by name.
 
 ### Leaf prologue
 
@@ -1937,7 +1937,7 @@ sequenceDiagram
 
 ## 13. Docker, Helm & Packaging
 
-**Tasks:** `test:pkg:docker`, `test:upgrade-db`, `test:db:upgrade-sqlite`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
+**Tasks:** `test:pkg:docker`, `test:db:upgrade`, `test:k8s:helm`, `test:k8s:kms-image`, `test:k8s:operator-image`, `test:k8s:csi-provider-image`
 
 The Kubernetes image and live-HSM smoke deployments also explicitly set `kms.insecureAllowUnauthenticated=true`; the image and chart do not opt in by default. The Alpine package smoke script ([`test_alpine_musl.sh`](../../scripts/test/pkg/test_alpine_musl.sh)) passes `KMS_INSECURE_ALLOW_UNAUTHENTICATED=true` to its temporary container, whose published port is loopback-only.
 
@@ -2195,12 +2195,19 @@ sequenceDiagram
 
 ---
 
-### `test:upgrade-db` and `test:db:upgrade-sqlite`
+### `test:db:upgrade`
 
-**Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification.
+**Description:** Live cross-version database upgrade, restart idempotence, and pre-upgrade backup restore verification, across SQLite, PostgreSQL, MySQL and (in `non-fips` mode) Redis-findex. One gate process per backend runs in parallel.
 
-- `test:db:upgrade-sqlite` runs two local KMS binaries (`--old-kms` and `--new-kms`) against a SQLite directory.
-- `test:upgrade-db` runs published release Docker images (`ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) against the candidate image (`--new-image` / `DOCKER_IMAGE_NAME`) across SQLite, PostgreSQL, MySQL, and (in `non-fips` mode) Redis-findex. When `--old-version nightly` is used, it tests `5.20.0`, the latest release (`N-1`), and 2 deterministic round-robin middle releases.
+- Default: every release >= 5.9.0 (Docker images `ghcr.io/cosmian/kms-fips:<ver>` in `fips` mode, `ghcr.io/cosmian/kms:<ver>` in `non-fips` mode) is upgraded to this branch's cargo-built server (`--old-version all`). `--old-version nightly` tests `5.9.0`, the latest release (`N-1`) and 2 deterministic round-robin middle releases.
+- `--new-image` (or `DOCKER_IMAGE_NAME`) replaces the branch build by a candidate Docker image.
+- `--old-kms <path>` replaces the release images by one local binary (>= 5.17.0); with `--new-kms` this is the SQLite upgrade/downgrade proof of `/kms-db-compat`.
+- 4 phases per cell: seed the old server, verify on the candidate (plus mutation), verify after a candidate restart, verify the untouched cold backup with the old server.
+- With `ckms` (always, in the task), each cell also creates an AES-256 key encryption key (`upgrade-gate-kek`) on the old server, restarts it with that KEK configured (the `key_encryption_key` positional argument) and fills it again (`populate-kek`), so those objects are wrapped at rest. The candidate, its restart and the restore-phase old server all run with the same KEK, and verify those objects; the candidate also creates KEK-wrapped objects (`populate-new`). Exporting a wrapped private key in a requested format is refused by every release, so those Get/Export calls are recorded as SKIP.
+- Release images before 5.17.0 only accept a PKCS#12 server identity; Redis releases before 5.29.0 may leave a Findex tag that the stored record lost, which `populate_db.sh verify --legacy-locate` tolerates.
+- Redis-findex databases written before 5.12.0 are refused by design and skipped.
+- `.mise/scripts/test/db/populate_db.sh` (bash + `ckms` + curl) fills each old DB with every object kind and operation and re-verifies it; per-version coverage lands in `coverage-<backend>[-new].tsv`.
+- CI: the `db:upgrade` leg (`ci-paths.toml`) runs every release on schedule, tag and dispatch only, never on PRs; the `packaging-docker.yml` image gate runs `--new-image ... --old-version nightly`.
 
 Each cell seeds the database through `/kmip/2_1` and `/access/grant` over mTLS. `verify_db_upgrade.py seed` uses the same recipes for the deterministic `mig_*`/`bulk_*` set and seeded-random `rnd_*` layer, validates the old server, and writes one snapshot containing attributes, user tags, material digests, grants, Locate results, ciphertexts, signatures, and explicit optional-feature skips. `verify` checks the candidate and its restart; post-upgrade canary data is added to that snapshot without changing the pre-upgrade expectations. The old server then checks the untouched cold backup, including the canary's absence.
 

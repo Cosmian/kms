@@ -119,7 +119,7 @@
     - [Cluster coordination](installation/cluster_coordination.md)
   - [Upgrading]()
     - [Database Migrations](installation/upgrading/database_migrations.md)
-    - [Upgrading from 5.x to 6.0](installation/upgrading/upgrade_5_to_6.md)
+    - [Upgrading from 5.x to 5.30](installation/upgrading/upgrade_5_to_5_30.md)
 - [Configuration]()
     - [Configuration file](configuration/server_configuration_file.md)
     - [Configuration examples](configuration/configurations.md)

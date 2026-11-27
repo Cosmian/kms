@@ -195,10 +195,11 @@ jobs:
 
       - name: Run database upgrade gate
         if: matrix.runner == 'ubuntu-24.04'
-        timeout-minutes: 45
+        timeout-minutes: 60
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
-        run: mise run test:upgrade-db --variant ${{ matrix.features }}
+        # 5.9.0, N-1 and 2 rotating releases upgraded to the candidate image; every release runs in the nightly db:upgrade leg.
+        run: mise run test:db:upgrade --variant ${{ matrix.features }} --new-image "$DOCKER_IMAGE_NAME" --old-version nightly
 
       - name: Upload database upgrade failure artifacts
         if: failure() && matrix.runner == 'ubuntu-24.04'

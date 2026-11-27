@@ -229,6 +229,12 @@ SELECT objects.id, objects.object FROM objects
 INNER JOIN tags c ON c.id = objects.id AND c.tag = '_cert'
 WHERE NOT EXISTS (SELECT 1 FROM tags s WHERE s.id = objects.id AND SUBSTR(s.tag, 1, 8) = '_serial=');
 
+-- name: select-objects-state-sync
+SELECT id, object, attributes, state FROM objects WHERE state IS NOT NULL AND attributes IS NOT NULL;
+
+-- name: update-object-state-json
+UPDATE objects SET object=$1, attributes=$2 WHERE id=$3 AND object=$4 AND attributes=$5 AND state=$6;
+
 -- name: create-table-crypto_officer_activations
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (
         activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -883,6 +883,9 @@ Crate path: `crate/server_database`
 | `warn` | `Failed to purge expired UI session revocations: {e}` | `src/stores/sql/pgsql.rs` | `e` (error) | Housekeeping after a logout failed; the revocation itself was recorded. Expired rows are purged by the next logout. |
 | `warn` | `find: object store '{prefix}' failed: {e}` | `src/core/database_objects.rs` | `prefix`, `e` | ×2 in this file |
 | `error` | `ceremony record was sealed for another user (record moved between rows); treating as inactive` | `src/core/database_permissions.rs` | - | - |
+| `warn` | `state sync: skipping object that failed to parse` | `src/stores/migrate.rs` | `uid` (object uid), `error` (JSON parse error) | One-time 5.30.0 startup state sync; the row keeps its stored JSON unchanged. |
+| `warn` | `state sync: skipping object with an invalid state column` | `src/stores/migrate.rs` | `uid` (object uid), `error` (state parse error) | One-time 5.30.0 startup state sync; the row keeps its stored JSON unchanged. |
+| `warn` | `state sync: skipping object with unparsable attributes` | `src/stores/sql/sqlite.rs` | `uid` (object uid) | One-time 5.30.0 startup state sync; the row keeps its stored JSON unchanged. |
 
 ### `cosmian_kms_crypto`
 

@@ -611,7 +611,7 @@ The KMS server can be configured to clear the database on restart automatically.
 
 When the KMS server starts against an existing database, it checks the recorded database version and runs any pending schema or data updates before opening its HTTP and KMIP ports.
 
-For supported source versions, multi-instance startup behavior, and recovery steps, see [Database Migrations](../../installation/upgrading/database_migrations.md) and [Upgrading from 5.x to 6.0](../../installation/upgrading/upgrade_5_to_6.md).
+For supported source versions, multi-instance startup behavior, and recovery steps, see [Database Migrations](../../installation/upgrading/database_migrations.md) and [Upgrading from 5.x to 5.30](../../installation/upgrading/upgrade_5_to_5_30.md).
 
 ## The Unwrapped Objects Cache
 
