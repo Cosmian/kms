@@ -2416,6 +2416,8 @@ mod tests {
         config.http.hostname = "127.0.0.1".to_owned();
         config.ui_config.enable = true;
         config.ui_config.index_html_folder = Some(ui_dir.path().display().to_string());
+        // No CSE endpoint is called: the bypass setting would only make the server refuse to start
+        config.google_cse_config.disable_tokens_validation = false;
         let kms = crate::tests::test_utils::test_kms_with_config(config)
             .await
             .unwrap();

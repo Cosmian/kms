@@ -99,6 +99,8 @@ fn start_test_server() -> &'static TestServerCtx {
         let mut https_config = https_clap_config();
         https_config.socket_server.hostname = TEST_HOST.to_owned();
         https_config.http.hostname = TEST_HOST.to_owned();
+        // The CSE token-validation bypass would make a non-`insecure` build refuse to start
+        https_config.google_cse_config.disable_tokens_validation = false;
 
         // Pre-bind the HTTP listener on an OS-assigned free port and hand it
         // directly to `start_kms_server`, which accepts it to avoid the
