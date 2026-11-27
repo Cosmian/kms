@@ -148,11 +148,12 @@ raw_tpl() {
   echo "${STATE}/raw/$1.json"
 }
 
-# export_by KIND UID FORMAT FILE: re-export an object (used by digest records).
+# export_by KIND UID FORMAT FILE: re-export an object (used by digest records). Symmetric and secret keys are
+# unwrapped: a server with a key encryption key stores them wrapped, and the 6.0 row-binding re-wrap changes those bytes.
 export_by() {
   case "$1" in
-    sym) owner_ckms sym keys export --key-id "$2" --key-format "$3" "$4" ;;
-    secret) owner_ckms secret-data export --key-id "$2" --key-format "$3" "$4" ;;
+    sym) owner_ckms sym keys export --key-id "$2" --key-format "$3" --unwrap "$4" ;;
+    secret) owner_ckms secret-data export --key-id "$2" --key-format "$3" --unwrap "$4" ;;
     rsa) owner_ckms rsa keys export --key-id "$2" --key-format "$3" "$4" ;;
     ec) owner_ckms ec keys export --key-id "$2" --key-format "$3" "$4" ;;
     cert) owner_ckms certificates export --certificate-id "$2" --format "$3" "$4" ;;
@@ -215,7 +216,7 @@ populate() {
   done
   cipher_sym "${P}_aes_256" || true
   cipher_sym "${P}_aes_wrapped" || true
-  { op "Get:sym" owner_ckms sym keys export --key-id "${P}_aes_256" --key-format raw "${STATE}/aes_256.raw" &&
+  { op "Get:sym" export_by sym "${P}_aes_256" raw "${STATE}/aes_256.raw" &&
     record digest sym "${P}_aes_256" raw "$(compute_sha256 "${STATE}/aes_256.raw")"; } || true
   {
     op "Export:wrapped" owner_ckms sym keys export --key-id "${P}_aes_128" --key-format json-ttlv --wrap-key-id "${P}_aes_256" "${STATE}/aes_128.wrapped.json" &&
