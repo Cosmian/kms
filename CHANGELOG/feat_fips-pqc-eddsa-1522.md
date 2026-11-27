@@ -9,7 +9,7 @@
 - Google CSE refuses `RSA/ECB/PKCS1Padding` decryption in FIPS builds from KMS code, since the 3.5.9 FIPS provider accepts RSA PKCS#1 v1.5 decryption
 
 ### CLI
-- `ckms pqc`, PQC and EdDSA `certify` algorithms, Ed25519/Ed448 signing, the benchmarks, the PKCS#11 capability checks and the WASM algorithm lists are available in FIPS builds; `x448-ml-kem-1024` and the `ConfigurableKEM` algorithms are not offered there. The `ckms` integration tests now run in FIPS builds ([#1522](https://github.com/Cosmian/kms/issues/1522))
+- `ckms pqc`, PQC and EdDSA `certify` algorithms, Ed25519/Ed448 signing, the benchmarks and the WASM algorithm lists are available in FIPS builds (`ckms pkcs11 capabilities` and `ckms pkcs11 bench` list the FIPS algorithms but cannot load the PKCS#11 library in a FIPS build yet, see Bug Fixes); `x448-ml-kem-1024` and the `ConfigurableKEM` algorithms are not offered there. The `ckms` integration tests now run in FIPS builds ([#1522](https://github.com/Cosmian/kms/issues/1522))
 
 ### UI
 - The PQC pages and menu are shown in FIPS mode ([#1522](https://github.com/Cosmian/kms/issues/1522))

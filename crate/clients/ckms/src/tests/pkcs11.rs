@@ -188,12 +188,18 @@ async fn test_pkcs11_verify_fails_without_server() {
     ]);
 
     let output = recover_cmd_logs(&mut cmd);
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(
         !output.status.success(),
         "ckms pkcs11 verify should FAIL when no KMS server is running, but it succeeded.\n\
-         stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
+         stdout: {stdout}"
+    );
+    // The failure must come from the unreachable server, not from the library failing to start
+    // (a FIPS build once failed `C_GetInterfaceList` with `CKR_FUNCTION_FAILED`).
+    assert!(
+        stdout.contains("[C_GetInterfaceList/C_GetInterface] OK"),
+        "the library did not get past interface negotiation.\nstdout: {stdout}"
     );
 }
 
