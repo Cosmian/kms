@@ -217,7 +217,12 @@ Known parameters:
 | `attributes_jsonb_converted` | PostgreSQL-only marker recording that `objects.attributes` was converted to `jsonb`. |
 | `wrapping_key_id_backfilled` | One-time marker recording that the `objects.wrapping_key_id` backfill completed. |
 | `certificate_serial_tag_backfilled` | One-time marker recording that the `_serial=<HEX>` tag backfill for existing certificates completed. |
+| `stored_state_synced` | One-time marker recording that the `StoredStateSync` startup step (lifecycle `State` written into the stored attributes and key-block attributes) completed. |
 | `kv_metadata_uid_key` | Hex-encoded 32-byte key initialized by the leader region at startup; followers only read it after replication. It derives internal identifiers for the [KV secret store](../secret_backends.md#internal-record-identifiers) and SSH CA/role records. On Redis-Findex it is stored AES-256-GCM encrypted under `kms::parameter::kv_metadata_uid_key`. |
+
+**Downgrade.** DEGRADED, cosmetic. An older KMS reads the lifecycle state from the `objects.state` column and ignores the marker, so the rewritten JSON is harmless. It keeps `db_version` at this version, so the step does not run again on a later upgrade and state JSON that the older KMS let lag stays as it is.
+
+**Replication.** The step adds no table, column or key. Each region rewrites the same values at startup, so regions converge; on PostgreSQL it runs in one transaction, which can be long on a large `objects` table.
 
 ## `kms_migration_lock`
 
