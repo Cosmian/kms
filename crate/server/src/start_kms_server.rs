@@ -3287,6 +3287,8 @@ mod tests {
         config.socket_server.start = false;
         config.ui_config.enable = true;
         config.ui_config.index_html_folder = Some(ui_dir.path().to_string_lossy().into_owned());
+        // No CSE endpoint is called: the bypass setting would only make the server refuse to start
+        config.google_cse_config.disable_tokens_validation = false;
         let kms = crate::tests::test_utils::test_kms_with_config(config)
             .await
             .unwrap();
