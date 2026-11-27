@@ -42,13 +42,13 @@ atomic-waker@1.1.2 (2): Apache-2.0, MIT
 autocfg@1.5.1 (2): Apache-2.0, MIT
 aws-lc-rs@1.18.1 (2): ISC, Apache-2.0
 aws-lc-sys@0.45.0 (5): ISC, Apache-2.0, MIT, BSD-3-Clause, MIT-0
-aws_cloudhsm_pkcs11_loader@5.29.0 (1): BUSL-1.1
+aws_cloudhsm_pkcs11_loader@5.30.0 (1): BUSL-1.1
 axum@0.7.9 (1): MIT
 axum@0.8.9 (1): MIT
 axum-core@0.4.5 (1): MIT
 axum-core@0.5.6 (1): MIT
 axum-server@0.8.0 (1): MIT
-azure_cloud_hsm_pkcs11_loader@5.29.0 (1): BUSL-1.1
+azure_cloud_hsm_pkcs11_loader@5.30.0 (1): BUSL-1.1
 backon@1.6.0 (1): Apache-2.0
 base16ct@0.2.0 (2): Apache-2.0, MIT
 base64@0.21.7 (2): MIT, Apache-2.0
@@ -72,7 +72,7 @@ ciborium@0.2.2 (1): Apache-2.0
 ciborium-io@0.2.2 (1): Apache-2.0
 ciborium-ll@0.2.2 (1): Apache-2.0
 cipher@0.4.4 (2): MIT, Apache-2.0
-ckms@5.29.0 (1): BUSL-1.1
+ckms@5.30.0 (1): BUSL-1.1
 clap@4.6.7 (2): MIT, Apache-2.0
 clap-config-fallback@0.3.0 (2): MIT, Apache-2.0
 clap-config-fallback-derive@0.3.0 (2): MIT, Apache-2.0
@@ -95,28 +95,28 @@ cookie@0.18.3 (2): MIT, Apache-2.0
 cookie_store@0.22.1 (2): MIT, Apache-2.0
 core-foundation@0.10.1 (2): MIT, Apache-2.0
 core-foundation-sys@0.8.7 (2): MIT, Apache-2.0
-cosmian_cng@5.29.0 (1): BUSL-1.1
+cosmian_cng@5.30.0 (1): BUSL-1.1
 cosmian_config_utils@0.7.2 (1): BUSL-1.1
 cosmian_crypto_core@11.0.0 (1): BUSL-1.1
-cosmian_kmip@5.29.0 (1): BUSL-1.1
-cosmian_kms_access@5.29.0 (1): BUSL-1.1
-cosmian_kms_base_hsm@5.29.0 (1): BUSL-1.1
-cosmian_kms_cli_actions@5.29.0 (1): BUSL-1.1
-cosmian_kms_client@5.29.0 (1): BUSL-1.1
-cosmian_kms_client_utils@5.29.0 (1): BUSL-1.1
-cosmian_kms_client_wasm@5.29.0 (1): BUSL-1.1
-cosmian_kms_crypto@5.29.0 (1): BUSL-1.1
-cosmian_kms_csi_provider@5.29.0 (1): BUSL-1.1
-cosmian_kms_csi_provider_proto@5.29.0 (1): BUSL-1.1
-cosmian_kms_interfaces@5.29.0 (1): BUSL-1.1
-cosmian_kms_k8s_operator@5.29.0 (1): BUSL-1.1
-cosmian_kms_k8s_plugin@5.29.0 (1): BUSL-1.1
-cosmian_kms_k8s_plugin_proto@5.29.0 (1): BUSL-1.1
-cosmian_kms_server@5.29.0 (1): BUSL-1.1
-cosmian_kms_server_database@5.29.0 (1): BUSL-1.1
+cosmian_kmip@5.30.0 (1): BUSL-1.1
+cosmian_kms_access@5.30.0 (1): BUSL-1.1
+cosmian_kms_base_hsm@5.30.0 (1): BUSL-1.1
+cosmian_kms_cli_actions@5.30.0 (1): BUSL-1.1
+cosmian_kms_client@5.30.0 (1): BUSL-1.1
+cosmian_kms_client_utils@5.30.0 (1): BUSL-1.1
+cosmian_kms_client_wasm@5.30.0 (1): BUSL-1.1
+cosmian_kms_crypto@5.30.0 (1): BUSL-1.1
+cosmian_kms_csi_provider@5.30.0 (1): BUSL-1.1
+cosmian_kms_csi_provider_proto@5.30.0 (1): BUSL-1.1
+cosmian_kms_interfaces@5.30.0 (1): BUSL-1.1
+cosmian_kms_k8s_operator@5.30.0 (1): BUSL-1.1
+cosmian_kms_k8s_plugin@5.30.0 (1): BUSL-1.1
+cosmian_kms_k8s_plugin_proto@5.30.0 (1): BUSL-1.1
+cosmian_kms_server@5.30.0 (1): BUSL-1.1
+cosmian_kms_server_database@5.30.0 (1): BUSL-1.1
 cosmian_logger@0.8.1 (1): BUSL-1.1
-cosmian_pkcs11@5.29.0 (1): BUSL-1.1
-cosmian_pkcs11_module@5.29.0 (1): BUSL-1.1
+cosmian_pkcs11@5.30.0 (1): BUSL-1.1
+cosmian_pkcs11_module@5.30.0 (1): BUSL-1.1
 cpufeatures@0.2.17 (2): MIT, Apache-2.0
 cpufeatures@0.3.0 (2): MIT, Apache-2.0
 crc32fast@1.5.0 (2): MIT, Apache-2.0
@@ -127,7 +127,7 @@ crossbeam-epoch@0.9.20 (2): MIT, Apache-2.0
 crossbeam-queue@0.3.13 (2): MIT, Apache-2.0
 crossbeam-utils@0.8.22 (2): MIT, Apache-2.0
 crunchy@0.2.4 (1): MIT
-crypt2pay_pkcs11_loader@5.29.0 (1): BUSL-1.1
+crypt2pay_pkcs11_loader@5.30.0 (1): BUSL-1.1
 crypto-bigint@0.5.5 (2): Apache-2.0, MIT
 crypto-common@0.1.7 (2): MIT, Apache-2.0
 crypto-common@0.2.2 (2): MIT, Apache-2.0
@@ -205,7 +205,7 @@ futures-task@0.3.34 (2): MIT, Apache-2.0
 futures-timer@3.0.4 (2): MIT, Apache-2.0
 futures-util@0.3.34 (2): MIT, Apache-2.0
 fuzzy-matcher@0.3.7 (1): MIT
-gcp_cloud_hsm_pkcs11_loader@5.29.0 (1): BUSL-1.1
+gcp_cloud_hsm_pkcs11_loader@5.30.0 (1): BUSL-1.1
 generic-array@0.14.7 (1): MIT
 getrandom@0.2.17 (2): MIT, Apache-2.0
 getrandom@0.3.4 (2): MIT, Apache-2.0
@@ -250,7 +250,7 @@ icu_normalizer_data@2.2.0 (1): Unicode-3.0
 icu_properties@2.2.0 (1): Unicode-3.0
 icu_properties_data@2.2.0 (1): Unicode-3.0
 icu_provider@2.2.0 (1): Unicode-3.0
-idemia_sphere_pkcs11_loader@5.29.0 (1): BUSL-1.1
+idemia_sphere_pkcs11_loader@5.30.0 (1): BUSL-1.1
 ident_case@1.0.1 (2): MIT, Apache-2.0
 idna@1.1.0 (2): MIT, Apache-2.0
 idna_adapter@1.2.2 (2): Apache-2.0, MIT
@@ -278,8 +278,8 @@ jsonptr@0.7.1 (2): MIT, Apache-2.0
 jsonwebtoken@10.4.0 (1): MIT
 k8s-openapi@0.28.0 (1): Apache-2.0
 keyed_priority_queue@0.4.2 (1): MIT
-kmip-derive@5.29.0 (1): BUSL-1.1
-kryoptic_pkcs11_loader@5.29.0 (1): BUSL-1.1
+kmip-derive@5.30.0 (1): BUSL-1.1
+kryoptic_pkcs11_loader@5.30.0 (1): BUSL-1.1
 kube@4.2.1 (1): Apache-2.0
 kube-client@4.2.1 (1): Apache-2.0
 kube-core@4.2.1 (1): Apache-2.0
@@ -303,7 +303,7 @@ local-waker@0.1.4 (2): MIT, Apache-2.0
 lock_api@0.4.14 (2): MIT, Apache-2.0
 log@0.4.34 (2): MIT, Apache-2.0
 lru@0.18.5 (1): MIT
-luna_pkcs11_loader@5.29.0 (1): BUSL-1.1
+luna_pkcs11_loader@5.30.0 (1): BUSL-1.1
 matchers@0.2.0 (1): MIT
 matchit@0.7.3 (2): MIT, BSD-3-Clause
 matchit@0.8.4 (2): MIT, BSD-3-Clause
@@ -388,7 +388,7 @@ prost@0.14.4 (1): Apache-2.0
 prost-derive@0.13.5 (1): Apache-2.0
 prost-derive@0.14.4 (1): Apache-2.0
 prost-types@0.14.4 (1): Apache-2.0
-proteccio_pkcs11_loader@5.29.0 (1): BUSL-1.1
+proteccio_pkcs11_loader@5.30.0 (1): BUSL-1.1
 psl-types@2.0.11 (2): MIT, Apache-2.0
 publicsuffix@2.3.0 (2): MIT, Apache-2.0
 quanta@0.12.6 (1): MIT
@@ -473,10 +473,10 @@ simple_asn1@0.6.4 (1): ISC
 siphasher@1.0.3 (2): MIT, Apache-2.0
 slab@0.4.12 (1): MIT
 smallvec@1.15.2 (2): MIT, Apache-2.0
-smartcardhsm_pkcs11_loader@5.29.0 (1): BUSL-1.1
+smartcardhsm_pkcs11_loader@5.30.0 (1): BUSL-1.1
 socket2@0.5.10 (2): MIT, Apache-2.0
 socket2@0.6.5 (2): MIT, Apache-2.0
-softhsm2_pkcs11_loader@5.29.0 (1): BUSL-1.1
+softhsm2_pkcs11_loader@5.30.0 (1): BUSL-1.1
 spiffe@0.16.1 (1): Apache-2.0
 spin@0.9.9 (1): MIT
 spinning_top@0.3.0 (2): MIT, Apache-2.0
@@ -501,7 +501,7 @@ synstructure@0.13.2 (1): MIT
 syslog-tracing@0.3.1 (1): MIT
 tagptr@0.2.0 (2): MIT, Apache-2.0
 tempfile@3.27.0 (2): MIT, Apache-2.0
-test_kms_server@5.29.0 (1): BUSL-1.1
+test_kms_server@5.30.0 (1): BUSL-1.1
 thiserror@1.0.69 (2): MIT, Apache-2.0
 thiserror@2.0.21 (2): MIT, Apache-2.0
 thiserror-impl@1.0.69 (2): MIT, Apache-2.0
@@ -570,7 +570,7 @@ untrusted@0.9.0 (1): ISC
 url@2.5.9 (2): MIT, Apache-2.0
 utf8_iter@1.0.4 (2): Apache-2.0, MIT
 utf8parse@0.2.2 (2): Apache-2.0, MIT
-utimaco_pkcs11_loader@5.29.0 (1): BUSL-1.1
+utimaco_pkcs11_loader@5.30.0 (1): BUSL-1.1
 uuid@1.28.0 (2): Apache-2.0, MIT
 v_escape-base@0.1.0 (2): MIT, Apache-2.0
 v_htmlescape@0.17.0 (2): MIT, Apache-2.0
