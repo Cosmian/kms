@@ -14,7 +14,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, FindOptions, GCM_MAX_INVOCATIONS, InterfaceError, InterfaceResult,
     KeyInventoryBucket, ObjectWithMetadata, ObjectsStore, PermissionsStore, UserId,
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, info, trace, warn};
 #[cfg(feature = "non-fips")]
 use mysql_async::ClientIdentity;
 use mysql_async::{Conn, Pool, SslOpts, Transaction, prelude::*};
@@ -24,7 +24,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    core::{CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode},
+    core::{CRON_LEASE_TTL_SECS, CRON_LOCK_CONNECTIONS, ClusterLockGuard, ClusterNode},
     db_bail, db_error,
     error::{DbError, DbResult, DbResultHelper},
     migrate_block_cipher_mode_if_needed,
@@ -157,9 +157,15 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
 /// MySQL error codes meaning "this column / key already exists" (`ER_DUP_FIELDNAME`, `ER_DUP_KEYNAME`).
 const MYSQL_ALREADY_EXISTS_CODES: [u16; 2] = [1060, 1061];
 
-/// Set once the server refused `GET_LOCK`: later jobs go straight to the row lock, and the
-/// warning is logged once.
+/// Set once the server refused `GET_LOCK`: later jobs go straight to the lease, and the
+/// message is logged once.
 static GET_LOCK_REFUSED: AtomicBool = AtomicBool::new(false);
+
+/// True once the server refused `GET_LOCK` (Galera/PXC) and TTL leases are in use.
+#[cfg(test)]
+pub(crate) fn get_lock_refused() -> bool {
+    GET_LOCK_REFUSED.load(Ordering::Relaxed)
+}
 
 /// Run a schema-changing statement that MySQL cannot make `IF NOT EXISTS`. Several nodes may
 /// bootstrap the same fresh database at once: another node creating the column or index between
@@ -420,10 +426,10 @@ impl MySqlPool {
         &self,
         lock_name: &str,
     ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
-        let mut conn = self.lock_pool.get_conn().await.map_err(DbError::from)?;
         if GET_LOCK_REFUSED.load(Ordering::Relaxed) {
-            return try_acquire_row_cron_lock(conn, lock_name).await;
+            return try_acquire_cron_lease(self.lock_pool.clone(), lock_name).await;
         }
+        let mut conn = self.lock_pool.get_conn().await.map_err(DbError::from)?;
         // NULL (a GET_LOCK internal error) must not panic the row conversion.
         let acquired: Option<Option<i64>> = match conn
             .exec_first(get_mysql_query!("try-cron-lock"), (lock_name,))
@@ -431,17 +437,17 @@ impl MySqlPool {
         {
             Ok(acquired) => acquired,
             // Galera refuses GET_LOCK (Percona XtraDB Cluster strict mode: 1105; MariaDB Galera:
-            // 1235): fall back to a row lock, which still excludes the nodes sharing a database node.
+            // 1235): fall back to a committed lease row, which Galera replicates to every node.
             Err(mysql_async::Error::Server(e))
                 if matches!(e.code, 1105 | 1235) && e.message.contains("GET_LOCK") =>
             {
                 if !GET_LOCK_REFUSED.swap(true, Ordering::Relaxed) {
-                    warn!(
-                        "The database refuses GET_LOCK ({}): scheduled jobs use row locks in kms_cron_locks, which exclude only the KMS nodes connected to the same database node",
-                        e.message
+                    info!(
+                        "GET_LOCK refused (Galera/PXC strict mode): using committed leases in kms_cron_leases"
                     );
                 }
-                return try_acquire_row_cron_lock(conn, lock_name).await;
+                drop(conn);
+                return try_acquire_cron_lease(self.lock_pool.clone(), lock_name).await;
             }
             Err(e) => return Err(DbError::from(e)),
         };
@@ -556,67 +562,93 @@ impl ClusterLockGuard for MySqlCronLock {
     }
 }
 
-/// Row-lock fallback of `GET_LOCK`: hold `lock_name`'s row `FOR UPDATE NOWAIT` in an open
-/// transaction on `conn` until the guard is released.
-async fn try_acquire_row_cron_lock(
-    mut conn: Conn,
-    lock_name: &str,
+/// TTL-lease fallback of `GET_LOCK` (Galera): the lease row is committed, hence replicated to
+/// every node. Another node winning the same row concurrently fails certification (error 1213).
+async fn try_acquire_cron_lease(
+    pool: Pool,
+    lease_name: &str,
 ) -> DbResult<Option<Box<dyn ClusterLockGuard>>> {
+    let holder = Uuid::new_v4().to_string();
     // The macro's `?` needs a `DbError` context: resolve the queries outside the driver block.
-    let has_row = get_mysql_query!("has-cron-lock-row");
-    let insert_row = get_mysql_query!("insert-cron-lock-row");
-    let start_tx = get_mysql_query!("start-transaction");
-    let lock_row = get_mysql_query!("select-cron-lock-nowait");
+    let insert_lease = get_mysql_query!("insert-cron-lease");
+    let acquire_lease = get_mysql_query!("acquire-cron-lease");
+    let mut conn = pool.get_conn().await.map_err(DbError::from)?;
     let attempt = async {
-        // Only insert when a plain read misses the row: `INSERT IGNORE` on a row another
-        // connection holds waits out `innodb_lock_wait_timeout`.
-        if conn
-            .exec_first::<mysql_async::Row, _, _>(has_row, (lock_name,))
-            .await?
-            .is_none()
-        {
-            conn.exec_drop(insert_row, (lock_name,)).await?;
-        }
-        conn.query_drop(start_tx).await?;
-        conn.exec_first::<mysql_async::Row, _, _>(lock_row, (lock_name,))
-            .await
+        conn.exec_drop(insert_lease, (lease_name,)).await?;
+        conn.exec_drop(
+            acquire_lease,
+            (holder.as_str(), CRON_LEASE_TTL_SECS, lease_name),
+        )
+        .await?;
+        Ok::<_, mysql_async::Error>(conn.affected_rows())
     }
     .await;
+    drop(conn);
     match attempt {
-        Ok(Some(_)) => Ok(Some(Box::new(MySqlRowCronLock { conn }))),
-        Ok(None) => {
-            conn.query_drop(get_mysql_query!("rollback"))
-                .await
-                .map_err(DbError::from)?;
-            Err(DbError::DatabaseError(
-                "MySQL cron lock row is missing".to_owned(),
-            ))
-        }
-        // ER_LOCK_NOWAIT / ER_LOCK_WAIT_TIMEOUT: held elsewhere.
-        Err(mysql_async::Error::Server(e)) if matches!(e.code, 1205 | 3572) => {
-            conn.query_drop(get_mysql_query!("rollback"))
-                .await
-                .map_err(DbError::from)?;
-            Ok(None)
-        }
-        // Another Galera node inserted the same row first: certification failure, retry next tick.
+        Ok(1) => Ok(Some(Box::new(MySqlCronLease {
+            pool,
+            name: lease_name.to_owned(),
+            holder,
+        }))),
+        // The lease is held and unexpired.
+        Ok(_) => Ok(None),
+        // Another Galera node won the same row first: certification failure, retry next tick.
         Err(mysql_async::Error::Server(e)) if e.code == 1213 => Ok(None),
         Err(e) => Err(DbError::from(e)),
     }
 }
 
-/// Scheduled-job lock held as a `FOR UPDATE` row lock in an open transaction.
-struct MySqlRowCronLock {
-    conn: Conn,
+/// Scheduled-job lease: dropping it without `release` keeps it held until it expires, which is
+/// the intended takeover path when the holder dies.
+struct MySqlCronLease {
+    pool: Pool,
+    name: String,
+    holder: String,
 }
 
 #[async_trait]
-impl ClusterLockGuard for MySqlRowCronLock {
-    async fn release(mut self: Box<Self>) -> DbResult<()> {
-        self.conn
-            .query_drop(get_mysql_query!("rollback"))
-            .await
-            .map_err(DbError::from)
+impl ClusterLockGuard for MySqlCronLease {
+    async fn release(self: Box<Self>) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        // 0 rows: the lease expired and was taken over; nothing to release.
+        conn.exec_drop(
+            get_mysql_query!("release-cron-lease"),
+            (&self.name, &self.holder),
+        )
+        .await
+        .map_err(DbError::from)
+    }
+
+    async fn renew(&mut self) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            get_mysql_query!("renew-cron-lease"),
+            (CRON_LEASE_TTL_SECS, &self.name, &self.holder),
+        )
+        .await
+        .map_err(DbError::from)?;
+        if conn.affected_rows() == 1 {
+            Ok(())
+        } else {
+            Err(DbError::DatabaseError(format!(
+                "MySQL cron lease '{}' was lost",
+                self.name
+            )))
+        }
+    }
+}
+
+#[cfg(test)]
+impl MySqlPool {
+    /// Test-only: expire a lease as if its holder had died, without waiting for the TTL.
+    pub(crate) async fn expire_cron_lease(&self, lease_name: &str) -> DbResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(
+            "UPDATE kms_cron_leases SET expires_at = CURRENT_TIMESTAMP(6) - INTERVAL 1 SECOND WHERE name = ?",
+            (lease_name,),
+        )
+        .await
+        .map_err(DbError::from)
     }
 }
 
@@ -1299,6 +1331,7 @@ impl Migrate for MySqlPool {
             "create-table-gcm_invocations",
             "create-table-cluster-nodes",
             "create-table-cron-locks",
+            "create-table-cron-leases",
         ] {
             let sql = queries
                 .get(name)

@@ -1226,6 +1226,8 @@ pub(crate) async fn test_db_galera_active_active() -> DbResult<()> {
     use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, PermissionsStore, UserId};
     use uuid::Uuid;
 
+    use crate::core::MainDbParams;
+
     log_init(option_env!("RUST_LOG"));
 
     let url1 = std::env::var("KMS_GALERA_1_URL")
@@ -1425,6 +1427,35 @@ pub(crate) async fn test_db_galera_active_active() -> DbResult<()> {
             "read_access did not converge: my1={perm1:?}, my2={perm2:?}"
         )));
     }
+
+    // G9: scheduled jobs are mutually exclusive across the two Galera nodes.
+    let params = |url: &str| MainDbParams::Mysql(url.parse().expect("valid Galera URL"), None);
+    crate::core::tests::assert_cron_lock_exclusion(&params(&url1), &params(&url2), false).await;
+    // A lease whose holder vanished (dropped guard) stays held until it expires, on both nodes.
+    let lease = format!("lease-{}", Uuid::new_v4());
+    let guard = my1
+        .try_acquire_cron_lock(&lease)
+        .await?
+        .ok_or_else(|| DbError::ServerError("G9: node 1 must get the lease".to_owned()))?;
+    if my2.try_acquire_cron_lock(&lease).await?.is_some() {
+        return Err(DbError::ServerError(
+            "G9: node 2 got a lease held by node 1".to_owned(),
+        ));
+    }
+    drop(guard);
+    if my2.try_acquire_cron_lock(&lease).await?.is_some() {
+        return Err(DbError::ServerError(
+            "G9: a dropped lease must stay held until it expires".to_owned(),
+        ));
+    }
+    my1.expire_cron_lease(&lease).await?;
+    my2.try_acquire_cron_lock(&lease)
+        .await?
+        .ok_or_else(|| {
+            DbError::ServerError("G9: node 2 must take over an expired lease".to_owned())
+        })?
+        .release()
+        .await?;
 
     Ok(())
 }
