@@ -68,12 +68,6 @@ fail() {
 }
 pass() { print_success "$*"; }
 
-# From rule://test-configs section 3: fails when the key is absent from the fixture.
-set_toml_value() { # <file> <key> <already-quoted-value>
-  grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
-  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
-}
-
 # json_get <json> <dotted.path>: print a string value or nothing.
 json_get() {
   python3 - "$1" "$2" <<'PY'

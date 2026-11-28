@@ -49,10 +49,6 @@ OIDC_LOGOUT_URL="${OIDC_LOGOUT_URL:-https://demo-kms.eu.auth0.com/v2/logout}"
 KMS_HOST="127.0.0.1"
 KMS_PORT="9998" # must match the Auth0-registered redirect URI
 
-run_pnpm() {
-  env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
-}
-
 # ── 1. Build WASM ────────────────────────────────────────────────────────────
 echo "==> Building WASM (${VARIANT}, web target) …"
 (

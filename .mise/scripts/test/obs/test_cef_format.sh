@@ -24,6 +24,8 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPT_DIR}/../../common.sh"
 source "${SCRIPT_DIR}/../../../lib/kms_build.sh"
 source "${SCRIPT_DIR}/../../../lib/kms_server.sh"
+# shellcheck source=.mise/lib/ckms.sh
+source "${MISE_CONFIG_ROOT:-$(get_repo_root "${SCRIPT_DIR}")}/.mise/lib/ckms.sh"
 
 init_build_env "$@"
 setup_test_logging
@@ -78,12 +80,6 @@ ckms_json() {
 }
 ckms_run() {
   "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
-}
-ckms_run_fail() {
-  if "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null; then
-    echo "ERROR: expected ckms command to fail: $*" >&2
-    exit 1
-  fi
 }
 extract_uid() {
   grep -o '"unique_identifier": *"[^"]*"' | head -1 | sed 's/"unique_identifier": *"//;s/"$//'

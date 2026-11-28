@@ -46,10 +46,6 @@ if [ ! -d "${AUTH_VERIFIER_REPO}/server" ]; then
   exit 1
 fi
 
-run_pnpm() {
-  env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
-}
-
 _get_free_port() {
   node -e "const net=require('node:net'); const server=net.createServer(); server.listen(0,'127.0.0.1',()=>{console.log(server.address().port); server.close();});"
 }
@@ -129,15 +125,6 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Copy complete fixtures; only existing scalar values vary at runtime.
-set_toml_value() {
-  local config="$1" key="$2" value="$3"
-  grep -qE "^${key} *= " "${config}" || {
-    echo "ERROR: key '${key}' missing in ${config}" >&2
-    return 1
-  }
-  sed -E "s|^(${key} *= *).*|\\1${value}|" "${config}" >"${config}.tmp"
-  mv "${config}.tmp" "${config}"
-}
 cp "${REPO_ROOT}/test_data/configs/auth_verifier/ui_auth.toml" "${AUTH_CONF_FILE}"
 set_toml_value "${AUTH_CONF_FILE}" host_port "${AUTH_PORT}"
 
