@@ -8,9 +8,9 @@
 #   Colors & printing:  RED GREEN YELLOW BLUE NC, print_header/status/warning/error/success/info
 #   Environment:        kms_init_env, get_repo_root, require_cmd, has_cmd, has_env_vars,
 #                       docker_ready, ensure_macos_sdk_env, ensure_macos_frameworks_ldflags,
-#                       setup_test_logging, run_isolated, wait_for_command, wait_for_port,
-#                       compute_sha256
-#   Test helpers:       build_test_deps, run_db_tests, check_and_test_db
+#                       setup_test_logging, run_isolated, ensure_pnpm, run_pnpm,
+#                       wait_for_command, wait_for_port, compute_sha256
+#   Test helpers:       set_toml_value, build_test_deps, run_db_tests, check_and_test_db
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
 [ -n "${_MISE_COMMON_SH_LOADED:-}" ] && return 0
@@ -206,6 +206,11 @@ ensure_pnpm() {
   (cd "$(get_repo_root "$(pwd)")/ui" && run_isolated pnpm --version >/dev/null)
 }
 
+# pnpm hashes package paths with MD4, which the Nix FIPS provider blocks.
+run_pnpm() {
+  env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
+}
+
 # Returns success only if every named environment variable is set and non-empty.
 # Usage: has_env_vars VAR_ONE VAR_TWO ...
 has_env_vars() {
@@ -265,6 +270,14 @@ setup_test_logging() {
 # Run a command with FIPS OpenSSL env vars stripped (for pnpm, Python, curl, etc.)
 run_isolated() {
   env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES "$@"
+}
+
+# Replace an existing scalar key in a copied TOML fixture; aborts when the key is absent.
+# Usage: set_toml_value <file> <key> <already-quoted-value>
+set_toml_value() {
+  local file="$1" key="$2" value="$3"
+  grep -qE "^${key} *= " "${file}" || print_error "key '${key}' missing in ${file}"
+  sed -E "s|^(${key} *= *).*|\1${value}|" "${file}" >"${file}.tmp" && mv "${file}.tmp" "${file}"
 }
 
 # Wait for a TCP port to become reachable.

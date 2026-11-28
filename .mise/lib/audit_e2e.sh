@@ -24,6 +24,10 @@ if [ -z "${_MISE_COMMON_SH_LOADED:-}" ]; then
   # shellcheck source=.mise/lib/common.sh
   source "${_AUDIT_E2E_DIR}/common.sh"
 fi
+if [ -z "${_MISE_CKMS_SH_LOADED:-}" ]; then
+  # shellcheck source=.mise/lib/ckms.sh
+  source "${_AUDIT_E2E_DIR}/ckms.sh"
+fi
 
 # Used by both audit_exercise_kmip_ops (to trigger the deliberate Failure) and
 # audit_assert_events_jsonl (to confirm that specific failure landed) — an
@@ -43,9 +47,7 @@ audit_ckms() {
 }
 
 audit_ckms_fail() {
-  if "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null; then
-    print_error "expected ckms command to fail: $*"
-  fi
+  ckms_run_fail "$@"
 }
 
 audit_extract_uid() {
