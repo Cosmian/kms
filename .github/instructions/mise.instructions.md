@@ -229,7 +229,7 @@ run_isolated pnpm run build
 run_isolated curl -sS http://127.0.0.1:9998/kmip/2_1
 ```
 
-`run_isolated` strips `LD_PRELOAD`, `LD_LIBRARY_PATH`, `OPENSSL_CONF`, and `OPENSSL_MODULES`. Use `run_pnpm` when `LD_LIBRARY_PATH` must stay intact.
+`run_isolated` strips `LD_PRELOAD`, `LD_LIBRARY_PATH`, `OPENSSL_CONF`, and `OPENSSL_MODULES`.
 
 ## Directory references
 

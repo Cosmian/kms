@@ -8,8 +8,8 @@
 #   Colors & printing:  RED GREEN YELLOW BLUE NC, print_header/status/warning/error/success/info
 #   Environment:        kms_init_env, get_repo_root, require_cmd, has_cmd, has_env_vars,
 #                       docker_ready, ensure_macos_sdk_env, ensure_macos_frameworks_ldflags,
-#                       setup_test_logging, run_isolated, ensure_pnpm, run_pnpm,
-#                       wait_for_command, wait_for_port, compute_sha256
+#                       setup_test_logging, run_isolated, run_pnpm, wait_for_command,
+#                       wait_for_port, compute_sha256
 #   Test helpers:       set_toml_value, build_test_deps, run_db_tests, check_and_test_db
 
 # ── Guard against double-sourcing ─────────────────────────────────────────────
@@ -272,14 +272,6 @@ run_isolated() {
   env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES "$@"
 }
 
-# Replace an existing scalar key in a copied TOML fixture; aborts when the key is absent.
-# Usage: set_toml_value <file> <key> <already-quoted-value>
-set_toml_value() {
-  local file="$1" key="$2" value="$3"
-  grep -qE "^${key} *= " "${file}" || print_error "key '${key}' missing in ${file}"
-  sed -E "s|^(${key} *= *).*|\1${value}|" "${file}" >"${file}.tmp" && mv "${file}.tmp" "${file}"
-}
-
 # Wait for a TCP port to become reachable.
 # Usage: wait_for_port <host> <port> [timeout_sec]
 wait_for_port() {
@@ -321,6 +313,14 @@ compute_sha256() {
 }
 
 # ── Test helpers ──────────────────────────────────────────────────────────────
+
+# Replace an existing scalar key in a copied TOML fixture; aborts when the key is absent.
+# Usage: set_toml_value <file> <key> <already-quoted-value>
+set_toml_value() {
+  local file="$1" key="$2" value="$3"
+  grep -qE "^${key} *= " "${file}" || print_error "key '${key}' missing in ${file}"
+  sed -E "s|^(${key} *= *).*|\1${value}|" "${file}" >"${file}.tmp" && mv "${file}.tmp" "${file}"
+}
 
 build_test_deps() {
   if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then

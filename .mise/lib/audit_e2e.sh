@@ -9,7 +9,6 @@
 # Provides:
 #   audit_ckms_json <args...>       — ckms with JSON output; exits (set -e) on failure
 #   audit_ckms <args...>            — ckms; exits (set -e) on failure
-#   audit_ckms_fail <args...>       — ckms; fails the script if it unexpectedly succeeds
 #   audit_extract_uid               — pipe JSON output through this for unique_identifier
 #   audit_exercise_kmip_ops         — Create/Encrypt/Decrypt/Revoke/Destroy + 1 deliberate
 #                                      Failure; sets AUDIT_SYM_UID
@@ -44,10 +43,6 @@ audit_ckms_json() {
 
 audit_ckms() {
   "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
-}
-
-audit_ckms_fail() {
-  ckms_run_fail "$@"
 }
 
 audit_extract_uid() {
@@ -86,7 +81,7 @@ audit_exercise_kmip_ops() {
   echo "    Destroyed key."
   rm -rf "${tmpdir}"
 
-  audit_ckms_fail sym keys export /dev/null --key-id "${AUDIT_NONEXISTENT_UID}"
+  ckms_run_fail sym keys export /dev/null --key-id "${AUDIT_NONEXISTENT_UID}"
   echo "    Triggered deliberate Failure event (non-existent key)."
 }
 
