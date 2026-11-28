@@ -29,6 +29,10 @@ Two modes:
   `Fixed in` equal to the release. A hardening or fix without a `SECURITY.md` entry is not listed under Security: put
   it in Bug Fixes (theme `Hardening`), Build or Features. Never create the `SECURITY.md` entry yourself; report that
   one is missing when the issue looks like a real vulnerability.
+- **Every `COSMIAN-YYYY-NNN` id of the root `CHANGELOG.md` is a link to its section of `SECURITY.md`**, in every entry
+  (Security, Bug Fixes, Breaking Changes, any bullet): `[COSMIAN-YYYY-NNN](SECURITY.md#<anchor>)`. Copy the anchor from
+  the table of contents of `SECURITY.md` (the `[COSMIAN-YYYY-NNN — title](#anchor)` line); never compute it by hand. Branch
+  files under `CHANGELOG/` keep the plain id; the consolidation turns it into a link.
 - **The root `CHANGELOG.md` entry of a release is a summary, not a copy.** The full detail (behaviour, options, client
   actions, tests) lives in the branch files archived under `CHANGELOG/<X.Y.Z>/`; the root entry names them, so a reader
   who needs more follows the link. Never paste branch-file text wholesale into the root entry.
@@ -201,6 +205,13 @@ create the SECURITY.md entry.
 Also check the reverse direction: list every advisory of the `SECURITY.md` summary table whose `Fixed in` equals
 `X.Y.Z` (`grep "| X.Y.Z " SECURITY.md`, not just a guessed id range). Each one must appear exactly once in the Security
 section.
+
+Every `COSMIAN-YYYY-NNN` id written in the root entry must be a link whose anchor exists in `SECURITY.md`:
+
+```bash
+sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | grep -oE '(^|[^[])COSMIAN-[0-9]{4}-[0-9]{3}'   # unlinked ids: must print nothing
+grep -o '(SECURITY.md#[^)]*)' CHANGELOG.md | sed 's/(SECURITY.md#//;s/)$//' | sort -u | while read -r a; do grep -qF "](#$a)" SECURITY.md || echo "NO ANCHOR $a"; done
+```
 
 Then check **every** Security bullet against the previous tag, as defined in Important Notes: `git grep` the symbol,
 endpoint, config key or package it concerns in the previous tag. If it does not exist there (new feature, new package,

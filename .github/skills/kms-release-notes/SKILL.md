@@ -109,6 +109,7 @@ If the entry contains a `### 🔒 Security` section:
 5. Every bullet under `### 🔒 Security` must contain its `COSMIAN-YYYY-NNN` id; move any bullet without one to Bug
    Fixes, Build or Features and report it.
 6. Every advisory of the `SECURITY.md` table with `Fixed in` equal to this release appears exactly once under Security.
+7. Write every `COSMIAN-YYYY-NNN` id of the entry as a link `[COSMIAN-YYYY-NNN](SECURITY.md#<anchor>)`, with the anchor copied from the table of contents of `SECURITY.md` (see `/kms-changelog`, Important Notes).
 
 ## Step 6 — Tone and formatting rules
 
