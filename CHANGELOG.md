@@ -2,6 +2,99 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.30.0] - 2026-11-28
+
+Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.30.0/`](CHANGELOG/5.30.0/) that hold the full detail (behaviour, options, client actions, tests). Operator procedure per area: [Upgrading to 5.30](documentation/docs/installation/upgrading/upgrade_to_5_30.md).
+
+### ⚠️ Breaking Changes
+
+- `vault_auth_verifier_url` receives standard Vault paths: the KMS calls `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` unchanged. **Upgrade action:** point it at an OpenBao/Vault server or at a Cosmian Auth Verifier that serves `/v1/auth/*`; upgrade an older Auth Verifier together with the KMS ([#863](https://github.com/Cosmian/kms/issues/863), [feat_kv-secret-store](CHANGELOG/5.30.0/feat_kv-secret-store.md))
+- Objects wrapped by the server `key_encryption_key` are bound to their database row (vendor attribute `x-cosmian-stored-uid`); the server re-wraps existing objects at start, so no manual migration is needed. **Upgrade action:** stop every 5.29.0 instance before starting 5.30.0; with an RSA-OAEP key encryption key, a 2048-bit KEK limits stored-key UIDs to about 58 characters ([#1519](https://github.com/Cosmian/kms/issues/1519), [fix_bind-sql-objects-to-row-1519](CHANGELOG/5.30.0/fix_bind-sql-objects-to-row-1519.md))
+
+### 🔒 Security
+
+Advisories fixed in 5.30.0; see [SECURITY.md](SECURITY.md) for scope, affected versions and references, and the branch files linked there for the fixes.
+
+- Statically linked OpenSSL 3.6.2 and container runtime packages with fixable CVEs (COSMIAN-2026-049)
+- Configured Operator role permitted PKCS#11 administration (COSMIAN-2026-050)
+- KMIP payloads written to debug logs (COSMIAN-2026-051)
+- KMIP certificate chains and unbounded HSM Locate permitted excessive server work (COSMIAN-2026-052)
+- `ReKeyKeyPair` retired another user's linked public key (COSMIAN-2026-053)
+- `ReCertify` authorized the issuer key as the certificate owner (COSMIAN-2026-054)
+- `Get Attributes` without a Unique Identifier selected another user's newest object (COSMIAN-2026-056)
+- Decrypt by keyset name returned wrong-key output in unauthenticated modes (COSMIAN-2026-057)
+- Retired HSM key generations remained usable for Encrypt, Sign and MAC (COSMIAN-2026-058)
+- HSM keys addressed by their UID skipped the KMIP algorithm policy (COSMIAN-2026-059)
+- HSM `ReKey` revealed the existence and type of other users' HSM keys (COSMIAN-2026-060)
+- Vault-token-only authentication let requests without credentials run as the default user (COSMIAN-2026-061)
+- Server `key_encryption_key` not applied to several object-creation paths (COSMIAN-2026-062)
+- Secret KMIP fields written to trace and debug logs (COSMIAN-2026-063)
+- Public `GET /health` returned database driver and PKCS#11 error details (COSMIAN-2026-064)
+- RUSTSEC-2026-0459 / CVE-2026-119375: bundled SQLite before 3.54 (COSMIAN-2026-065)
+- RUSTSEC-2026-0552, -0553, -0554: `actix-http` request framing and keep-alive flaws (COSMIAN-2026-066)
+- RUSTSEC-2026-0544 / CVE-2026-85091: `libz-sys` zlib heap buffer overflow (COSMIAN-2026-067)
+- RUSTSEC-2026-0543 and -0542: unmaintained `chrono` and `humantime` crates (COSMIAN-2026-068)
+- GHSA-g3hv-75wg-m249: `minimatch` denial of service in the Web UI dependency tree (COSMIAN-2026-069)
+- Key wrapping with a Certificate skipped the `WrapKey` usage-mask check (COSMIAN-2026-070)
+- `DeriveKey` skipped the Create gate, JOSE and SPIRE routes skipped the KMIP algorithm policy, wrapping errors revealed other users' keys (COSMIAN-2026-071)
+- Server without authentication started on a non-loopback address (COSMIAN-2026-072)
+- Authentication Verifier bearer tokens of the admin realm or another realm accepted (COSMIAN-2026-073)
+- KMS identity taken from an unverified `email` claim, shared across identity providers (COSMIAN-2026-074)
+- External credential named like `default_username` inherited the default user's identity (COSMIAN-2026-075)
+- `POST /ui/login_as` without KMS-side rate limit (COSMIAN-2026-076)
+- Web UI session cookie replayable after logout, no server-enforced lifetime (COSMIAN-2026-077)
+- Web UI session key derived with the public URL as password; guessable `ui_session_salt` accepted (COSMIAN-2026-078)
+- mTLS client certificates never checked against a revocation list (COSMIAN-2026-079)
+- A failing database lookup made CRL generation, OCSP and Locate see no certificates (COSMIAN-2026-080)
+- CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit (COSMIAN-2026-081)
+- SSRF via DNS names resolving to internal addresses in CRL Distribution Points (COSMIAN-2026-082)
+- A CRL fetch error marked an imported certificate Compromised (COSMIAN-2026-083)
+
+### 🚀 Features
+
+- **Multi-node cluster and multi-region**: advisory-lock/named-lock scheduled jobs, `cluster_nodes` heartbeat, `GET /cluster/status`, per-dependency `GET /health`, Web UI Server Health page, `region_role` leader/follower for PostgreSQL logical replication and MySQL Galera, Galera job leases, monotonic lifecycle writes ([#1366](https://github.com/Cosmian/kms/issues/1366), [#1511](https://github.com/Cosmian/kms/issues/1511); [feat_cluster-support-1366](CHANGELOG/5.30.0/feat_cluster-support-1366.md), [feat_health-strict-kmip-1366](CHANGELOG/5.30.0/feat_health-strict-kmip-1366.md), [feat_health-ui](CHANGELOG/5.30.0/feat_health-ui.md), [multi_region](CHANGELOG/5.30.0/multi_region.md), [fix_galera-cron-lease-1511](CHANGELOG/5.30.0/fix_galera-cron-lease-1511.md))
+- **Versioned database migration runner** for SQLite, PostgreSQL, MySQL/MariaDB and Redis-with-Findex, the `StoredStateSync` step, PostgreSQL `json` to `jsonb`, and `mise run test:db:upgrade` from every release since 5.9.0 ([#1270](https://github.com/Cosmian/kms/issues/1270), [#1271](https://github.com/Cosmian/kms/issues/1271), [#1272](https://github.com/Cosmian/kms/issues/1272); [feat_db_migration_runner_sqlite](CHANGELOG/5.30.0/feat_db_migration_runner_sqlite.md), [feat_db_migration_runner_pg_mysql](CHANGELOG/5.30.0/feat_db_migration_runner_pg_mysql.md), [feat_db_migration_redis_findex](CHANGELOG/5.30.0/feat_db_migration_redis_findex.md), [feat_state-json-sync](CHANGELOG/5.30.0/feat_state-json-sync.md), [test_db-upgrade-all-versions](CHANGELOG/5.30.0/test_db-upgrade-all-versions.md))
+- **Vault-compatible API**: KV v2 secret store over KMIP `SecretData`, short-lived OpenSSH certificates (`/v1/ssh/*`), Vault auto-unseal with `seal "transit"`, `ckms kv|ssh|password` and the matching Web UI pages ([#863](https://github.com/Cosmian/kms/issues/863), [#864](https://github.com/Cosmian/kms/issues/864), [#1365](https://github.com/Cosmian/kms/issues/1365); [feat_kv-secret-store](CHANGELOG/5.30.0/feat_kv-secret-store.md), [feat_kv-ssh-password-clients](CHANGELOG/5.30.0/feat_kv-ssh-password-clients.md), [feat_vault-transit-auto-unseal-1365](CHANGELOG/5.30.0/feat_vault-transit-auto-unseal-1365.md))
+- **AES-CMAC and AES-GMAC** in `MAC`/`MACVerify`, `ckms mac`, PKCS#11; FIPS-provider AES-GCM IV generation, per-key invocation counter (`gcm_invocations`), FIPS startup check of the OpenSSL provider ([#1367](https://github.com/Cosmian/kms/issues/1367); [feat_aes-cmac-and-aes-gmac-1367](CHANGELOG/5.30.0/feat_aes-cmac-and-aes-gmac-1367.md), [fix_gcm-invocation-lease](CHANGELOG/5.30.0/fix_gcm-invocation-lease.md))
+- **PQC and EdDSA in FIPS builds** (ML-KEM, ML-DSA, SLH-DSA, `X25519MLKEM768`, Ed25519, Ed448) on OpenSSL FIPS provider 3.5.9 ([#1522](https://github.com/Cosmian/kms/issues/1522); [feat_fips-pqc-eddsa-1522](CHANGELOG/5.30.0/feat_fips-pqc-eddsa-1522.md))
+- **Idemia SPHERE HSM** model, Windows FIPS installer and Windows HSM tests ([feat_idemia_hsm](CHANGELOG/5.30.0/feat_idemia_hsm.md))
+- **HSM**: auto-rotation of HSM-resident keys, `ReKeyKeyPair` on HSM private keys, usage masks derived from PKCS#11 attributes ([#1425](https://github.com/Cosmian/kms/issues/1425), [#1456](https://github.com/Cosmian/kms/issues/1456); [feat_auto-rotate-hsm-resident-keys-1425](CHANGELOG/5.30.0/feat_auto-rotate-hsm-resident-keys-1425.md), [feat_hsm-derive-usage-masks-1456](CHANGELOG/5.30.0/feat_hsm-derive-usage-masks-1456.md))
+- **Ansible collection** `cosmian.kms` ([#1372](https://github.com/Cosmian/kms/issues/1372); [feat_ansible-collection-1372](CHANGELOG/5.30.0/feat_ansible-collection-1372.md)) and an **OpenVEX** document for the SBOM ([feat_openvex](CHANGELOG/5.30.0/feat_openvex.md))
+- **Observability**: richer `kms.keys.active.count` labels and key-expiry metrics ([#1412](https://github.com/Cosmian/kms/issues/1412); [feat_otel-metrics-attributes-key-expiry-1412](CHANGELOG/5.30.0/feat_otel-metrics-attributes-key-expiry-1412.md))
+- **Web UI and WASM**: Activate actions for Pre-Active objects, Covercrypt re-key WASM exports, `GET /ui/config` to hide unavailable sections ([#1356](https://github.com/Cosmian/kms/issues/1356); [feat_activate-pre-active-objects-locate-1356](CHANGELOG/5.30.0/feat_activate-pre-active-objects-locate-1356.md), [dp_wasm-cc-rekey-actions](CHANGELOG/5.30.0/dp_wasm-cc-rekey-actions.md), [feat_ui-limit-visible-directories](CHANGELOG/5.30.0/feat_ui-limit-visible-directories.md))
+- **Sensitive value redaction**: `Sensitive<T>` wrapper and redacting `Debug` on secret-bearing types ([#1426](https://github.com/Cosmian/kms/issues/1426); [feat_sensitive-bytes-redacting-type-1426](CHANGELOG/5.30.0/feat_sensitive-bytes-redacting-type-1426.md))
+- **Interoperability and benchmarks**: KMIP 2.1 `Ping`, live KMIPKit tests, `bench:compare`, JOSE CEK-switch benchmark, `ckms login oauth --refresh` ([test_kmipkit-interop](CHANGELOG/5.30.0/test_kmipkit-interop.md), [ci_benchmark_regression_report](CHANGELOG/5.30.0/ci_benchmark_regression_report.md), [jose-cek-switch-bench](CHANGELOG/5.30.0/jose-cek-switch-bench.md), [test_cse](CHANGELOG/5.30.0/test_cse.md))
+
+### 🐛 Bug Fixes
+
+- **KMIP**: strict KMIP 2.1 conformance (Result Reasons, lifecycle, batches and batch Undo, attribute and operation rules, encodings, bounds, Locate/Get/Export/Query, Login/Logout, Set Constraints), concurrent re-key protection and atomic Usage Limits accounting, certificate import against a revoked issuer ([#1006](https://github.com/Cosmian/kms/issues/1006), [#1312](https://github.com/Cosmian/kms/issues/1312), [#1313](https://github.com/Cosmian/kms/issues/1313), [#1461](https://github.com/Cosmian/kms/issues/1461); [fix_kmip-conformance-gaps](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md), [fix_kmip_result_reasons_batch_items_1312_1313](CHANGELOG/5.30.0/fix_kmip_result_reasons_batch_items_1312_1313.md), [fix_kmip-authorization-policy-gaps-1492](CHANGELOG/5.30.0/fix_kmip-authorization-policy-gaps-1492.md), [fix_rotation-optimistic-lock-1006](CHANGELOG/5.30.0/fix_rotation-optimistic-lock-1006.md), [fix_revoked-certificate-import-crl-1461](CHANGELOG/5.30.0/fix_revoked-certificate-import-crl-1461.md), [chore_todo-triage](CHANGELOG/5.30.0/chore_todo-triage.md))
+- **Authentication and identities**: fail-closed defaults (no-auth start refused on non-loopback addresses, `email#<issuer>` identities, `default_username` isolation), `X-Vault-Token` counted as authentication, Web UI session revocation, key derivation and in-house cookie ([#1486](https://github.com/Cosmian/kms/issues/1486), [#1487](https://github.com/Cosmian/kms/issues/1487), [#1437](https://github.com/Cosmian/kms/issues/1437); [fix_fail-closed-defaults-user-identity-1486](CHANGELOG/5.30.0/fix_fail-closed-defaults-user-identity-1486.md), [fix_ui-session-revocation-kdf-hardening-1487](CHANGELOG/5.30.0/fix_ui-session-revocation-kdf-hardening-1487.md), [fix_hardening-require-vault-token-auth-1437](CHANGELOG/5.30.0/fix_hardening-require-vault-token-auth-1437.md))
+- **Certificates and revocation**: mTLS client revocation (`clients_crl_dir`), CRL fetch safeguards, fail-closed database lookups ([#1493](https://github.com/Cosmian/kms/issues/1493); [fix_certificate-revocation-correctness-1493](CHANGELOG/5.30.0/fix_certificate-revocation-correctness-1493.md))
+- **HSM and PKCS#11**: sensitive-by-default HSM keys, HSM UID policy and retired generations, GCM message-API fallback, panic containment in the provider, Oracle TDE objects created Active, non-extractable key export policy in PKCS#11 and CNG ([#1490](https://github.com/Cosmian/kms/issues/1490), [#1491](https://github.com/Cosmian/kms/issues/1491); [fix_enforce-sensitive-extractable-split-hsm-1490](CHANGELOG/5.30.0/fix_enforce-sensitive-extractable-split-hsm-1490.md), [fix_pkcs11-message-gcm-fallback](CHANGELOG/5.30.0/fix_pkcs11-message-gcm-fallback.md), [fix_pkcs11_oracle_tde_active](CHANGELOG/5.30.0/fix_pkcs11_oracle_tde_active.md), [fix_cng-pkcs11-non-extractable-keys-1491](CHANGELOG/5.30.0/fix_cng-pkcs11-non-extractable-keys-1491.md), [feat_FFI_should_not_panic](CHANGELOG/5.30.0/feat_FFI_should_not_panic.md), [fix_hsm-bench-fips-rsa-pkcs](CHANGELOG/5.30.0/fix_hsm-bench-fips-rsa-pkcs.md))
+- **Hardening**: bounded pre-authentication and client-controlled KMIP parameters, redacted logs and audited handlers, database TLS and ceremony binding, secret files and `ckms` credential handling, security headers, SCEP renewal default, OTLP endpoint checks, Findex salt, monitoring stack and operator ([#1485](https://github.com/Cosmian/kms/issues/1485), [#1488](https://github.com/Cosmian/kms/issues/1488), [#1489](https://github.com/Cosmian/kms/issues/1489), [#1494](https://github.com/Cosmian/kms/issues/1494), [#1495](https://github.com/Cosmian/kms/issues/1495), [#1497](https://github.com/Cosmian/kms/issues/1497), [#1500](https://github.com/Cosmian/kms/issues/1500); [fix_google-cse-privileged-auth-dke-cors-1485](CHANGELOG/5.30.0/fix_google-cse-privileged-auth-dke-cors-1485.md), [security_1445-kmip14-debug-redaction](CHANGELOG/5.30.0/security_1445-kmip14-debug-redaction.md), [security_1488-bound-preauth-resources](CHANGELOG/5.30.0/security_1488-bound-preauth-resources.md), [security_1489-bound-client-kmip-params](CHANGELOG/5.30.0/security_1489-bound-client-kmip-params.md), [security_1494-logs-errors-audit](CHANGELOG/5.30.0/security_1494-logs-errors-audit.md), [security_1495-db-tls-ceremony-binding](CHANGELOG/5.30.0/security_1495-db-tls-ceremony-binding.md), [security_1497-ckms-secret-files](CHANGELOG/5.30.0/security_1497-ckms-secret-files.md), [security_1500-hardening-notes](CHANGELOG/5.30.0/security_1500-hardening-notes.md), [fix_key-wrapping-certificate-usage-mask-1457](CHANGELOG/5.30.0/fix_key-wrapping-certificate-usage-mask-1457.md))
+- **Dependencies**: OpenSSL 3.6.5 and `rusqlite` bumps, RUSTSEC fixes, Web UI supply-chain pinning ([#1349](https://github.com/Cosmian/kms/issues/1349), [#1480](https://github.com/Cosmian/kms/issues/1480); [fix_statically-linked-openssl-critical-cves-1349](CHANGELOG/5.30.0/fix_statically-linked-openssl-critical-cves-1349.md), [fix_rustsec-2026-0459](CHANGELOG/5.30.0/fix_rustsec-2026-0459.md), [fix_rustsec-2026-0594-1480](CHANGELOG/5.30.0/fix_rustsec-2026-0594-1480.md), [feat_npm-supply-chain](CHANGELOG/5.30.0/feat_npm-supply-chain.md))
+- **CLI, Web UI, packaging, observability**: Base64 key export no longer lower-cased, `--sensitive` optional value, Web UI form fixes, service kept enabled across Debian/RPM upgrades and `kms.toml` kept on Windows upgrades, root `kms` span removed ([#1499](https://github.com/Cosmian/kms/issues/1499), [#1458](https://github.com/Cosmian/kms/issues/1458); [fix_base64-key-export-lower-cased-1499](CHANGELOG/5.30.0/fix_base64-key-export-lower-cased-1499.md), [fix_ui_problems](CHANGELOG/5.30.0/fix_ui_problems.md), [fix_upgrade-from-5.29](CHANGELOG/5.30.0/fix_upgrade-from-5.29.md), [fix_telemetry-root-kms-span-1458](CHANGELOG/5.30.0/fix_telemetry-root-kms-span-1458.md))
+
+### ♻️ Refactor
+
+- Remove every clippy suppression from non-test code, use safe OpenSSL APIs, split the HSM encryption dispatch and drop unused KMIP 1.4 structs; regroup `.mise/scripts/test/` ([chore_lint-suppression-cleanup](CHANGELOG/5.30.0/chore_lint-suppression-cleanup.md), [feat_regroup-mise-test-scripts-1418](CHANGELOG/5.30.0/feat_regroup-mise-test-scripts-1418.md))
+
+### 🧪 Testing
+
+- OASIS XML vector harness for KMIP 1.0 to 2.1, HSM GCM matrix, PKCS#11 panic test, Web UI session end-to-end tests, multi-region and database upgrade suites ([test_cse](CHANGELOG/5.30.0/test_cse.md), [test_db-upgrade-all-versions](CHANGELOG/5.30.0/test_db-upgrade-all-versions.md), [test_kmipkit-interop](CHANGELOG/5.30.0/test_kmipkit-interop.md))
+
+### ⚙️ Build
+
+- Remove unused dependencies, bump the OpenSSL FIPS provider from 3.1.2 to 3.5.9, build the PKCS#11 library with the `pkcs11-provider` profile, remove the legacy Nix dispatcher, bump the workspace to 5.30.0 ([#1502](https://github.com/Cosmian/kms/issues/1502), [#1420](https://github.com/Cosmian/kms/issues/1420); [chore_prune_dependencies](CHANGELOG/5.30.0/chore_prune_dependencies.md), [chore_remove_chrono](CHANGELOG/5.30.0/chore_remove_chrono.md), [chore_remove_not_mandatory_deps](CHANGELOG/5.30.0/chore_remove_not_mandatory_deps.md), [feat_bump-openssl-fips-provider-1502](CHANGELOG/5.30.0/feat_bump-openssl-fips-provider-1502.md), [feat_remove-legacy-nix-sh-dispatcher-1420](CHANGELOG/5.30.0/feat_remove-legacy-nix-sh-dispatcher-1420.md))
+
+### ⚙️ CI
+
+- Per-path pull-request gating, cheaper CI, Docker Hub rate-limit handling, isolated signing and release jobs without credentials, npm and image scans ([#1498](https://github.com/Cosmian/kms/issues/1498), [#1435](https://github.com/Cosmian/kms/issues/1435); [ci_pr-path-gating](CHANGELOG/5.30.0/ci_pr-path-gating.md), [ci_reduce_build_duration](CHANGELOG/5.30.0/ci_reduce_build_duration.md), [ci_dockerhub-rate-limit](CHANGELOG/5.30.0/ci_dockerhub-rate-limit.md), [ci_nightly-sbom-dispatch-run-id](CHANGELOG/5.30.0/ci_nightly-sbom-dispatch-run-id.md), [feat_security-ci-release-credentials-exposed-1498](CHANGELOG/5.30.0/feat_security-ci-release-credentials-exposed-1498.md), [feat_security-refresh-google-oauth-credentials-1435](CHANGELOG/5.30.0/feat_security-refresh-google-oauth-credentials-1435.md), [fix_ci_npm_audit_signatures](CHANGELOG/5.30.0/fix_ci_npm_audit_signatures.md))
+
+### 📚 Documentation
+
+- Add the [Upgrading the KMS](documentation/docs/installation/upgrading/index.md) landing page and the [Upgrading to 5.30](documentation/docs/installation/upgrading/upgrade_to_5_30.md) guide; define the per-release upgrade page convention in `docs.instructions.md`; document HSM key rotation, KMIP support, CRL and Google CSE options, cluster coordination and high availability, and the database configuration page ([#1136](https://github.com/Cosmian/kms/issues/1136), [#1226](https://github.com/Cosmian/kms/issues/1226))
+
 ## [5.29.0] - 2026-10-28
 
 ### 🔒 Security
