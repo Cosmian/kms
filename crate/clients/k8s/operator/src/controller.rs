@@ -225,7 +225,8 @@ async fn upsert_secret(
             info!(name = %owner.spec.target_secret, "created K8s Secret");
         }
         Some(existing) => {
-            let secret = merge_secret_update(existing, labels, owner.spec.key.clone(), bytes.to_vec());
+            let secret =
+                merge_secret_update(existing, labels, owner.spec.key.clone(), bytes.to_vec());
             // Replacing the fetched object carries its resourceVersion as an update precondition.
             secrets
                 .replace(&owner.spec.target_secret, &PostParams::default(), &secret)

@@ -695,7 +695,7 @@ mod tests {
 
 #[cfg(test)]
 mod deny_tests {
-    use std::sync::Arc;
+    use std::{collections::BTreeMap, sync::Arc};
 
     use axum::{Json, extract::State};
     use serde_json::json;
@@ -710,6 +710,7 @@ mod deny_tests {
             kms_server_url: "https://kms.example.com".to_owned(),
             kms_api_token_secret_ref: None,
             injector_image: "cosmian/kms-injector:latest".to_owned(),
+            allowed_uids_by_namespace: BTreeMap::new(),
         };
         let review: AdmissionReview = serde_json::from_value(json!({
             "apiVersion": "admission.k8s.io/v1",
