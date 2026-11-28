@@ -67,11 +67,8 @@ Copy the **complete** fixture to a temp file and substitute scalar **values of k
 (port, `sqlite_path`, tmp dirs, URL port). Never add, remove or reorder sections/keys.
 
 ```bash
-# Fails when the key is absent (a bare sed would silently leave the fixture value in place).
-set_toml_value() { # <file> <key> <already-quoted-value>
-  grep -qE "^$2 *= " "$1" || { echo "ERROR: key '$2' missing in $1" >&2; return 1; }
-  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
-}
+# set_toml_value from .mise/lib/common.sh fails when the key is absent.
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 cp "${REPO_ROOT}/test_data/configs/auth_verifier/<name>.toml" "${WORK_DIR}/auth_verifier.toml"
 set_toml_value "${WORK_DIR}/auth_verifier.toml" host_port "${AUTH_PORT}"
 ```

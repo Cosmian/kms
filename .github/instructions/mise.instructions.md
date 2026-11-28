@@ -126,7 +126,7 @@ Never assume `common.sh` is already loaded; always guard the source.
 
 ## Available shared libraries — reuse before writing new code
 
-Check what the nearest related task sources, then search [.mise/lib/](../../.mise/lib/) before writing a helper. Reuse the existing port-wait, port-allocation and SHA-256 helpers. Do not add callers of the legacy `kms_write_config`; use a complete fixture per [rule 4.20](test-configs.instructions.md).
+Check what the nearest related task sources, then search [.mise/lib/](../../.mise/lib/) before writing a helper. Reuse the existing port-wait, port-allocation, SHA-256, TOML override (`set_toml_value`), pnpm (`run_pnpm`), and `ckms` ([.mise/lib/ckms.sh](../../.mise/lib/ckms.sh): `ckms_run_fail`) helpers. Do not add callers of the legacy `kms_write_config`; use a complete fixture per [rule 4.20](test-configs.instructions.md).
 
 ## Test leaves — `skip_test`, `run_test_leaves`
 
@@ -229,7 +229,7 @@ run_isolated pnpm run build
 run_isolated curl -sS http://127.0.0.1:9998/kmip/2_1
 ```
 
-`run_isolated` strips `LD_PRELOAD`, `LD_LIBRARY_PATH`, `OPENSSL_CONF`, and `OPENSSL_MODULES`.
+`run_isolated` strips `LD_PRELOAD`, `LD_LIBRARY_PATH`, `OPENSSL_CONF`, and `OPENSSL_MODULES`. Use `run_pnpm` when `LD_LIBRARY_PATH` must stay intact.
 
 ## Directory references
 

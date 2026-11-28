@@ -43,7 +43,7 @@ Never force-push. Do not push `test_data` without the user's go-ahead.
 ## Step 4 — Use it
 
 - Rust: `test_config_path(..)` / `hsm_config_path(..)` / `load_client_config(..)`.
-- Shell: copy fixture to a temp dir, `set_toml_value` for ports/paths (snippet in the instruction file). No heredocs, no `cat >>`.
+- Shell: copy fixture to a temp dir, `set_toml_value` from `.mise/lib/common.sh` for ports/paths. No heredocs, no `cat >>`.
 
 ## Step 5 — Verify with the real binary
 
