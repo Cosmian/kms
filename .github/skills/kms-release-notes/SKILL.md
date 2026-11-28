@@ -109,6 +109,7 @@ If the entry contains a `### 🔒 Security` section:
 5. Every bullet under `### 🔒 Security` must contain its `COSMIAN-YYYY-NNN` id; move any bullet without one to Bug
    Fixes, Build or Features and report it.
 6. Every advisory of the `SECURITY.md` table with `Fixed in` equal to this release appears exactly once under Security.
+7. Write every `COSMIAN-YYYY-NNN` id of the entry as a link `[COSMIAN-YYYY-NNN](SECURITY.md#<anchor>)`, with the anchor copied from the table of contents of `SECURITY.md` (see `/kms-changelog`, Important Notes).
 
 ## Step 6 — Tone and formatting rules
 
@@ -116,7 +117,7 @@ If the entry contains a `### 🔒 Security` section:
 - Be specific: type names, flag names, algorithm names, crate names.
 - Omit internal implementation details unless they affect observable behavior.
 - Include PR/issue links: `([#N](https://github.com/Cosmian/kms/pull/N))`.
-- No line-count limit, but be concise — compress where possible.
+- Summary only: the entry stays under about 100 lines, one bullet per theme, each linking the `CHANGELOG/<version>/<file>.md` branch files that hold the detail (see `/kms-changelog consolidate`, Step C2).
 
 ## Step 7 — Write the output
 
@@ -129,4 +130,4 @@ The root `CHANGELOG.md` is hand-maintained at release time.
 Run `/kms-changelog consolidate <version>`. It reads every `CHANGELOG/*.md`
 branch file, summarizes and regroups them into the themed subsections of the
 entry written above (each item exactly once), cross-checks `SECURITY.md`, and
-archives the branch files into `CHANGELOG/<version>/`. Do not duplicate that procedure here.
+archives the branch files into `CHANGELOG/<version>/`. Do not duplicate that procedure here. It also writes the release upgrade page (its Step C6).

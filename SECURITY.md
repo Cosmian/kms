@@ -159,7 +159,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | before 5.30.0 |
 | Fixed in   | 5.30.0 |
 | Found by   | Threat model review, 23 November 2026 |
-| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tests/test_validate.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tests/test_validate.rs), [Branch changelog](CHANGELOG/5.30.0/fix_certificate-revocation-correctness-1493.md) |
 
 **Summary:** `Import` of an `Active` certificate checks the CRLs of its distribution points and stored the certificate as `Compromised` on any `KmsError::Certificate` error from that check, including an expired CRL, a CRL fetch that failed on a non-success status, an oversized body or a distribution point blocked by the SSRF check.
 
@@ -216,7 +216,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | before 5.30.0 |
 | Fixed in   | 5.30.0 |
 | Found by   | Threat model review, 23 November 2026 |
-| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server_database/src/core/database_objects.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server_database/src/core/database_objects.rs), [Branch changelog](CHANGELOG/5.30.0/fix_certificate-revocation-correctness-1493.md) |
 
 **Summary:** `Database::find` and `Database::find_all` replaced an error of any object store by an empty result.
 
@@ -235,7 +235,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | before 5.30.0 |
 | Fixed in   | 5.30.0 |
 | Found by   | Threat model review, 23 November 2026 |
-| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tls_config.rs), [Branch changelog](CHANGELOG/fix_certificate-revocation-correctness-1493.md) |
+| References | [#1493](https://github.com/Cosmian/kms/issues/1493), [Regression tests](crate/server/src/tls_config.rs), [Branch changelog](CHANGELOG/5.30.0/fix_certificate-revocation-correctness-1493.md) |
 
 **Summary:** The HTTPS and KMIP socket servers verified client certificates against `clients_ca_cert_file` only. No CRL was consulted, so a revoked client certificate was accepted until it expired.
 
@@ -616,7 +616,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.16.0 before 5.30.0                                                                                                                     |
 | Fixed in   | 5.30.0                                                                                                                                        |
 | Found by   | PR review, 22 November 2026                                                                                                                  |
-| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression test](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+| References | [Branch changelog](CHANGELOG/5.30.0/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression test](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
 
 **Summary:** A crypto operation on an HSM key addressed by its own UID (any HSM key never re-keyed, or an explicit `name@N` generation) was routed to the HSM without checking the key's algorithm, length or curve against `[kmip.policy]`. Database keys and HSM keyset members resolved by keyset name were checked.
 
@@ -635,7 +635,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.25.0 before 5.30.0                                                                                                                      |
 | Fixed in   | 5.30.0                                                                                                                                         |
 | Found by   | PR review, 22 November 2026                                                                                                                   |
-| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+| References | [Branch changelog](CHANGELOG/5.30.0/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
 
 **Summary:** `ReKey` of a database key moves the old key to `Deactivated` (KMIP 2.1 §4.57), which refuses it for protection. `ReKey` of an HSM key only marked the old generation as retired in its `CKA_LABEL`: PKCS#11 has no KMIP state, and the KMS sent an explicit generation UID (`name@N`) to the HSM without checking whether it was still the keyset head.
 
@@ -654,7 +654,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Affected   | from 5.25.0 before 5.30.0                                                                                                                      |
 | Fixed in   | 5.30.0                                                                                                                                         |
 | Found by   | PR review, 22 November 2026                                                                                                                   |
-| References | [Branch changelog](CHANGELOG/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
+| References | [Branch changelog](CHANGELOG/5.30.0/feat_auto-rotate-hsm-resident-keys-1425.md), [Regression tests](crate/server/src/tests/hsm/fake_hsm_rotation.rs) |
 
 **Summary:** `Decrypt` addressed to the bare name of a rotated keyset tries each generation, newest first, and returns the first result that does not fail. Modes without an integrity check do not fail with a wrong key: AES ECB, CTR and XTS, ChaCha20 and FPE always return output, and AES CBC and RSA PKCS#1 v1.5 do whenever the decrypted padding happens to be well formed.
 
@@ -675,7 +675,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | Affected   | before 5.30.0                                               |
 | Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
-| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+| References | [Branch changelog](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md) |
 
 **Summary:** A Get Attributes request without a Unique Identifier and without an ID Placeholder made the server scan every stored object and pick the most recently changed one, preferring the caller's own objects but falling back to any user's. The permission check ran only after that choice, and its "object not found" error named the selected identifier.
 
@@ -694,7 +694,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | Affected   | unreleased development code only (introduced and fixed before 5.30.0)  |
 | Fixed in   | 5.30.0                                                                 |
 | Found by   | Security review, 20 October 2026                                      |
-| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md)            |
+| References | [Branch changelog](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md)            |
 
 **Summary:** The KMIP Undo batch error option, implemented during the 5.30.0 development cycle, snapshotted each item's target and every object the target linked to, without checking the caller's permissions, and wrote the snapshots back unconditionally after a failure. Links are client-editable, so a user could link one of their own objects to another user's object. Tag, keyset and name handles, re-keys of wrapping keys, Covercrypt cascades and Crypto Officer key splits were reported as undone although their effects remained, and a ceremony split lost its key.
 
@@ -713,7 +713,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | Affected   | before 5.30.0                                               |
 | Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
-| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+| References | [Branch changelog](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md) |
 
 **Summary:** `ReCertify` checked the caller's `Certify` (or `Get`) grant on the certificate, then resolved the subject and the issuer CA key and certificate as the certificate's owner. The issuer links, Certificate Request and Certificate Request Unique Identifier come from the request.
 
@@ -732,7 +732,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | Affected   | before 5.30.0                                               |
 | Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 20 October 2026                           |
-| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+| References | [Branch changelog](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md) |
 
 **Summary:** `ReKeyKeyPair` checked the caller's permission on the private key only. It then loaded the public key named by the private key's Public Key Link without any permission check. The owner of a private key can set that link to any identifier.
 
@@ -751,7 +751,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | Affected   | before 5.30.0                                               |
 | Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
-| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+| References | [Branch changelog](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md) |
 
 **Summary:** PKCS#12 and PKCS#7 export followed a certificate's `CertificateLink` chain without cycle detection or a depth limit. When HSMs were configured, a `Locate` by a user who is not an HSM administrator ran without any store limit and enumerated every HSM key and its metadata before discarding the keys not granted to that user.
 
@@ -770,7 +770,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | Affected   | before 5.30.0                                               |
 | Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
-| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+| References | [Branch changelog](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md) |
 
 **Summary:** The binary KMIP handler and message processor logged complete request and response TTLV values, including raw request and response bytes.
 
@@ -789,7 +789,7 @@ The released exposure was in SQL keysets. HSM keyset chain-walking is new on thi
 | Affected   | before 5.30.0                                               |
 | Fixed in   | 5.30.0                                                      |
 | Found by   | Security review, 19 October 2026                           |
-| References | [Branch changelog](CHANGELOG/fix_kmip-conformance-gaps.md) |
+| References | [Branch changelog](CHANGELOG/5.30.0/fix_kmip-conformance-gaps.md) |
 
 **Summary:** When Crypto Officer roles were configured, the `PKCS11` management operation bypassed the role policy.
 

@@ -118,7 +118,7 @@ coverage before archiving the branch files. Review the entry before proceeding:
 - Security section is present if any security fix was merged.
 - No operator-visible change is missing.
 - Every Security item concerns an issue present in the previous release (nothing introduced and fixed within this release).
-- Every Security bullet cites a `COSMIAN-YYYY-NNN` id listed in `SECURITY.md`.
+- Every Security bullet cites a `COSMIAN-YYYY-NNN` id listed in `SECURITY.md`, and every id in the release entry of `CHANGELOG.md` is a link `[COSMIAN-YYYY-NNN](SECURITY.md#<anchor>)` whose anchor exists in the `SECURITY.md` table of contents (run the two checks of `/kms-changelog` Step C3).
 - `CHANGELOG/` holds no top-level branch file (all archived in `CHANGELOG/<version>/`).
 
 ## Step 10 — Go / No-Go Report

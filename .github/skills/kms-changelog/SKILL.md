@@ -29,6 +29,13 @@ Two modes:
   `Fixed in` equal to the release. A hardening or fix without a `SECURITY.md` entry is not listed under Security: put
   it in Bug Fixes (theme `Hardening`), Build or Features. Never create the `SECURITY.md` entry yourself; report that
   one is missing when the issue looks like a real vulnerability.
+- **Every `COSMIAN-YYYY-NNN` id of the root `CHANGELOG.md` is a link to its section of `SECURITY.md`**, in every entry
+  (Security, Bug Fixes, Breaking Changes, any bullet): `[COSMIAN-YYYY-NNN](SECURITY.md#<anchor>)`. Copy the anchor from
+  the table of contents of `SECURITY.md` (the `[COSMIAN-YYYY-NNN — title](#anchor)` line); never compute it by hand. Branch
+  files under `CHANGELOG/` keep the plain id; the consolidation turns it into a link.
+- **The root `CHANGELOG.md` entry of a release is a summary, not a copy.** The full detail (behaviour, options, client
+  actions, tests) lives in the branch files archived under `CHANGELOG/<X.Y.Z>/`; the root entry names them, so a reader
+  who needs more follows the link. Never paste branch-file text wholesale into the root entry.
 
 # Mode 1 — Branch entry
 
@@ -102,6 +109,8 @@ Closes #42
 Section names: `Breaking Changes`, `Features`, `Bug Fixes`, `Security`, `Refactor`, `Documentation`, `Testing`, `CI`, `Build`
 
 Sub-group by component when multiple entries share the same area (e.g. multiple KMIP changes under `### KMIP`).
+
+A bullet that asks the operator, administrator or client to do something starts its action with the literal `**Upgrade action:**`, so that the release upgrade page can harvest it.
 
 ## Step 5 — Create the File if Needed
 
@@ -178,9 +187,13 @@ Read **every** `CHANGELOG/*.md` file in full. In the root `CHANGELOG.md`, read a
   Features. A breaking change appears under Breaking Changes only, with its migration action, and only when it meets
   the customer-facing criteria of Step 6 (SQL/Redis schema or server endpoint); demote every other "breaking" item to a
   regular bullet in the matching section.
-- Summarize: one bullet per user- or operator-observable change, imperative verb, type/flag/crate names, PR/issue link.
-  Drop benchmark numbers, per-test names, step-by-step investigation notes and internal file paths that do not affect
-  observable behaviour. Compress Refactor to one sentence per area and Testing to categories.
+- Summarize drastically: the entry stays under about 100 lines. `Breaking Changes` and `Security` keep one line per
+  item (Breaking Changes with its `**Upgrade action:**`; Security with the `SECURITY.md` title and its id). Every other
+  section has one bullet per theme, `**Theme**: comma-separated highlights`, ending with the issue links and a link to
+  each branch file holding the detail, written as the archive path `[<file>](CHANGELOG/X.Y.Z/<file>.md)` (the files
+  move there in Step C5). Every branch file is linked at least once. Benchmark numbers, per-test names, option-by-option
+  behaviour, client actions and internal paths stay in the branch files and the upgrade page. Compress Refactor,
+  Testing, Build, CI and Documentation to one bullet each.
 - Do not invent facts: every claim must come from a branch file, the `Unreleased` section, an existing draft release entry, or a commit; mark anything unverified in the final report.
 
 ## Step C3 — Security cross-check
@@ -193,6 +206,13 @@ Also check the reverse direction: list every advisory of the `SECURITY.md` summa
 `X.Y.Z` (`grep "| X.Y.Z " SECURITY.md`, not just a guessed id range). Each one must appear exactly once in the Security
 section.
 
+Every `COSMIAN-YYYY-NNN` id written in the root entry must be a link whose anchor exists in `SECURITY.md`:
+
+```bash
+sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | grep -oE '(^|[^[])COSMIAN-[0-9]{4}-[0-9]{3}'   # unlinked ids: must print nothing
+grep -o '(SECURITY.md#[^)]*)' CHANGELOG.md | sed 's/(SECURITY.md#//;s/)$//' | sort -u | while read -r a; do grep -qF "](#$a)" SECURITY.md || echo "NO ANCHOR $a"; done
+```
+
 Then check **every** Security bullet against the previous tag, as defined in Important Notes: `git grep` the symbol,
 endpoint, config key or package it concerns in the previous tag. If it does not exist there (new feature, new package,
 new endpoint), move the content to Features (keep any operator "Setup action") and delete it from Security. Finally,
@@ -203,9 +223,13 @@ and list in the final report the ones that look like real vulnerabilities, so th
 
 In `CHANGELOG.md`, merge into the existing draft for `X.Y.Z`, preserving its notes and deduplicating overlaps. If there is no draft, insert `## [X.Y.Z] - YYYY-MM-DD` above the latest published release and below `## [Unreleased]` if present. Do not create an `Unreleased` heading or edit older release entries.
 
+The entry starts with one sentence saying that it is a summary and that the detail is in `CHANGELOG/X.Y.Z/`, with a link to the upgrade page.
+
+Before condensing the draft, save its full consolidated text verbatim as `CHANGELOG/X.Y.Z/release_notes.md` (title `# X.Y.Z release notes (full text)`) and link it right after the summary sentence ("use it when a linked file does not cover an item"). Detail that came from commits and has no branch file stays reachable this way, and a loosely mapped link never hides it. Never link a branch file to a bullet without having read it.
+
 ## Step C5 — Verify coverage, then archive
 
-1. Walk the checklist from Step C1: every breaking change, security item, feature and fix for this release appears in the new entry, including notes merged from the draft and `Unreleased`. After coverage and the security cross-check pass, remove only the notes carried forward from `Unreleased`; leave its heading and any remaining notes intact.
+1. Walk the checklist from Step C1: every breaking change, security item, feature and fix for this release is covered by a theme bullet of the new entry (or by the branch file that bullet links to), including notes merged from the draft and `Unreleased`. Check that every file is linked from the new entry only: `for f in CHANGELOG/*.md; do sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | grep -qF "CHANGELOG/X.Y.Z/$(basename "$f")" || echo "NOT LINKED $f"; done`. After coverage and the security cross-check pass, remove only the notes carried forward from `Unreleased`; leave its heading and any remaining notes intact.
 2. Find references to the files about to be archived and repoint them to `CHANGELOG/X.Y.Z/<file>.md`:
 
    ```bash
@@ -223,7 +247,11 @@ In `CHANGELOG.md`, merge into the existing draft for `X.Y.Z`, preserving its not
    Never archive when step 1 found a gap, when the Security cross-check failed, or when the user has not run the
    consolidation on the branch that will be released.
 
-## Step C6 — Report
+## Step C6 — Upgrade page
 
-List: source files merged and archived, items taken from commit titles only, ADR/doc references repointed, and any claim left
-unverified.
+Create or refresh `documentation/docs/installation/upgrading/upgrade_to_<MAJOR>_<MINOR>.md` for the release, following the `Upgrade pages (one per release)` section of `.github/instructions/docs.instructions.md`. Register it in the `Release pages` table of `upgrading/index.md`, `documentation/docs/SUMMARY.md` and `documentation/nav.yml`, then run `/kms-docs-verify` on it.
+
+## Step C7 — Report
+
+List: source files merged and archived, items taken from commit titles only, ADR/doc references repointed, the upgrade page written, any file not linked from
+the root entry, and any claim left unverified.
