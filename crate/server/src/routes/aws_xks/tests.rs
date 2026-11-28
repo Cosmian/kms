@@ -627,6 +627,39 @@ async fn legacy_key_owned_by_previous_default_user_is_migrated_to_reserved_ident
         STANDARD.decode(dec.plaintext).expect("valid base64"),
         b"data"
     );
+
+    // The migration ran once: an object tagged `aws-xks` afterwards is not re-granted.
+    let later_key_id = "tagged-after-migration";
+    let mut later_attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(256),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        object_type: Some(ObjectType::SymmetricKey),
+        unique_identifier: Some(UniqueIdentifier::TextString(later_key_id.to_owned())),
+        ..Attributes::default()
+    };
+    later_attributes.set_tags(&kms.params.vendor_identification, ["aws-xks"])?;
+    kms.create(
+        Create {
+            object_type: ObjectType::SymmetricKey,
+            attributes: later_attributes,
+            protection_storage_masks: None,
+        },
+        &previous_default_user,
+    )
+    .await?;
+    migrate_aws_xks_key_access(&kms).await?;
+    let later_ops = kms
+        .database
+        .list_user_operations_on_object(later_key_id, &xks_service_user, false)
+        .await?;
+    assert!(
+        later_ops.is_empty(),
+        "the one-shot migration must not grant keys tagged after it ran: {later_ops:?}"
+    );
     Ok(())
 }
 

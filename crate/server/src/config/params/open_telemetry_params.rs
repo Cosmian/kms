@@ -1,7 +1,7 @@
 #[derive(Clone, Debug)]
 pub struct OpenTelemetryConfig {
     /// The OTLP collector URL for gRPC
-    /// (for instance, <https://localhost:4317>)
+    /// (for instance, <http://localhost:4317>)
     /// If not set, the telemetry system will not be initialized
     pub otlp_url: Option<String>,
 

@@ -238,6 +238,9 @@ pub async fn handle_google_cse_rsa_keypair(
     Ok(())
 }
 
+/// Server parameter set once [`migrate_aws_xks_key_access`] has completed.
+const AWS_XKS_KEY_ACCESS_MIGRATED_PARAM: &str = "aws_xks_key_access_migrated";
+
 /// One-time, idempotent migration that grants the reserved AWS XKS service identity access
 /// to XKS keys created by earlier KMS versions.
 ///
@@ -251,8 +254,10 @@ pub async fn handle_google_cse_rsa_keypair(
 /// without the reserved identity grant. Ownership is deliberately left untouched:
 /// operators keep full administrative control of the keys.
 ///
-/// The grant is additive and safe to re-run on every startup: `CreateKey` applies the same
-/// grant for new keys, and re-granting existing permissions is a no-op.
+/// The migration runs once per database: its completion is recorded in the server parameter
+/// [`AWS_XKS_KEY_ACCESS_MIGRATED_PARAM`], so that tagging an object `aws-xks` later does not
+/// get it re-granted at every restart. `CreateKey` applies the same grant for new keys, and
+/// re-granting existing permissions is a no-op.
 ///
 /// # Errors
 ///
@@ -263,6 +268,14 @@ pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult
     // `grant_access` refuses to let an owner grant themselves, and the owner already has
     // every right, so there is nothing to do.
     if default_username == AWS_XKS_SERVICE_USER {
+        return Ok(());
+    }
+    if kms_server
+        .database
+        .get_parameter(AWS_XKS_KEY_ACCESS_MIGRATED_PARAM)
+        .await?
+        .is_some()
+    {
         return Ok(());
     }
 
@@ -324,6 +337,13 @@ pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult
              identity `{AWS_XKS_SERVICE_USER}`"
         );
     }
+
+    // Recorded only after a complete run: an error above returns first, so a partial run is
+    // retried. Later `aws-xks` tags are never re-granted (a user could tag any object).
+    kms_server
+        .database
+        .get_or_insert_parameter(AWS_XKS_KEY_ACCESS_MIGRATED_PARAM, "true")
+        .await?;
 
     Ok(())
 }
@@ -706,13 +726,27 @@ async fn start_http_kms_server(
     server.await.map_err(Into::into)
 }
 
+/// Content-Security-Policy of the Web UI (index page and static assets). `wasm-unsafe-eval` is
+/// needed by the WASM module and `unsafe-inline` styles by Ant Design. There is no `form-action`
+/// directive: the SAML POST binding auto-submits a form to the identity provider.
+const UI_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self' \
+    'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src \
+    'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+
 /// This function handles a request to an inner path of the static UI and redirects
 /// it to the index.html file, so that the routing renders the appropriate component
 fn spa_index_handler(req: &HttpRequest, ui_index_html_folder: &PathBuf) -> HttpResponse {
     let index_html_path = PathBuf::from(ui_index_html_folder).join("index.html");
     info!("Serving index.html from {}", index_html_path.display());
     match actix_files::NamedFile::open(index_html_path) {
-        Ok(file) => file.into_response(req),
+        Ok(file) => {
+            let mut response = file.into_response(req);
+            response.headers_mut().insert(
+                actix_web::http::header::CONTENT_SECURITY_POLICY,
+                actix_web::http::header::HeaderValue::from_static(UI_CONTENT_SECURITY_POLICY),
+            );
+            response
+        }
         Err(e) => {
             error!("Failed to open index.html: {e:?}");
             HttpResponse::InternalServerError().finish()
@@ -1272,10 +1306,10 @@ pub async fn prepare_kms_server(
         validate_aws_xks_reserved_identity_config(&kms_server.params)?;
         // Grant the reserved XKS service identity usage on XKS keys created by earlier
         // versions. Run on a dedicated background thread with its own current-thread
-        // runtime instead of blocking HTTP server startup: the migration has no durable
-        // completion marker and scans every tagged key serially, so an installation with
-        // many XKS keys would otherwise incur a repeated, unbounded startup delay on every
-        // restart. A dedicated thread is required because the store traits are `?Send`
+        // runtime instead of blocking HTTP server startup: the migration scans every tagged
+        // key serially on its first run (it is then recorded as done), so an installation with
+        // many XKS keys would otherwise incur an unbounded startup delay on that run. A
+        // dedicated thread is required because the store traits are `?Send`
         // (see `PermissionsStore`/`ObjectsStore`), so the migration future cannot be
         // spawned onto the main multi-threaded runtime. The migration is additive and
         // idempotent (see `migrate_aws_xks_key_access`), so running it concurrently with
@@ -1505,6 +1539,9 @@ pub async fn prepare_kms_server(
             .rate_limit_per_second
             .map_or(u32::MAX, |rps| rps.saturating_mul(3)),
     );
+    if rate_limit_enabled {
+        rate_limiter_config.spawn_purge_task();
+    }
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
@@ -1519,7 +1556,13 @@ pub async fn prepare_kms_server(
                 DefaultHeaders::new()
                     // Prevent the UI from being embedded in a foreign frame (clickjacking)
                     .add(("X-Frame-Options", "DENY"))
-                    .add(("Content-Security-Policy", "frame-ancestors 'none'")),
+                    .add(("Content-Security-Policy", "frame-ancestors 'none'"))
+                    // Ignored by browsers over plain HTTP (RFC 6797 §8.1), so it is always sent
+                    .add(("Strict-Transport-Security", "max-age=31536000"))
+                    // `same-origin`, not `no-referrer`: with `no-referrer` browsers send `Origin: null`
+                    // on same-origin form POSTs (the UI logout), which the `/ui` CORS layer refuses.
+                    .add(("Referrer-Policy", "same-origin"))
+                    .add(("X-Content-Type-Options", "nosniff")),
             )
             .app_data(ui_session_cookie.clone())
             .app_data(login_as_limiter.clone())
@@ -1970,12 +2013,21 @@ pub async fn prepare_kms_server(
                     ),
                 );
             }
+            // `DefaultHeaders` of the inner scope run first, so the UI policy wins over the global
+            // `frame-ancestors 'none'` one (DefaultHeaders never overwrites a present header).
             auth_routes = auth_routes.service(
-                Files::new("/", ui_index_folder)
-                    .index_file("index.html")
-                    .use_last_modified(true)
-                    .use_etag(true)
-                    .prefer_utf8(true),
+                web::scope("")
+                    .wrap(DefaultHeaders::new().add((
+                        actix_web::http::header::CONTENT_SECURITY_POLICY,
+                        UI_CONTENT_SECURITY_POLICY,
+                    )))
+                    .service(
+                        Files::new("/", ui_index_folder)
+                            .index_file("index.html")
+                            .use_last_modified(true)
+                            .use_etag(true)
+                            .prefer_utf8(true),
+                    ),
             );
             // Add the auth_routes to the main app
             app = app.service(auth_routes);
@@ -3213,6 +3265,79 @@ mod tests {
             check_unauthenticated_bind(hostname, true, false).unwrap();
         }
         check_unauthenticated_bind("0.0.0.0", false, true).unwrap();
+    }
+
+    /// Every response carries HSTS, `Referrer-Policy` and `nosniff`; the UI (index page and static
+    /// assets) overrides the global `frame-ancestors`-only CSP with its own script/style policy,
+    /// while API responses keep the minimal one.
+    #[actix_web::test]
+    async fn test_security_headers_present() {
+        use reqwest::header::{
+            CONTENT_SECURITY_POLICY, REFERRER_POLICY, STRICT_TRANSPORT_SECURITY,
+            X_CONTENT_TYPE_OPTIONS,
+        };
+
+        let ui_dir = tempfile::tempdir().unwrap();
+        std::fs::write(ui_dir.path().join("index.html"), "<html></html>").unwrap();
+        std::fs::write(ui_dir.path().join("app.js"), "// asset").unwrap();
+
+        let mut config = https_clap_config();
+        config.tls = crate::config::TlsConfig::default();
+        config.http.hostname = "127.0.0.1".to_owned();
+        config.socket_server.start = false;
+        config.ui_config.enable = true;
+        config.ui_config.index_html_folder = Some(ui_dir.path().to_string_lossy().into_owned());
+        // No CSE endpoint is called: the bypass setting would only make the server refuse to start
+        config.google_cse_config.disable_tokens_validation = false;
+        let kms = crate::tests::test_utils::test_kms_with_config(config)
+            .await
+            .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = Box::pin(prepare_kms_server(kms, Some(listener)))
+            .await
+            .unwrap();
+        let handle = server.handle();
+        actix_web::rt::spawn(server);
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let header = |response: &reqwest::Response, name: &reqwest::header::HeaderName| {
+            response
+                .headers()
+                .get(name)
+                .map(|v| v.to_str().unwrap().to_owned())
+        };
+
+        let version = client.get(format!("{base}/version")).send().await.unwrap();
+        assert_eq!(version.status(), reqwest::StatusCode::OK);
+        assert_eq!(
+            header(&version, &STRICT_TRANSPORT_SECURITY).as_deref(),
+            Some("max-age=31536000")
+        );
+        assert_eq!(
+            header(&version, &REFERRER_POLICY).as_deref(),
+            Some("same-origin")
+        );
+        assert_eq!(
+            header(&version, &X_CONTENT_TYPE_OPTIONS).as_deref(),
+            Some("nosniff")
+        );
+        let api_csp = header(&version, &CONTENT_SECURITY_POLICY).unwrap();
+        assert!(!api_csp.contains("default-src"), "{api_csp}");
+
+        for path in ["/ui/login", "/ui/app.js"] {
+            let response = client.get(format!("{base}{path}")).send().await.unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            let csp = header(&response, &CONTENT_SECURITY_POLICY).unwrap();
+            assert!(csp.contains("default-src 'self'"), "{path}: {csp}");
+            assert!(csp.contains("'wasm-unsafe-eval'"), "{path}: {csp}");
+            assert_eq!(
+                header(&response, &STRICT_TRANSPORT_SECURITY).as_deref(),
+                Some("max-age=31536000"),
+                "{path}"
+            );
+        }
+        handle.stop(false).await;
     }
 }
 

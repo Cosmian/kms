@@ -555,10 +555,10 @@ Options:
 
       --otlp <OTLP>
           The OTLP collector URL for gRPC
-          (for instance, <https://localhost:4317>)
+          (for instance, <http://localhost:4317>)
           If not set, the telemetry system will not be initialized.
-          Must use https:// in production.
-          Use --otlp-allow-insecure to permit plaintext http:// connections.
+          https:// is not supported by this build: use a local or sidecar collector.
+          Plaintext http:// connections require --otlp-allow-insecure.
 
           [env: KMS_OTLP_URL=]
 

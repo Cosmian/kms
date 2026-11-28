@@ -140,19 +140,20 @@ Make sure the following values are set:
 COMPOSE_PROFILES=kms-local
 KMS_MODE=local
 
-# ── TLS certificate password (used by generate-demo-cert.sh) ─────
-KMS_P12_PASSWORD=testpassword
+# ── TLS certificate password (required in local mode; used by generate-demo-cert.sh) ─
+KMS_P12_PASSWORD=<choose-a-strong-password>
 
 # ── KMS topology metadata ────────────────────────────────────────
 KMS_CLUSTER=cosmian-kms-local
 
 # ── Metadata for metrics/traces ──────────────────────────────────
-KMS_VERSION=latest
+KMS_VERSION=5.29.0
 ENVIRONMENT=demo
 
 # ── Grafana ──────────────────────────────────────────────────────
+# Required: the stack refuses to start without a Grafana password
 GRAFANA_ADMIN_USER=demo
-GRAFANA_ADMIN_PASSWORD=demo
+GRAFANA_ADMIN_PASSWORD=<choose-a-strong-password>
 
 # ── Metrics retention (VictoriaMetrics, in months) ───────────────
 METRICS_RETENTION_MONTHS=12
@@ -180,7 +181,7 @@ Generating a 4096 bit RSA private key
 writing new private key to './certs/kms-demo.key'
 -----
 PKCS#12 demo certificate generated at: ./certs/kms.p12
-Password: testpassword
+Password: <value of KMS_P12_PASSWORD>
 ```
 
 ![monitor00](images/monitor-00.png)
@@ -249,15 +250,15 @@ Only a few lines change compared to local mode:
 +KMS_MODE=external
 
 -# KMS_P12_PASSWORD is not needed in external mode
--KMS_P12_PASSWORD=testpassword
+-KMS_P12_PASSWORD=<choose-a-strong-password>
 
  KMS_CLUSTER=cosmian-kms-local
- KMS_VERSION=latest
+ KMS_VERSION=5.29.0
 -ENVIRONMENT=demo
 +ENVIRONMENT=production
 
  GRAFANA_ADMIN_USER=demo
- GRAFANA_ADMIN_PASSWORD=demo
+ GRAFANA_ADMIN_PASSWORD=<choose-a-strong-password>
  METRICS_RETENTION_MONTHS=12
 ```
 
@@ -327,7 +328,7 @@ Login with:
 | Field | Value |
 |---|---|
 | Username | value of `GRAFANA_ADMIN_USER` in `.env` (default: `demo`) |
-| Password | value of `GRAFANA_ADMIN_PASSWORD` in `.env` (default: `demo`) |
+| Password | value of `GRAFANA_ADMIN_PASSWORD` in `.env` (required, no default) |
 
 ![monitor05](images/monitor-05.png)
 

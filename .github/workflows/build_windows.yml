@@ -21,6 +21,8 @@ on:
 
 jobs:
   cargo-build:
+    permissions:
+      contents: read
     name: ${{ inputs.archive-name }} - 2022-${{ inputs.variant }}
     runs-on: windows-2022
     steps:
@@ -65,10 +67,12 @@ jobs:
 
       - name: Build UI
         shell: pwsh
+        env:
+          VARIANT: ${{ inputs.variant }}
         run: |
           $ErrorActionPreference = "Stop"
           . .\.mise\scripts\windows\windows_ui.ps1
-          Build-UI -Variant ${{ inputs.variant }}
+          Build-UI -Variant $env:VARIANT
 
       - name: Copy UI to server directory
         if: inputs.variant == 'non-fips'
@@ -98,10 +102,12 @@ jobs:
 
       - name: Build
         shell: pwsh
+        env:
+          VARIANT: ${{ inputs.variant }}
         run: |
           $ErrorActionPreference = "Stop"
           . .\.mise\scripts\windows\cargo_build.ps1
-          BuildProject -Variant ${{ inputs.variant }}
+          BuildProject -Variant $env:VARIANT
           # GitHub's pwsh wrapper propagates a stale $LASTEXITCODE otherwise.
           exit 0
 
@@ -119,6 +125,8 @@ jobs:
           if-no-files-found: error
 
   sign:
+    permissions:
+      contents: read
     name: ${{ inputs.archive-name }} - sign installers
     needs: cargo-build
     uses: Cosmian/reusable_scripts/.github/workflows/sign-windows-artifacts.yml@54c23fe09936c084848b4495cf5bb744720b9d0c # develop
@@ -135,6 +143,8 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_POC }}
 
   test:
+    permissions:
+      contents: read
     needs: sign
     name: ${{ inputs.archive-name }} - test on clean env.
     runs-on: windows-2022
@@ -154,12 +164,14 @@ jobs:
 
       - name: Verify Authenticode signatures
         shell: pwsh
+        env:
+          VARIANT: ${{ inputs.variant }}
         run: |
           $executables = @(
             Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-server*.exe"
-            if ('${{ inputs.variant }}' -ne 'fips') { Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-cli*.exe" }
+            if ($env:VARIANT -ne 'fips') { Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-cli*.exe" }
           )
-          $expected = if ('${{ inputs.variant }}' -eq 'fips') { 1 } else { 2 }
+          $expected = if ($env:VARIANT -eq 'fips') { 1 } else { 2 }
           if ($executables.Count -ne $expected) {
             Write-Error "Expected $expected signed Windows installer(s), found $($executables.Count)"
             exit 1
@@ -190,6 +202,8 @@ jobs:
 
       - name: Launch binaries
         shell: pwsh
+        env:
+          VARIANT: ${{ inputs.variant }}
         run: |
           # The artifacts are NSIS installers (not bare binaries), so we
           # verify they exist rather than trying to execute them with -V.
@@ -197,7 +211,7 @@ jobs:
           if ($null -eq $serverExe) { Write-Error "Server installer not found"; exit 1 }
           Write-Host "Server installer present: $($serverExe.FullName)"
 
-          if ('${{ inputs.variant }}' -ne 'fips') {
+          if ($env:VARIANT -ne 'fips') {
             $cliExe = Get-ChildItem -Path installers -Recurse -Filter "cosmian-kms-cli*.exe" | Select-Object -First 1
             if ($null -eq $cliExe) { Write-Error "CLI installer not found"; exit 1 }
             Write-Host "CLI installer present: $($cliExe.FullName)"

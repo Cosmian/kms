@@ -24,14 +24,11 @@ on:
 
   workflow_dispatch:
 
-permissions:
-  contents: write  # push to gh-pages branch + create GitHub Release assets
-  pages: write     # update GitHub Pages
-  id-token: write  # needed for pages deployment
-
 jobs:
   # ── Build the k8s binaries + ckms via Nix ONCE, share with every E2E job ─────
   build-k8s-bins:
+    permissions:
+      contents: read
     name: Build k8s binaries (Nix)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -67,6 +64,8 @@ jobs:
 
   # ── Build Operator + CSI provider Docker images via Nix (shared) ─────────────
   build-k8s-images:
+    permissions:
+      contents: read
     name: Build k8s Docker images (Nix)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -104,6 +103,8 @@ jobs:
   # The plugin runs as a systemd service on the control-plane node.
   # It is tested with prebuilt binaries; Docker images are not involved.
   e2e-plugin:
+    permissions:
+      contents: read
     name: ${{ matrix.scenario }} (Minikube)
     needs: build-k8s-bins
     runs-on: ubuntu-24.04
@@ -156,6 +157,8 @@ jobs:
   # the KMS; the components under test always run inside the cluster as images.
   # Smoke tests (--help via a bare Pod) are included in the same matrix.
   e2e-images:
+    permissions:
+      contents: read
     name: ${{ matrix.scenario }} (Minikube)
     needs: [build-k8s-bins, build-k8s-images]
     runs-on: ubuntu-24.04
@@ -214,6 +217,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
     name: k8s-plugin-${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -230,23 +235,59 @@ jobs:
           cleanup-runner: 'true'
           extra-nix-config: http-connections = 8
 
-      - name: Set up GPG
-        uses: ./.github/actions/import-gpg-key
-        with:
-          gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
-          passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
-
-      - name: Build and sign k8s plugin packages (deb + rpm)
+      - name: Build k8s plugin packages (deb + rpm, unsigned)
         run: mise run package:k8s
-        env:
-          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
-          GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
       - name: Upload k8s plugin packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: k8s-plugin-packages-${{ matrix.runner }}
           path: result-k8s-plugin-*/
+          retention-days: 1
+          if-no-files-found: error
+
+  # ── Sign the K8s plugin packages: the build job above runs third-party code and holds no key ──
+  sign-k8s-plugin:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
+    name: Sign k8s-plugin-${{ matrix.runner }}
+    needs: k8s-plugin-package
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - name: Checkout repository (signing script only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Download unsigned k8s plugin packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: k8s-plugin-packages-${{ matrix.runner }}
+          path: ${{ runner.temp }}/a
+
+      - name: Set up GPG
+        uses: ./.github/actions/import-gpg-key
+        with:
+          gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
+          passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Sign packages
+        run: bash .mise/scripts/package/sign_artifacts.sh "${RUNNER_TEMP}/a"
+        env:
+          GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Upload signed k8s plugin packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: k8s-plugin-packages-signed-${{ matrix.runner }}
+          path: ${{ runner.temp }}/a
           retention-days: 1
           if-no-files-found: error
 
@@ -258,7 +299,7 @@ jobs:
       || github.event_name == 'workflow_dispatch'
 
     name: Publish k8s-plugin-${{ matrix.cpu-arch }}
-    needs: k8s-plugin-package
+    needs: sign-k8s-plugin
     runs-on: ubuntu-24.04
     environment: package-publish
     permissions:
@@ -286,7 +327,7 @@ jobs:
       - name: Download k8s plugin packages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: k8s-plugin-packages-${{ matrix.runner }}
+          name: k8s-plugin-packages-signed-${{ matrix.runner }}
           path: ${{ runner.temp }}/package-artifacts
 
       - name: List downloaded assets
@@ -326,7 +367,7 @@ jobs:
     name: Helm chart E2E (minikube)
     runs-on: ubuntu-24.04
     permissions:
-      contents: read # the workflow-level token grants write for publishing
+      contents: read
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
@@ -361,6 +402,8 @@ jobs:
       - e2e-images
       - helm
     name: Package and publish Helm chart
+    permissions:
+      contents: write # chart-releaser pushes the packaged chart to gh-pages
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

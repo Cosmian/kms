@@ -4,12 +4,9 @@ use std::{
     path::PathBuf,
 };
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_crypto::reexport::cosmian_crypto_core::SymmetricKey;
 use url::Url;
-
 #[cfg(feature = "non-fips")]
-use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
+use zeroize::Zeroizing;
 
 pub enum MainDbParams {
     /// contains the directory of the `SQLite` DB file (not the DB file itself)
@@ -23,9 +20,10 @@ pub enum MainDbParams {
     Mysql(Url, Option<u32>),
     /// contains
     /// - the `Redis` connection URL
-    /// - the master key used to encrypt the DB and the Index
+    /// - the master password the keys encrypting the DB and the Index are derived from
+    ///   (with the salt stored in the database)
     #[cfg(feature = "non-fips")]
-    RedisFindex(Url, SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>),
+    RedisFindex(Url, Zeroizing<String>),
 }
 
 impl MainDbParams {
@@ -56,7 +54,11 @@ impl Display for MainDbParams {
             Self::Mysql(url, _) => write!(f, "mysql: {}", redact_url(url)),
             #[cfg(feature = "non-fips")]
             Self::RedisFindex(url, _) => {
-                write!(f, "redis-findex: {}, master key: [****]", redact_url(url))
+                write!(
+                    f,
+                    "redis-findex: {}, master password: [****]",
+                    redact_url(url)
+                )
             }
         }
     }
@@ -303,14 +305,14 @@ mod characterization_tests {
     #[cfg(feature = "non-fips")]
     #[test]
     fn characterization_main_db_params_display_redis_masks_credentials() {
-        use cosmian_kms_crypto::reexport::cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
+        use zeroize::Zeroizing;
 
-        let key = SymmetricKey::try_from_bytes([0_u8; 32]).unwrap();
+        let key = Zeroizing::new("master-secret".to_owned());
         let redis =
             MainDbParams::RedisFindex(Url::parse("redis://user:pass@host:6379/0").unwrap(), key);
         assert_eq!(
             redis.to_string(),
-            "redis-findex: redis://****:****@host:6379/0, master key: [****]"
+            "redis-findex: redis://****:****@host:6379/0, master password: [****]"
         );
         assert_eq!(redis.db_name(), "Redis-Findex");
     }

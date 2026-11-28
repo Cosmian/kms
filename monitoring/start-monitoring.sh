@@ -22,6 +22,13 @@ set -a
 source .env
 set +a
 
+# ---- Credentials are mandatory: no default password ships with the stack ----
+required=(GRAFANA_ADMIN_PASSWORD)
+[ "${KMS_MODE:-local}" = "local" ] && required+=(KMS_P12_PASSWORD)
+for v in "${required[@]}"; do
+  [ -n "${!v:-}" ] || { echo "ERROR: $v must be set in .env" >&2; exit 1; }
+done
+
 # ---- Generate the demo TLS certificate ----
 bash generate-demo-cert.sh
 

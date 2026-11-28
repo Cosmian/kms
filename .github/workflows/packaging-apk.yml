@@ -13,6 +13,8 @@ on:
 
 jobs:
   apk:
+    permissions:
+      contents: read
     name: apk-${{ matrix.features }}-${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -30,12 +32,6 @@ jobs:
           cleanup-runner: 'true'
           extra-nix-config: http-connections = 8
 
-      - name: Set up GPG
-        uses: ./.github/actions/import-gpg-key
-        with:
-          gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
-          passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
-
       # The pinned nixpkgs downloads several sources (acl, attr, lzip, ...) needed to build
       # the musl cross toolchain from mirror.easyname.at, whose TLS certificate has expired
       # ("certificate has expired", curl error 60). Pre-seed the Nix store with the
@@ -49,11 +45,8 @@ jobs:
             "kms-server-${{ matrix.features }}-musl-${libc}" \
             "kms-cli-${{ matrix.features }}-musl-${libc}"
 
-      - name: Package with GPG signature
+      - name: Package
         run: mise run package:apk --variant ${{ matrix.features }}
-        env:
-          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
-          GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
       - name: Upload Alpine apk packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -65,12 +58,59 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # Signs the apk packages in a job that builds nothing: the `apk` job above runs Nix and cargo
+  # (third-party code) and therefore holds no signing secret.
+  sign-apk:
+    name: Sign apk-${{ matrix.features }}-${{ matrix.runner }}
+    needs: apk
+    runs-on: ubuntu-24.04
+    environment: package-publish
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [fips, non-fips]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Download unsigned apk packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: apk_${{ matrix.features }}_${{ matrix.runner }}
+          path: ${{ runner.temp }}/a
+
+      - name: Set up GPG
+        uses: ./.github/actions/import-gpg-key
+        with:
+          gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
+          passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Sign packages
+        run: bash .mise/scripts/package/sign_artifacts.sh "${RUNNER_TEMP}/a"
+        env:
+          GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Upload signed apk packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: apk_${{ matrix.features }}_${{ matrix.runner }}-signed
+          path: ${{ runner.temp }}/a
+          retention-days: 1
+          if-no-files-found: error
+
   # Reproducibility cross-check for the Alpine apk packages: builds the same target
   # with a completely independent toolchain (plain cargo + system musl-gcc,
   # no Nix). Never signed or published — see .mise/tasks/test/pkg/musl-crosscheck.
   musl-crosscheck:
     name: musl-crosscheck-${{ matrix.features }}-${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -108,6 +148,8 @@ jobs:
   alpine-native-build:
     name: alpine-native-${{ matrix.features }}-${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     container:
       image: alpine:3.21
       credentials:
@@ -191,6 +233,8 @@ jobs:
     name: In Docker alpine:${{ matrix.alpine-tag }}${{ matrix.runner == 'ubuntu-24.04-arm' && '-ARM' || '-AMD64' }}
     needs: apk
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     env:
       # The `secrets` context is unavailable in step-level `if:`; expose via env instead.
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -262,7 +306,7 @@ jobs:
       )
 
     name: Publish apk-${{ matrix.features }}-${{ matrix.runner }}
-    needs: [apk, alpine-packages-test]
+    needs: [sign-apk, alpine-packages-test]
     runs-on: ubuntu-24.04
     environment: package-publish
     permissions:
@@ -290,7 +334,7 @@ jobs:
       - name: Download apk artifact for this matrix
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: apk_${{ matrix.features }}_${{ matrix.runner }}
+          name: apk_${{ matrix.features }}_${{ matrix.runner }}-signed
           path: ${{ runner.temp }}/package-artifacts
 
       - name: List downloaded assets

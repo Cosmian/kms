@@ -29,6 +29,11 @@ export GPG_SIGNING_KEY_PASSPHRASE='your-secure-passphrase'
 mise run package:deb
 ```
 
+In CI the build jobs (Nix, cargo) hold no signing secret and produce unsigned packages. Signing happens only in the
+isolated `sign-*` jobs of `packaging.yml`, `packaging-apk.yml` and `packaging-kubernetes.yml`, which download the
+build artifact, import the key and run `.mise/scripts/package/sign_artifacts.sh` (`REQUIRE_SIGNING=1`: a missing key
+or passphrase fails the job).
+
 Each package will have a corresponding `.asc` signature file:
 
 - `cosmian_kms_server_5.30.0_amd64.deb`

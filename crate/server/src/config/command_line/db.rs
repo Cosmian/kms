@@ -3,10 +3,10 @@ use std::{fmt::Display, path::PathBuf};
 use clap::Args;
 use clap_config_fallback::ConfigArgs;
 use cosmian_kms_server_database::MainDbParams;
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::redis_master_key_from_password;
 use serde::{Deserialize, Serialize};
 use url::Url;
+#[cfg(feature = "non-fips")]
+use zeroize::Zeroizing;
 
 use super::workspace::WorkspaceConfig;
 use crate::{
@@ -308,10 +308,9 @@ impl MainDBConfig {
                         "redis-master-password",
                         "KMS_REDIS_MASTER_PASSWORD",
                     )?;
-                    // Generate the symmetric key from the master password
-                    let master_key = redis_master_key_from_password(&redis_master_password)
-                        .context("db:init")?;
-                    MainDbParams::RedisFindex(url, master_key)
+                    // The key is derived from the password by the database layer, which holds
+                    // the per-database salt.
+                    MainDbParams::RedisFindex(url, Zeroizing::new(redis_master_password))
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             });

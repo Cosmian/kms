@@ -134,6 +134,11 @@ A sensitive or non-extractable key cannot be split (`CreateSplitKey` is refused 
 `Not_Extractable`), because the shares hold the plaintext key. Create the ceremony key without
 `--sensitive`.
 
+With `crypto_officer_require_ceremony`, only a CO candidate (or the configured
+`default_username`, the provisioning identity) triggers this ceremony split. Any other caller
+holding the `Create` right gets an ordinary split: the shares are theirs and the source key
+is kept.
+
 ```mermaid
 sequenceDiagram
     actor Candidate as CO candidate

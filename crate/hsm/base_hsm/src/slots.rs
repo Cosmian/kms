@@ -2,6 +2,7 @@ use std::{
     num::NonZeroUsize,
     ptr,
     sync::{Arc, Mutex, OnceLock},
+    time::Duration,
 };
 
 use cosmian_logger::{debug, warn};
@@ -397,14 +398,10 @@ impl SlotManager {
     /// the session is returned or dropped.
     ///
     /// # Errors
-    /// Returns an error only if the semaphore has been closed, which never happens in this
-    /// codebase (nothing calls `Semaphore::close`).
+    /// Returns an error if no session frees up within [`HSM_SESSION_PERMIT_TIMEOUT`], or if the
+    /// semaphore has been closed (nothing calls `Semaphore::close`).
     pub(crate) async fn acquire_session_permit(&self) -> HResult<OwnedSemaphorePermit> {
-        self.session_semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|e| HError::Default(format!("HSM session semaphore closed unexpectedly: {e}")))
+        acquire_with_timeout(self.session_semaphore.clone(), HSM_SESSION_PERMIT_TIMEOUT).await
     }
 
     /// Checkout for `sign`/`verify`: keeps any message context left open on the pooled
@@ -537,5 +534,42 @@ impl SlotManager {
             login_password.is_some(),
             self.hsm_capabilities.clone(),
         ))
+    }
+}
+
+/// Longest wait for a pooled HSM session before the request fails.
+const HSM_SESSION_PERMIT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Wait for a permit of `semaphore`, at most `timeout`.
+async fn acquire_with_timeout(
+    semaphore: Arc<Semaphore>,
+    timeout: Duration,
+) -> HResult<OwnedSemaphorePermit> {
+    tokio::time::timeout(timeout, semaphore.acquire_owned())
+        .await
+        .map_err(|_elapsed| {
+            HError::Default(format!(
+                "timed out after {timeout:?} waiting for an HSM session"
+            ))
+        })?
+        .map_err(|e| HError::Default(format!("HSM session semaphore closed unexpectedly: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use tokio::sync::Semaphore;
+
+    use super::acquire_with_timeout;
+
+    #[tokio::test(start_paused = true)]
+    async fn session_permit_wait_times_out() {
+        let semaphore = Arc::new(Semaphore::new(1));
+        let _held = semaphore.clone().acquire_owned().await.unwrap();
+        let err = acquire_with_timeout(semaphore.clone(), Duration::from_secs(30))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("timed out"), "{err}");
     }
 }

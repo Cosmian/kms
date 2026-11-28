@@ -270,3 +270,26 @@ async fn test_locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
 
     Ok(())
 }
+
+/// An `OffsetItems` above the server cap is refused (the stores fetch `offset + maximum` rows).
+///
+/// Guards: #1500 R-06
+#[tokio::test]
+async fn test_locate_rejects_oversized_offset_items() -> KResult<()> {
+    let kms = crate::tests::test_utils::test_kms().await?;
+    let user = UserId::from("locate_offset_user");
+    let locate = |offset_items| Locate {
+        offset_items: Some(offset_items),
+        ..Locate::default()
+    };
+    let err = kms
+        .locate(locate(1_000_001), &user)
+        .await
+        .expect_err("an offset above the cap must be refused");
+    assert!(
+        matches!(err, crate::error::KmsError::InvalidRequest(_)),
+        "{err:?}"
+    );
+    kms.locate(locate(0), &user).await?;
+    Ok(())
+}

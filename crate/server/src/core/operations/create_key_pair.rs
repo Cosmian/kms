@@ -55,6 +55,16 @@ pub(crate) async fn create_key_pair(
             || request.public_protection_storage_masks.is_some(),
     )?;
     kms.enforce_create_permission(owner).await?;
+    for attrs in [
+        &request.common_attributes,
+        &request.private_key_attributes,
+        &request.public_key_attributes,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        super::attributes::policy::reject_server_vendor_attributes(attrs)?;
+    }
 
     // generate uids and create the key pair and tags
     let sk_uid = request

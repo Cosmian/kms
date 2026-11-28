@@ -35,7 +35,7 @@ const MIN_ENROLLMENT_SECRET_LEN: usize = 8;
 
 /// Resolved parameters for a single HSM instance, derived from either
 /// the CLI `--hsm-*` flags (single instance) or a TOML `[[hsm]]` entry.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HsmInstanceParams {
     /// HSM model string (e.g. `"softhsm2"`, `"utimaco"`).
     pub model: String,
@@ -46,6 +46,24 @@ pub struct HsmInstanceParams {
     /// Routing prefix for object UIDs managed by this instance.
     /// Format: `"hsm::<model>"` (e.g. `"hsm::softhsm2"`, `"hsm::utimaco"`).
     pub prefix: String,
+}
+
+/// The slot PINs never reach a `Debug` output: only whether a slot has one.
+impl fmt::Debug for HsmInstanceParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut slots: Vec<(usize, Option<&str>)> = self
+            .slot_passwords
+            .iter()
+            .map(|(slot, pin)| (*slot, pin.as_ref().map(|_| "[****]")))
+            .collect();
+        slots.sort_unstable_by_key(|(slot, _)| *slot);
+        f.debug_struct("HsmInstanceParams")
+            .field("model", &self.model)
+            .field("admin", &self.admin)
+            .field("slot_passwords", &slots)
+            .field("prefix", &self.prefix)
+            .finish()
+    }
 }
 
 /// Web UI parameters.
@@ -2050,5 +2068,25 @@ mod tests {
         let err = parse_kek_wrapping_algorithm(Some("aes-gcm"), false)
             .expect_err("an algorithm without a KEK is rejected");
         assert!(err.to_string().contains("requires key_encryption_key"));
+    }
+}
+
+#[cfg(test)]
+mod hsm_debug_tests {
+    use std::collections::HashMap;
+
+    use super::HsmInstanceParams;
+
+    #[test]
+    fn hsm_instance_params_debug_redacts_slot_passwords() {
+        let params = HsmInstanceParams {
+            model: "softhsm2".to_owned(),
+            admin: vec!["admin".to_owned()],
+            slot_passwords: HashMap::from([(1, Some("pin-secret".to_owned())), (2, None)]),
+            prefix: "hsm::softhsm2".to_owned(),
+        };
+        let debug = format!("{params:?} {params:#?}");
+        assert!(!debug.contains("pin-secret"), "{debug}");
+        assert!(debug.contains("[****]"), "{debug}");
     }
 }

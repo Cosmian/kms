@@ -1429,3 +1429,85 @@ async fn test_rekey_ignores_client_usage_limits_count() -> KResult<()> {
     );
     Ok(())
 }
+
+/// Regression test: the split-key bookkeeping attributes that `JoinSplitKey` trusts
+/// (`x-cosmian-split-key-source`, `x-cosmian-share-wrapping-key`) are server-owned:
+/// `SetAttribute` refuses them. The client-settable ceremony marker stays accepted.
+///
+/// Guards: #1500 R-03 (client-writable `x-cosmian-*` attributes trusted by `JoinSplitKey`)
+#[tokio::test]
+async fn test_set_attribute_rejects_server_only_cosmian_vendor_attributes() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attribute,
+        kmip_operations::SetAttribute,
+        kmip_types::{VendorAttribute, VendorAttributeValue},
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("vendor_set_owner@example.com");
+    let key = create_aes_key(&kms, owner.as_str()).await?;
+    let set = |name: &str| SetAttribute {
+        unique_identifier: Some(key.clone()),
+        new_attribute: Attribute::VendorAttribute(VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: name.to_owned(),
+            attribute_value: VendorAttributeValue::TextString("victim".to_owned()),
+        }),
+    };
+    for name in ["x-cosmian-share-wrapping-key", "x-cosmian-split-key-source"] {
+        kms.set_attribute(set(name), &owner)
+            .await
+            .expect_err("a server-only vendor attribute must be refused");
+    }
+    kms.set_attribute(set("x-cosmian-crypto-officer-ceremony"), &owner)
+        .await?;
+    Ok(())
+}
+
+/// Regression test: Import refuses client-supplied server-only `x-cosmian-*` attributes.
+///
+/// Guards: #1500 R-03
+#[tokio::test]
+async fn test_import_rejects_server_only_cosmian_vendor_attributes() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType, OpaqueObject},
+        kmip_types::{OpaqueDataType, VendorAttributeValue},
+        requests::import_object_request,
+    };
+
+    let kms = test_kms().await?;
+    let owner = UserId::from("vendor_import_owner@example.com");
+    let import = |attribute_name: &str| {
+        let mut attributes = Attributes {
+            object_type: Some(ObjectType::OpaqueObject),
+            ..Attributes::default()
+        };
+        attributes.set_vendor_attribute(
+            VENDOR_ID_COSMIAN,
+            attribute_name,
+            VendorAttributeValue::TextString("victim".to_owned()),
+        );
+        import_object_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            Object::OpaqueObject(OpaqueObject {
+                opaque_data_type: OpaqueDataType::Unknown,
+                opaque_data_value: vec![7; 16],
+            }),
+            Some(attributes),
+            false,
+            false,
+            EMPTY_TAGS,
+        )
+        .map_err(|e| KmsError::InvalidRequest(e.to_string()))
+    };
+    let err = kms
+        .import(import("x-cosmian-split-key-source")?, &owner)
+        .await
+        .expect_err("a server-only vendor attribute must be refused on Import");
+    assert!(matches!(err, KmsError::InvalidRequest(_)), "{err:?}");
+    kms.import(import("x-cosmian-crypto-officer-ceremony")?, &owner)
+        .await?;
+    Ok(())
+}

@@ -233,9 +233,9 @@ openssl_test "127.0.0.1:${HOST_TLS_NONROOT_PORT}" "tls1_3"
 echo "=== TLS + non-root user test passed ==="
 
 # === FIPS / non-FIPS variant assertion ===
-# The /version endpoint embeds the OpenSSL build string, e.g.:
-#   "5.26.0 (OpenSSL 3.6.5 29 Sep 2026-FIPS)"       ← fips image
-#   "5.26.0 (OpenSSL 3.6.5 29 Sep 2026-non-FIPS)"   ← non-fips image
+# The /version endpoint reports the FIPS flavour, e.g.:
+#   "5.26.0 (FIPS)"       ← fips image
+#   "5.26.0 (non-FIPS)"   ← non-fips image
 # This catches accidentally shipping the wrong variant binary.
 echo "=== FIPS/non-FIPS variant check (KMS_TLS_CONFIG_FLAVOR=${KMS_TLS_CONFIG_FLAVOR}) ==="
 VERSION_STRING=$(curl -sf "http://127.0.0.1:${HOST_HTTP_PORT}/version")

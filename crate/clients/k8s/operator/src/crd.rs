@@ -78,10 +78,6 @@ pub struct KMSSecretStatus {
     /// Human-readable message describing the last reconciliation result.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
-    /// SHA-256 hex digest of the last successfully synced secret value.
-    /// Used to detect changes and avoid unnecessary restarts.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_secret_hash: Option<String>,
     /// RFC 3339 timestamp of the last successful sync.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_sync_time: Option<String>,

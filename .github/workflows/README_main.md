@@ -123,7 +123,7 @@ from that PR's merge ref.
 |`windows-vs-ninja`|none|Puts Visual Studio's Ninja on PATH so vcpkg does not download it|`test-group.yml`|
 |`legs/<unit>`|per unit (secrets and `variant`)|The unit's own steps of a `test-group.yml` leg (13 units), plus `legs/db` (database service environment of the `db:*` legs)|`test-group.yml`|
 |`docker-login-ghcr`|`github-token`|Logs in to ghcr.io|`packaging-docker.yml`|
-|`import-gpg-key`|`gpg-private-key`, `passphrase`|Imports the package-signing key and lists it|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`|
+|`import-gpg-key`|`gpg-private-key`, `passphrase`|Imports the package-signing key and lists it; used only by the isolated `sign-*` jobs (build jobs hold no signing secret)|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`|
 |`setup-helm-minikube`|none|Installs Helm and starts Minikube (docker driver, Kubernetes v1.32.0)|`packaging-docker.yml`|
 |`push-package-cosmian`|`subdir`, `files` or `directory`, `version-dir`, `known-hosts`, `ssh-private-key`|Uploads with a write-only restricted rsync key (`.mise/scripts/release/push_package.sh`) to `package.cosmian.com` under the branch (or tag, or `version-dir`) directory; output `remote-dir`|`packaging.yml`, `packaging-apk.yml`, `packaging-kubernetes.yml`, `benchmark.yml`, `flamegraph.yml`|
 

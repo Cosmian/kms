@@ -14,10 +14,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
+    // POST (not a link): logout changes state and must not be triggerable by a cross-site GET.
+    // A form submission lets the browser follow the server's redirect (to the IdP logout page).
     const logout = () => {
         setUserId(null);
-        const kmsUrl = serverUrl + "/ui/logout";
-        window.location.href = kmsUrl;
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = serverUrl + "/ui/logout";
+        document.body.appendChild(form);
+        form.submit();
     };
 
     return <AuthContext.Provider value={{ serverUrl, setServerUrl, userId, setUserId, login, logout }}>{children}</AuthContext.Provider>;

@@ -257,6 +257,13 @@ impl KMS {
                     server_params.hsm_instances.len()
                 ))
             })?;
+            if inst.admin.iter().any(|a| a == "*") {
+                cosmian_logger::warn!(
+                    "HSM instance '{}': hsm_admin \"*\" grants HSM administration to every \
+                     authenticated user",
+                    inst.prefix
+                );
+            }
             let hsm_store = HsmStore::new(
                 hsm_arc.clone(),
                 &inst.admin,
@@ -441,12 +448,20 @@ impl KMS {
         let allow_insecure = otel_params
             .as_ref()
             .is_some_and(|otel| otel.otlp_allow_insecure);
+        if otlp_url.starts_with("https://") {
+            return Err(KmsError::InvalidRequest(
+                "OTLP over TLS is not supported by this build: use an http:// endpoint on a \
+                 local or sidecar OpenTelemetry Collector together with --otlp-allow-insecure, \
+                 and let the collector forward over TLS"
+                    .to_owned(),
+            ));
+        }
         if otlp_url.starts_with("http://") && !allow_insecure {
             return Err(KmsError::InvalidRequest(
                 "OTLP endpoint uses plaintext HTTP which exposes telemetry data \
                  (including encryption operation metadata) over an unencrypted channel. \
-                 Use https:// or set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true \
-                 if you accept this risk."
+                 Set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true if you accept this \
+                 risk (https:// endpoints are not supported by this build)."
                     .to_owned(),
             ));
         }
@@ -744,18 +759,14 @@ mod tests {
         }
     }
 
-    /// Regression test: OTLP with https:// should not be rejected.
+    /// R-01: the build has no OTLP TLS transport, so an https endpoint must fail at startup.
     #[test]
-    fn test_otlp_https_accepted() {
-        let otel_params = Some(OpenTelemetryConfig {
-            otlp_url: Some("https://collector.example.com:4317".to_owned()),
-            otlp_allow_insecure: false,
-            enable_metering: true,
-            environment: Some("test".to_owned()),
-        });
-
-        let result = KMS::validate_otlp_url("https://collector.example.com:4317", &otel_params);
-        assert!(result.is_ok(), "https OTLP should be accepted");
+    fn test_otlp_https_rejected_tls_not_compiled() {
+        let result = KMS::validate_otlp_url("https://collector:4317", &None);
+        assert!(
+            matches!(&result, Err(KmsError::InvalidRequest(msg)) if msg.contains("not supported")),
+            "https OTLP must be rejected, got: {result:?}"
+        );
     }
 
     /// Regression test: OTLP plaintext HTTP is accepted when `allow_insecure` is true.

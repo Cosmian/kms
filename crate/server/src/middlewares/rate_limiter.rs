@@ -61,6 +61,26 @@ impl RateLimiterConfig {
             limiter: Arc::new(RateLimiter::keyed(quota)),
         }
     }
+
+    /// Drop the keys whose quota has fully replenished: without it the per-IP map grows by one
+    /// entry per distinct peer address for the whole life of the process.
+    pub(crate) fn purge(&self) {
+        self.limiter.retain_recent();
+        self.limiter.shrink_to_fit();
+    }
+
+    /// Run [`Self::purge`] every minute on the Tokio runtime (the server runs on a Tokio
+    /// multi-thread runtime, where `actix_web::rt::spawn` would panic outside a `LocalSet`).
+    pub(crate) fn spawn_purge_task(&self) {
+        let config = self.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                ticker.tick().await;
+                config.purge();
+            }
+        });
+    }
 }
 
 /// Actix-web middleware factory for rate limiting by peer IP.
@@ -215,9 +235,12 @@ impl LoginAsLimiter {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        time::Duration,
+    };
 
-    use super::LoginAsLimiter;
+    use super::{LoginAsLimiter, RateLimiterConfig};
 
     const IP_A: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
     const IP_B: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
@@ -248,5 +271,22 @@ mod tests {
         }
         assert!(limiter.check(IP_A, "user10").is_err());
         assert_eq!(limiter.check(IP_B, "user10"), Ok(()));
+    }
+
+    #[test]
+    fn purge_drops_idle_keys() {
+        let config = RateLimiterConfig::new(10, 1);
+        for i in 0..100_u8 {
+            config
+                .limiter
+                .check_key(&IpAddr::from([10, 0, 0, i]))
+                .expect("first request of each key is within quota");
+        }
+        assert_eq!(config.limiter.len(), 100);
+        // 10 requests per second with a burst of 1: governor keeps a key for two intervals
+        // (200 ms) after its last request, so every key is dropped after 300 ms.
+        std::thread::sleep(Duration::from_millis(300));
+        config.purge();
+        assert_eq!(config.limiter.len(), 0);
     }
 }

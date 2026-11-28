@@ -16,7 +16,10 @@ use crate::{
             DbParameters, MIGRATION_LOCK_TIMEOUT, MIGRATION_STEPS, Migrate, MigrationStep,
             wait_for_migration_lock,
         },
-        redis::objects_db::{ACTIVE_KEY_COUNT_KEY, LIVE_COUNT_KEY},
+        redis::{
+            objects_db::{ACTIVE_KEY_COUNT_KEY, LIVE_COUNT_KEY},
+            redis_with_findex::REDIS_KDF_SALT_KEY,
+        },
     },
 };
 
@@ -46,6 +49,7 @@ static CLEAR_PRESERVING_LOCK_SCRIPT: LazyLock<Script> = LazyLock::new(|| {
         r#"
 local token = redis.call("GET", KEYS[1])
 local pttl = redis.call("PTTL", KEYS[1])
+local salt = redis.call("GET", KEYS[2])
 redis.call("FLUSHDB")
 if token then
     if pttl and pttl > 0 then
@@ -53,6 +57,10 @@ if token then
     else
         redis.call("SET", KEYS[1], token, "PX", ARGV[1])
     end
+end
+-- the KDF salt belongs to the key held in memory: clearing the data must not drop it
+if salt then
+    redis.call("SET", KEYS[2], salt)
 end
 return 1
 "#,
@@ -134,6 +142,7 @@ impl Migrate for RedisWithFindex {
         let mut exists_cmd = redis::cmd("EXISTS");
         exists_cmd
             .arg(REDIS_MIGRATION_LOCK_KEY)
+            .arg(REDIS_KDF_SALT_KEY)
             .arg("db_version")
             .arg("db_state")
             .arg(LIVE_COUNT_KEY)
@@ -203,6 +212,7 @@ impl Migrate for RedisWithFindex {
         if clear_database {
             let _: i32 = CLEAR_PRESERVING_LOCK_SCRIPT
                 .key(REDIS_MIGRATION_LOCK_KEY)
+                .key(REDIS_KDF_SALT_KEY)
                 .arg(REDIS_MIGRATION_LOCK_LEASE_MS)
                 .invoke_async(&mut self.mgr.clone())
                 .await

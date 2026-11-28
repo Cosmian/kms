@@ -33,6 +33,8 @@ on:
 jobs:
   # ── Job 1: run CPU-scaling flamegraph benchmark ───────────────────────────
   flamegraph:
+    permissions:
+      contents: read
     name: Flamegraph KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant }})
     runs-on: [self-hosted, benchmark]
     timeout-minutes: 120
@@ -74,6 +76,8 @@ jobs:
 
       - name: Run CPU-scaling flamegraph benchmark
         env:
+          VARIANT: ${{ inputs.variant }}
+          SERVER_VERSION: ${{ inputs.server_version }}
           # Use frame-pointer unwinding instead of DWARF in CI.
           # DWARF (dwarf,32768) writes ~32 KB per sample; at 8 workers × 500 Hz
           # × 15 s the raw perf.data reaches ~2 GB per profile, exhausting runner
@@ -86,8 +90,8 @@ jobs:
           # Cap profile time at 10 s (default 15 s) to reduce total runtime.
           PROFILE_TIME: '10'
         run: |
-          ARGS=(--variant "${{ inputs.variant }}")
-          [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
+          ARGS=(--variant "$VARIANT")
+          [[ -n "$SERVER_VERSION" ]] && ARGS+=(--server-version "$SERVER_VERSION")
           mise run bench:flamegraph "${ARGS[@]}"
 
       - name: Upload flamegraph output

@@ -29,10 +29,11 @@ Two consequences follow from the grant-based model:
   client can authenticate as (JWT `email`/subject, TLS certificate CN, AWS principal ARN,
   API-token user), so it cannot be impersonated over the normal interfaces.
 
-Keys created by earlier KMS versions carried a grant bound to the creating ARN instead. On
-startup, `migrate_aws_xks_key_access` (in `start_kms_server.rs`) grants those
-`aws-xks`-tagged keys to the reserved identity. It is idempotent and performs no writes once
-every key is up to date.
+Keys created by earlier KMS versions carried a grant bound to the creating ARN instead.
+`migrate_aws_xks_key_access` (in `start_kms_server.rs`) grants those `aws-xks`-tagged keys to
+the reserved identity once, on the first startup of a version that includes it (completion is
+recorded in the `aws_xks_key_access_migrated` server parameter). Objects tagged `aws-xks`
+afterwards are not re-granted at restart.
 
 ## Monitoring and lifecycle management
 

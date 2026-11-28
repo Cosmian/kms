@@ -186,17 +186,19 @@ pub unsafe fn parse_mechanism(mechanism: CK_MECHANISM) -> Result<Mechanism, Modu
     match mechanism.mechanism {
         CKM_AES_KEY_GEN => Ok(Mechanism::AesKeyGen),
         CKM_AES_CBC_PAD | CKM_AES_CBC => {
-            let iv_slice = unsafe {
-                slice::from_raw_parts(
-                    mechanism.pParameter.cast::<u8>(),
-                    usize::try_from(mechanism.ulParameterLen)?,
-                )
-            };
-            if iv_slice.len() != AES_IV_SIZE {
+            not_null!(
+                mechanism.pParameter,
+                "parse_mechanism: CKM_AES_CBC pParameter"
+            );
+            if usize::try_from(mechanism.ulParameterLen)? != AES_IV_SIZE {
                 return Err(ModuleError::BadArguments(format!(
                     "AES IV size incorrect. {AES_IV_SIZE} bytes expected"
                 )));
             }
+            // SAFETY: pParameter is non-null and the caller declared AES_IV_SIZE readable bytes
+            // (PKCS#11 v3.0 §2.10.3)
+            let iv_slice =
+                unsafe { slice::from_raw_parts(mechanism.pParameter.cast::<u8>(), AES_IV_SIZE) };
             let mut iv = [0_u8; AES_IV_SIZE];
             iv.copy_from_slice(iv_slice);
             debug!("parse_mechanism: iv: {} bytes", iv.len());
@@ -776,5 +778,44 @@ mod tests {
         let out = format!("{m:?} {m:#?}");
         assert!(!out.contains("SECRET") && !out.contains("83, 69"), "{out}");
         assert!(out.contains("iv_len") && out.contains("aad_len"), "{out}");
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    unsafe_code,
+    reason = "tests call the unsafe `parse_mechanism` with in-scope buffers"
+)]
+mod cbc_tests {
+    use pkcs11_sys::{CK_MECHANISM, CKM_AES_CBC};
+
+    use super::{ModuleError, parse_mechanism};
+
+    #[test]
+    fn ckm_aes_cbc_null_parameter_is_rejected() {
+        let mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: std::ptr::null_mut(),
+            ulParameterLen: 16,
+        };
+        // SAFETY: the null parameter is rejected before any dereference.
+        let result = unsafe { parse_mechanism(mechanism) };
+        assert!(
+            matches!(&result, Err(ModuleError::BadArguments(m)) if m.contains("null pointer")),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn ckm_aes_cbc_wrong_iv_len_is_rejected() {
+        let mut iv = [0_u8; 8];
+        let mechanism = CK_MECHANISM {
+            mechanism: CKM_AES_CBC,
+            pParameter: iv.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulParameterLen: 8,
+        };
+        // SAFETY: `iv` is 8 readable bytes and the wrong length is rejected before any read.
+        let result = unsafe { parse_mechanism(mechanism) };
+        assert!(matches!(result, Err(ModuleError::BadArguments(_))));
     }
 }

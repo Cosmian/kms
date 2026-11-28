@@ -35,7 +35,6 @@ cosmian_kmip = { workspace = true }
 cosmian_kms_client = { workspace = true }
 cosmian_logger = { workspace = true }
 futures = { workspace = true }
-hex = { workspace = true }
 
 # Duration parsing
 k8s-openapi = { workspace = true, features = ["v1_32"] }
@@ -53,9 +52,6 @@ serde-saphyr = { workspace = true }
 
 # Errors / logging
 thiserror = { workspace = true }
-
-# Hashing (detect secret changes)
-sha2 = { workspace = true }
 
 # Async
 time = { workspace = true, features = ["formatting"] }

@@ -265,20 +265,22 @@ impl Database {
                 ))
             }
             #[cfg(feature = "non-fips")]
-            MainDbParams::RedisFindex(url, master_key) => {
-                // There is no reason to keep a copy of the key in the shared config
-                // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
-                // and zeroize the one in the shared config
+            MainDbParams::RedisFindex(url, master_password) => {
+                // The key is derived here, with the salt stored in the database, and handed to
+                // Redis with Findex as a zeroizing `Secret`; `master_key` zeroizes on drop.
                 use cosmian_kms_crypto::reexport::cosmian_crypto_core::FixedSizeCBytes;
 
-                use crate::stores::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
+                use crate::stores::{
+                    REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+                    redis::redis_with_findex::redis_master_key_for_database,
+                };
 
+                let master_key =
+                    redis_master_key_for_database(url.as_str(), master_password.as_str()).await?;
                 let new_master_key =
                     Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
                         &mut master_key.to_bytes(),
                     );
-                // `master_key` implements ZeroizeOnDrop so there is no need
-                // to manually zeroize.
                 let db = Arc::new(
                     RedisWithFindex::instantiate(url.as_str(), new_master_key, clear_db_on_start)
                         .await?,

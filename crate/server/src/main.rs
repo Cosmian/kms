@@ -1,12 +1,15 @@
 use std::{io::Write as _, sync::Arc};
 
 use cosmian_kms_server::{
-    config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
+    config::{
+        ClapConfig, OpenTelemetryConfig, ServerParams, secret_flags_on_command_line,
+        wizard::run_configure_wizard,
+    },
     core::KMS,
     openssl_providers::{cpu_features_info, safe_openssl_version_info},
     result::{KResult, KResultHelper},
 };
-use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
+use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init, warn};
 use dotenvy::dotenv;
 
 /// Get the default `RUST_LOG` configuration if not set
@@ -212,6 +215,15 @@ async fn run() -> KResult<()> {
     );
     info!("OpenSSL version: {ossl_version}, in {ossl_dir}, number: {ossl_number:x}");
     info!("{}", cpu_features_info());
+
+    // Secrets given as flags are visible in the process list: the flag names are logged, never
+    // their values.
+    for flag in secret_flags_on_command_line(std::env::args_os()) {
+        warn!(
+            "secret passed on the command line via {flag}: it is visible in the process list; \
+             use the KMS_* environment variable or the config file"
+        );
+    }
 
     // For an explanation of OpenSSL providers,
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers

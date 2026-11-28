@@ -544,3 +544,36 @@ fn _create_aes_key_request_for_export(tag: &str) -> Operation {
         protection_storage_masks: None,
     }))
 }
+
+/// `Get` may carry a Key Wrapping Specification, like `Export`: its algorithm parameters
+/// are checked against the policy.
+///
+/// Guards: #1500 R-07
+#[test]
+fn default_policy_denies_get_with_disallowed_wrapping_params() {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_data_structures::KeyWrappingSpecification,
+        kmip_operations::Get,
+        kmip_types::{EncryptionKeyInformation, UniqueIdentifier},
+    };
+
+    let params = params_with_default_policy();
+    let get = |algorithm| {
+        Operation::Get(Get {
+            unique_identifier: Some(UniqueIdentifier::TextString("target".to_owned())),
+            key_wrapping_specification: Some(KeyWrappingSpecification {
+                encryption_key_information: Some(EncryptionKeyInformation {
+                    unique_identifier: UniqueIdentifier::TextString("w".to_owned()),
+                    cryptographic_parameters: Some(CryptographicParameters {
+                        cryptographic_algorithm: Some(algorithm),
+                        ..Default::default()
+                    }),
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+    };
+    assert_policy_denied(enforce(&params, "Get", &get(CryptographicAlgorithm::DES)));
+    enforce(&params, "Get", &get(CryptographicAlgorithm::AES)).expect("AES is allowed");
+}

@@ -9,6 +9,8 @@ on:
 
 jobs:
   cargo-vet:
+    permissions:
+      contents: read
     name: Supply chain — cargo vet
     runs-on: ubuntu-24.04
     steps:
@@ -25,6 +27,8 @@ jobs:
         run: cargo vet check --locked
 
   python-dependency-audit:
+    permissions:
+      contents: read
     name: Supply chain — pip-audit
     runs-on: ubuntu-24.04
     steps:
@@ -50,6 +54,8 @@ jobs:
           done
 
   govulncheck:
+    permissions:
+      contents: read
     name: Supply chain — govulncheck
     runs-on: ubuntu-24.04
     steps:

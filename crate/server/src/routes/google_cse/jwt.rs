@@ -9,7 +9,10 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_ensure,
-    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, refresh_jwks_for_token},
+    middlewares::{
+        JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId, refresh_jwks_for_token,
+        reject_reserved_service_identity,
+    },
     result::KResult,
     routes::google_cse::build_google_cse_url,
 };
@@ -348,6 +351,7 @@ pub async fn validate_cse_authentication_token(
     let claims =
         validate_idp_token(authentication_token, cse_config, google_cse_kacls_url, None).await?;
     let email = authentication_email(claims)?;
+    reject_reserved_cse_user(&email)?;
     trace!("authentication token validated for {email}");
     Ok(email)
 }
@@ -420,12 +424,14 @@ pub async fn validate_cse_privileged_token(
     }
 
     let claims = validate_idp_token(token, cse_config, google_cse_kacls_url, resource_name).await?;
-    if let Ok(email) = authentication_email(claims)
-        && privileged_users
+    if let Ok(email) = authentication_email(claims) {
+        reject_reserved_cse_user(&email)?;
+        if privileged_users
             .iter()
             .any(|user| !user.is_empty() && user.eq_ignore_ascii_case(&email))
-    {
-        return Ok(PrivilegedCaller::User(email));
+        {
+            return Ok(PrivilegedCaller::User(email));
+        }
     }
     Err(privileged_denied())
 }
@@ -495,10 +501,13 @@ pub(super) async fn validate_cse_authorization_token(
 
     enforce_authorization_claims(&authorization_token, google_cse_kacls_url, roles)?;
 
-    if authorization_token.email.is_none() {
-        return Err(KmsError::Unauthorized(
-            "Authorization token should contain an email".to_owned(),
-        ));
+    match &authorization_token.email {
+        Some(email) => reject_reserved_cse_user(email)?,
+        None => {
+            return Err(KmsError::Unauthorized(
+                "Authorization token should contain an email".to_owned(),
+            ));
+        }
     }
 
     Ok(authorization_token)
@@ -507,6 +516,12 @@ pub(super) async fn validate_cse_authorization_token(
 pub(super) struct TokenExtractedContent {
     pub user: String,
     pub resource_name: Option<Vec<u8>>,
+}
+
+/// A Google CSE token must not name a reserved service identity (such as the AWS XKS one):
+/// the email becomes the KMS user that owns or is granted the keys.
+fn reject_reserved_cse_user(email: &str) -> KResult<()> {
+    reject_reserved_service_identity(&UserId::from(email))
 }
 
 /// Validate the authentication and the authorization tokens and return the calling user
@@ -1557,5 +1572,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(claims.email.as_deref(), Some("user@example.com"));
+    }
+
+    #[test]
+    fn cse_tokens_cannot_name_a_reserved_service_identity() {
+        use crate::routes::aws_xks::AWS_XKS_SERVICE_USER;
+
+        assert!(matches!(
+            super::reject_reserved_cse_user(AWS_XKS_SERVICE_USER),
+            Err(crate::error::KmsError::Unauthorized(_))
+        ));
+        assert!(matches!(
+            super::reject_reserved_cse_user("user@example.com"),
+            Ok(())
+        ));
     }
 }

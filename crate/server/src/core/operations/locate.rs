@@ -28,6 +28,10 @@ use crate::{
 /// `MaximumItems` or requests more objects than this threshold.
 const MAX_LOCATE_ITEMS: i32 = 1000;
 
+/// Largest `OffsetItems` accepted: the stores fetch `offset + maximum` rows per query, so an
+/// unbounded offset would make every Locate scan and discard that many rows.
+const MAX_LOCATE_OFFSET_ITEMS: usize = 1_000_000;
+
 pub(crate) async fn locate(
     kms: &KMS,
     request: Locate,
@@ -61,6 +65,11 @@ pub(crate) async fn locate(
             KmsError::InvalidRequest(format!("OffsetItems must be non-negative: {error}"))
         })
     })?;
+    if offset > MAX_LOCATE_OFFSET_ITEMS {
+        return Err(KmsError::InvalidRequest(format!(
+            "OffsetItems exceeds {MAX_LOCATE_OFFSET_ITEMS}"
+        )));
+    }
     if effective_max == 0 {
         return Ok(LocateResponse {
             located_items: None,

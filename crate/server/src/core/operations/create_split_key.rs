@@ -152,7 +152,7 @@ pub(crate) async fn create_split_key(
 
     // Determine whether this is a Crypto Officer ceremony split.
     //
-    // Two signals trigger ceremony mode, but BOTH require the caller to be a CO candidate:
+    // Two signals trigger ceremony mode, and BOTH restrict who the caller may be:
     //
     // 1. The source key carries the `x-cosmian-crypto-officer-ceremony` vendor attribute
     //    (stamped by the CLI `--ceremony` flag or the CO Role page UI) **and** the caller
@@ -161,19 +161,26 @@ pub(crate) async fn create_split_key(
     //    the ceremony destruction path — a privilege escalation (crypto review finding 3).
     //
     // 2. The server is globally configured with `require_ceremony = true` AND has at
-    //    least one CO user configured — the server enforces ceremony distribution for
-    //    every split when in ceremony mode, regardless of the attribute.
+    //    least one CO user configured — every split by a CO candidate or by the provisioning
+    //    identity (`default_username`, which `enforce_create_permission` already treats like a
+    //    candidate) is then a ceremony split, regardless of the attribute. Any other caller
+    //    gets an ordinary split that they own: otherwise a user with only the `Create`
+    //    right could pass a key whose bytes they know through the ceremony and destroy it.
     //
     // In ceremony mode the server ignores the requested share count and assigns one
     // share per CO candidate (round-robin ownership), enforcing dual control.
     let co_users = &kms.params.crypto_officer.users;
     let caller_is_co_candidate = co_users.iter().any(|u| u == user.as_str());
+    let caller_may_provision =
+        caller_is_co_candidate || user.as_str() == kms.params.default_username;
     let is_co_ceremony_key = (owm
         .attributes()
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, CRYPTO_OFFICER_CEREMONY_ATTR)
         .is_some()
         && caller_is_co_candidate)
-        || (kms.params.crypto_officer.require_ceremony && !co_users.is_empty());
+        || (kms.params.crypto_officer.require_ceremony
+            && !co_users.is_empty()
+            && caller_may_provision);
 
     // Generate shares using the requested split method
     let mut threshold = request.split_key_threshold;

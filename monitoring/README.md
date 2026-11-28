@@ -79,9 +79,10 @@ All variables must be defined in the `.env` file. Here is the complete reference
 | `COMPOSE_PROFILES` | string | `kms-local` | `kms-local` to include the KMS container, empty for external mode |
 | `KMS_MODE` | string | `local` | `local` or `external` |
 | `KMS_CLUSTER` | string | `cosmian-kms-local` | Logical cluster name (label in metrics) |
-| `KMS_VERSION` | string | `latest` | Docker image tag for KMS |
-| `ENVIRONMENT` | string | `production` | Deployment environment (`production`, `staging`, etc.) |
-| `GRAFANA_ADMIN_PASSWORD` | string | `password` | Grafana admin password |
+| `KMS_VERSION` | string | `5.29.0` | Docker image tag for KMS |
+| `ENVIRONMENT` | string | `demo` | Deployment environment (`demo`, `staging`, `production`, etc.) |
+| `GRAFANA_ADMIN_PASSWORD` | string | none (required) | Grafana admin password; `start-monitoring.sh` refuses to start without it |
+| `KMS_P12_PASSWORD` | string | none (required in local mode) | Password of the demo PKCS#12 file; passed to the KMS container through `KMS_TLS_P12_PASSWORD`, not on its command line |
 | `METRICS_RETENTION_MONTHS` | int | `12` | Metrics retention in months (VictoriaMetrics) |
 
 ### Example `.env`
@@ -93,18 +94,18 @@ KMS_MODE=local
 
 # Telemetry metadata
 KMS_CLUSTER=cosmian-kms-local
-KMS_VERSION=latest
-ENVIRONMENT=production
+KMS_VERSION=5.29.0
+ENVIRONMENT=demo
 
-# Grafana
+# Grafana (required, no default: choose a strong password)
 GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=mySecureGrafanaPassword123
+GRAFANA_ADMIN_PASSWORD=<choose-a-strong-password>
 
 # VictoriaMetrics
 METRICS_RETENTION_MONTHS=12
 
-# KMS
-KMS_P12_PASSWORD=mySecureKMSPassword123
+# KMS (required, no default: choose a strong password)
+KMS_P12_PASSWORD=<choose-a-strong-password>
 ```
 
 ---
@@ -190,7 +191,7 @@ open http://localhost:3000
 | OTel Collector | `4318` | HTTP | OTLP traces/metrics reception |
 | OTel Collector | `8888` | HTTP | Internal metrics (Prometheus exposition) |
 | OTel Collector | `13133` | HTTP | Health check endpoint |
-| VictoriaMetrics | `8428` | HTTP | PromQL API + `remote_write` endpoint |
+| VictoriaMetrics | `8428` (published on `127.0.0.1` only) | HTTP | PromQL API + `remote_write` endpoint |
 | Grafana | `3000` | HTTP | Dashboard web interface |
 
 ---

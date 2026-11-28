@@ -133,3 +133,20 @@ async fn test_root_redirects_to_ui() {
     assert_eq!(response["dependencies"]["database"]["status"], "UP");
     assert!(response["dependencies"]["database"]["latency_ms"].is_u64());
 }
+
+#[tokio::test]
+async fn test_version_hides_openssl_build() {
+    let app = test_utils::test_app(None).await;
+    let response =
+        test::call_service(&app, test::TestRequest::get().uri("/version").to_request()).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let version: String = test::read_body_json(response).await;
+    let flavour = if cfg!(feature = "non-fips") {
+        "(non-FIPS)"
+    } else {
+        "(FIPS)"
+    };
+    assert!(version.starts_with(env!("CARGO_PKG_VERSION")), "{version}");
+    assert!(version.ends_with(flavour), "{version}");
+    assert!(!version.contains("OpenSSL"), "{version}");
+}

@@ -27,24 +27,30 @@ runs:
     # SoftHSM2 + the simulator and exports HSM_* / IDEMIA_SPHERE_PKCS11_LIB / PATH to the next steps.
     - name: Prepare the Idemia SPHERE HSM simulator
       shell: pwsh
+      env:
+        VARIANT: ${{ inputs.variant }}
       run: |
         $ErrorActionPreference = "Stop"
-        $level = if ('${{ inputs.variant }}' -eq 'fips') { "FIPS" } else { "NON_FIPS" }
+        $level = if ($env:VARIANT -eq 'fips') { "FIPS" } else { "NON_FIPS" }
         .\.github\reusable_scripts\prepare_idemia_hsm.ps1 -SecurityLevel $level
 
     # The FIPS variant builds the OpenSSL FIPS provider and the PKCS#11 IV shims itself.
     - name: HSM tests on the Idemia SPHERE simulator
       shell: pwsh
+      env:
+        VARIANT: ${{ inputs.variant }}
       run: |
         $ErrorActionPreference = "Stop"
-        $fips = '${{ inputs.variant }}' -eq 'fips'
+        $fips = $env:VARIANT -eq 'fips'
         if ($fips) { .\.mise\scripts\windows\test_hsm_idemia.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_idemia.ps1 }
 
     - name: hsm_model=other startup scenarios (SoftHSM2 behind the IV shim)
       shell: pwsh
+      env:
+        VARIANT: ${{ inputs.variant }}
       run: |
         $ErrorActionPreference = "Stop"
-        $fips = '${{ inputs.variant }}' -eq 'fips'
+        $fips = $env:VARIANT -eq 'fips'
         if ($fips) { .\.mise\scripts\windows\test_hsm_other.ps1 -Fips } else { .\.mise\scripts\windows\test_hsm_other.ps1 }
 
     - name: Upload logs on failure (windows-hsm-idemia)
