@@ -1644,6 +1644,8 @@ sequenceDiagram
 
 **Description:** Kubernetes KMS Provider Plugin — etcd Secret encryption. Deploys KMS in-cluster, creates a KEK, installs the plugin binary on the Minikube node as a systemd service, and verifies etcd Secret encryption. gRPC is used only between kube-apiserver and the plugin (KMS v2 API over a unix socket); the plugin talks to the KMS over plain HTTP, or over HTTPS with client certificates when the task runs with `--mtls`.
 
+The plugin configuration written on the node sets `allowed_peer_uids` (kube-apiserver UID: `0` for the kubeadm static pod, `65532` for a distroless non-root image) and `socket_gid: 65532`; the plugin refuses a non-root peer UID without a socket group. The test asserts the created socket has GID `65532` and mode `0660`.
+
 The test deployment explicitly sets `kms.insecureAllowUnauthenticated=true` for its initial HTTP-only stage; the chart default remains `false`.
 
 #### Architecture Overview
@@ -1683,6 +1685,7 @@ sequenceDiagram
     KMS-->>Test: KEK UID
     Test->>Node: install plugin binary + config
     Test->>Node: systemctl start plugin
+    Test->>Node: assert socket group 65532, mode 0660
     Test->>Node: enable etcd encryption on kube-apiserver
     Test->>API: kubectl create secret
     API->>Plugin: gRPC Encrypt (unix socket)
@@ -1744,6 +1747,8 @@ sequenceDiagram
 
 **Description:** KMS CSI Provider — Secrets Store CSI Driver integration. DaemonSet in kube-system mounts secrets as volumes.
 
+The provider ConfigMap lists the four KMS UIDs created by the test under `allowed_uids_by_namespace.default` (required, fail closed); the Secrets Store CSI Driver supplies the pod namespace through `podInfoOnMount`.
+
 The test-only KMS deployment opts into unauthenticated access with `kms.insecureAllowUnauthenticated=true`.
 
 #### Architecture Overview
@@ -1784,7 +1789,7 @@ sequenceDiagram
 
     Test->>KMS: deploy + create secrets + keys
     Test->>Driver: helm install secrets-store-csi-driver
-    Test->>Provider: kubectl apply DaemonSet
+    Test->>Provider: kubectl apply ConfigMap (allowed_uids_by_namespace) + DaemonSet
     Provider->>KMS: fetch secret value
     KMS-->>Provider: plaintext
     Test->>Pod: kubectl apply pod

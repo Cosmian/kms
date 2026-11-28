@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 
 use cosmian_kms_client::{KmsClientConfig, http_client::HttpClientConfig};
 use kube::Client;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     config::{InjectArgs, ServeArgs},
@@ -30,30 +30,23 @@ pub async fn serve(args: ServeArgs) -> Result<(), OperatorError> {
     let default_refresh = controller::parse_duration(&cfg.default_refresh_interval)
         .unwrap_or(Duration::from_secs(3600));
 
+    if cfg.allowed_uids_by_namespace.is_empty() {
+        warn!("allowed_uids_by_namespace is empty: every KMSSecret will be refused");
+    }
+
     let ctx = Arc::new(Context {
         k8s,
         kms,
         default_refresh,
+        allowed_uids_by_namespace: cfg.allowed_uids_by_namespace.clone(),
     });
 
     info!("starting Cosmian KMS operator");
 
     // Run controller and webhook concurrently.
-    let kms_url = cfg.kms.server_url.clone();
-    let api_token_secret_ref = cfg
-        .kms
-        .api_token_secret_ref
-        .as_ref()
-        .map(|r| (r.name.clone(), r.key.clone()));
-    let webhook_cfg = cfg.webhook.clone();
-
     tokio::select! {
         () = controller::run(ctx) => {}
-        r = webhook::run(
-            &webhook_cfg,
-            &kms_url,
-            api_token_secret_ref.as_ref().map(|(n, k)| (n.as_str(), k.as_str())),
-        ) => {
+        r = webhook::run(&cfg) => {
             r?;
         }
     }
@@ -118,12 +111,10 @@ pub async fn inject(args: InjectArgs) -> Result<(), OperatorError> {
 pub fn parse_uid_entry(entry: &str) -> Result<(&str, &str), OperatorError> {
     let mut parts = entry.splitn(2, ':');
     let uid = parts.next().filter(|s| !s.is_empty()).ok_or_else(|| {
-        OperatorError::Config(format!("invalid secret-uid entry (missing uid): '{entry}'"))
+        OperatorError::Config("invalid secret-uid entry (missing uid)".to_owned())
     })?;
     let filename = parts.next().filter(|s| !s.is_empty()).ok_or_else(|| {
-        OperatorError::Config(format!(
-            "invalid secret-uid entry (missing filename after ':'): '{entry}'"
-        ))
+        OperatorError::Config("invalid secret-uid entry (missing filename after ':')".to_owned())
     })?;
 
     // Prevent path traversal: filename must be a single relative path component.
@@ -131,9 +122,9 @@ pub fn parse_uid_entry(entry: &str) -> Result<(&str, &str), OperatorError> {
     let is_single_normal =
         matches!(comps.next(), Some(std::path::Component::Normal(_))) && comps.next().is_none();
     if !is_single_normal {
-        return Err(OperatorError::Config(format!(
-            "invalid secret-uid entry (filename must be a single path component): '{entry}'"
-        )));
+        return Err(OperatorError::Config(
+            "invalid secret-uid entry (filename must be a single path component)".to_owned(),
+        ));
     }
 
     Ok((uid, filename))
@@ -173,6 +164,16 @@ mod tests {
             parse_uid_entry("uid:../escape").is_err(),
             "path traversal should be rejected"
         );
+    }
+
+    #[test]
+    fn parse_uid_entry_errors_do_not_echo_untrusted_input() {
+        let entry = "uid:../escape\nforged log entry";
+        let error = parse_uid_entry(entry).expect_err("path traversal should be rejected");
+        let message = error.to_string();
+
+        assert!(!message.contains("forged log entry"));
+        assert!(!message.contains('\n'));
     }
 
     #[test]

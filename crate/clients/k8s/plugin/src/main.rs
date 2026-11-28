@@ -4,11 +4,12 @@ use std::os::unix::fs::PermissionsExt as _;
 use clap::Parser;
 use cosmian_kms_client::{KmsClient, KmsClientConfig, http_client::HttpClientConfig};
 use cosmian_kms_k8s_plugin::{
-    config::PluginConfig, kmsv2::key_management_service_server::KeyManagementServiceServer,
-    service::KmsPluginService,
+    config::PluginConfig,
+    kmsv2::key_management_service_server::KeyManagementServiceServer,
+    peer::allowed_peers,
+    service::{DecryptionKeyPolicy, KmsPluginService},
 };
 use tokio::net::UnixListener;
-use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::Server;
 use tracing::info;
 
@@ -45,6 +46,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let settings = PluginConfig::from_file(&args.config)?.cosmian_kms;
+    let socket_gid = settings.socket_gid;
+    let allowed_peer_uids = settings.allowed_peer_uids;
 
     info!(
         server_url = %settings.server_url,
@@ -74,7 +77,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..KmsClientConfig::default()
     })?;
 
-    let service = KmsPluginService::new(kms_client, settings.wrapping_key_uid);
+    let decryption_key_policy = DecryptionKeyPolicy::new(
+        settings.wrapping_key_uid,
+        settings.allowed_decryption_key_ids,
+    );
+    let service = KmsPluginService::new(kms_client, decryption_key_policy);
 
     // Ensure socket directory exists.
     let socket_path = settings.socket_path;
@@ -94,13 +101,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let listener = UnixListener::bind(&socket_path)?;
-    // Allow owner+group to connect to the socket.
-    // kube-apiserver runs as UID 65532 (distroless nonroot) in Kubernetes
-    // 1.29+, so a root-owned 0o600 socket would silently block all gRPC
-    // connections.  The DaemonSet should chown the socket to the apiserver
-    // UID/GID (65532) for maximum security; 0o660 is the secure fallback.
+    if let Some(gid) = socket_gid {
+        std::os::unix::fs::chown(&socket_path, None, Some(gid))?;
+    }
+    // Filesystem permissions limit access; SO_PEERCRED independently authorizes peers.
     std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o660))?;
-    let incoming = UnixListenerStream::new(listener);
+    let incoming = allowed_peers(listener, allowed_peer_uids);
 
     info!(socket = %socket_path, "gRPC server listening on Unix socket");
     // Graceful shutdown on SIGTERM (systemd) or Ctrl-C.

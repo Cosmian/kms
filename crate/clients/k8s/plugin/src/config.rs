@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::Deserialize;
 
 /// Top-level structure of the plugin YAML configuration file.
@@ -11,7 +13,10 @@ use serde::Deserialize;
 ///   tls_key: /etc/kubernetes-kms-plugin/client.key
 ///   ca_cert: /etc/kubernetes-kms-plugin/ca.crt
 ///   wrapping_key_uid: "550e8400-e29b-41d4-a716-446655440000"
+///   allowed_decryption_key_ids: []
 ///   socket_path: /var/run/kubernetes-kms-plugin/kms.sock
+///   allowed_peer_uids: [65532]
+///   socket_gid: 65532
 /// ```
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -46,9 +51,23 @@ pub struct KmsPluginSettings {
     /// This corresponds to the `key_id` returned to `kube-apiserver`.
     pub wrapping_key_uid: String,
 
+    /// Older KEK UIDs that may still decrypt ciphertext stored by kube-apiserver.
+    #[serde(default)]
+    pub allowed_decryption_key_ids: BTreeSet<String>,
+
     /// Filesystem path of the Unix domain socket the plugin listens on.
     #[serde(default = "default_socket_path")]
     pub socket_path: String,
+
+    /// Required: UIDs (kernel `SO_PEERCRED`) allowed to connect to the socket, i.e. the
+    /// kube-apiserver UID. Any other peer is disconnected.
+    #[serde(default)]
+    pub allowed_peer_uids: Vec<u32>,
+
+    /// Optional group ID assigned to the socket. Required when `allowed_peer_uids`
+    /// contains a non-root UID so the socket can be shared with the kube-apiserver.
+    #[serde(default)]
+    pub socket_gid: Option<u32>,
 }
 
 fn default_socket_path() -> String {
@@ -60,8 +79,26 @@ impl PluginConfig {
     pub fn from_file(path: &str) -> Result<Self, crate::error::PluginError> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| crate::error::PluginError::Config(format!("cannot read {path}: {e}")))?;
-        serde_saphyr::from_str(&content)
-            .map_err(|e| crate::error::PluginError::Config(format!("invalid YAML in {path}: {e}")))
+        let config: Self = serde_saphyr::from_str(&content).map_err(|e| {
+            crate::error::PluginError::Config(format!("invalid YAML in {path}: {e}"))
+        })?;
+        if config.cosmian_kms.allowed_peer_uids.is_empty() {
+            return Err(crate::error::PluginError::Config(
+                "allowed_peer_uids must list the kube-apiserver UID".to_owned(),
+            ));
+        }
+        if config
+            .cosmian_kms
+            .allowed_peer_uids
+            .iter()
+            .any(|uid| *uid != 0)
+            && config.cosmian_kms.socket_gid.is_none()
+        {
+            return Err(crate::error::PluginError::Config(
+                "socket_gid must be set when allowed_peer_uids includes a non-root UID".to_owned(),
+            ));
+        }
+        Ok(config)
     }
 }
 
@@ -79,7 +116,11 @@ cosmian_kms:
   tls_key: /etc/client.key
   ca_cert: /etc/ca.crt
   wrapping_key_uid: 550e8400-e29b-41d4-a716-446655440000
+  allowed_decryption_key_ids:
+    - old-kek-uid
   socket_path: /var/run/kubernetes-kms-plugin.sock
+  allowed_peer_uids: [65532, 0]
+  socket_gid: 65532
 ";
         let cfg: PluginConfig = serde_saphyr::from_str(yaml).expect("should parse");
         assert_eq!(cfg.cosmian_kms.server_url, "https://kms.example.com:9998");
@@ -88,10 +129,17 @@ cosmian_kms:
             cfg.cosmian_kms.wrapping_key_uid,
             "550e8400-e29b-41d4-a716-446655440000"
         );
+        assert!(
+            cfg.cosmian_kms
+                .allowed_decryption_key_ids
+                .contains("old-kek-uid")
+        );
         assert_eq!(
             cfg.cosmian_kms.socket_path,
             "/var/run/kubernetes-kms-plugin.sock"
         );
+        assert_eq!(cfg.cosmian_kms.allowed_peer_uids, vec![65532, 0]);
+        assert_eq!(cfg.cosmian_kms.socket_gid, Some(65532));
     }
 
     #[test]
@@ -106,5 +154,51 @@ cosmian_kms:
         assert!(cfg.cosmian_kms.api_key.is_none());
         assert!(cfg.cosmian_kms.tls_cert.is_none());
         assert!(cfg.cosmian_kms.ca_cert.is_none());
+        assert!(cfg.cosmian_kms.allowed_decryption_key_ids.is_empty());
+    }
+
+    #[test]
+    fn from_file_requires_allowed_peer_uids() {
+        let base = "cosmian_kms:\n  server_url: http://localhost:9998\n  wrapping_key_uid: k\n";
+        for (name, extra, expected_error) in [
+            (
+                "missing",
+                "",
+                Some("allowed_peer_uids must list the kube-apiserver UID"),
+            ),
+            (
+                "empty",
+                "  allowed_peer_uids: []\n",
+                Some("allowed_peer_uids must list the kube-apiserver UID"),
+            ),
+            ("root", "  allowed_peer_uids: [0]\n", None),
+            (
+                "nonroot_without_gid",
+                "  allowed_peer_uids: [65532]\n",
+                Some("socket_gid must be set when allowed_peer_uids includes a non-root UID"),
+            ),
+            (
+                "nonroot_with_gid",
+                "  allowed_peer_uids: [65532]\n  socket_gid: 65532\n",
+                None,
+            ),
+        ] {
+            let path = std::env::temp_dir()
+                .join(format!("kms_plugin_cfg_{name}_{}.yaml", std::process::id()));
+            std::fs::write(&path, format!("{base}{extra}")).expect("write temp config");
+            let result = PluginConfig::from_file(path.to_str().expect("utf-8 path"));
+            std::fs::remove_file(&path).ok();
+            match (expected_error, result) {
+                (None, Ok(_)) => {}
+                (Some(expected), Err(error)) => {
+                    assert_eq!(
+                        error.to_string(),
+                        format!("Configuration error: {expected}"),
+                        "{name}"
+                    );
+                }
+                (expected, result) => panic!("{name}: expected error {expected:?}, got {result:?}"),
+            }
+        }
     }
 }

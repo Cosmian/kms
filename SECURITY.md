@@ -5,6 +5,7 @@
   - [Severity Rating](#severity-rating)
   - [Known Vulnerabilities](#known-vulnerabilities)
     - [2026](#2026)
+      - [COSMIAN-2026-084 — Kubernetes Operator Pod injection bypassed the namespace UID allowlist](#cosmian-2026-084--kubernetes-operator-pod-injection-bypassed-the-namespace-uid-allowlist)
       - [COSMIAN-2026-083 — A CRL fetch error marked an imported certificate Compromised](#cosmian-2026-083--a-crl-fetch-error-marked-an-imported-certificate-compromised)
       - [COSMIAN-2026-082 — SSRF via DNS names resolving to internal addresses in CRL Distribution Points](#cosmian-2026-082--ssrf-via-dns-names-resolving-to-internal-addresses-in-crl-distribution-points)
       - [COSMIAN-2026-081 — CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit](#cosmian-2026-081--crl-distribution-point-fetch-accepted-unbounded-chunked-bodies-and-grew-its-cache-without-limit)
@@ -143,6 +144,11 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-084 — Kubernetes Operator Pod injection bypassed the namespace UID allowlist
+
+| Field      | Value                                                                                                                     |
+| ---
 
 #### COSMIAN-2026-083 — A CRL fetch error marked an imported certificate Compromised
 
@@ -2003,6 +2009,7 @@ This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_u
 
 | ID                  | Severity | Affected                                                                | Fixed in | Title                                                                                               |
 | ------------------- | -------- | ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| COSMIAN-2026-084    | High     | from 5.29.0 before 5.30.0                                                | 5.30.0    | Kubernetes Operator Pod injection bypassed the namespace UID allowlist                              |
 | COSMIAN-2026-083    | Low | before 5.30.0 | 5.30.0 | A CRL fetch error marked an imported certificate Compromised |
 | COSMIAN-2026-082    | Moderate | from 5.27.0 before 5.30.0 | 5.30.0 | SSRF via DNS names resolving to internal addresses in CRL Distribution Points |
 | COSMIAN-2026-081    | Moderate | from 5.27.0 before 5.30.0 | 5.30.0 | CRL Distribution Point fetch accepted unbounded chunked bodies and grew its cache without limit |

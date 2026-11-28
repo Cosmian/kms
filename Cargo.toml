@@ -298,7 +298,7 @@ js-sys = "0.3"
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 k256 = "0.14"
 k8s-openapi = "0.28"
-kube = "4.2"
+kube = "4.2.1"
 leb128 = "0.2"
 libc = "0.2"
 libloading = "0.8"

@@ -2,8 +2,8 @@
 name: Kubernetes Packaging & E2E
 
 # Covers all Kubernetes-related CI for Eviden KMS:
-#   - K8s E2E tests (KMS Provider Plugin, CSI Driver Provider, Operator) on every
-#     PR/branch push and manual dispatch
+#   - K8s E2E tests (KMS Provider Plugin, CSI Driver Provider, Operator) on
+#     Kubernetes-related pull requests, tags, and packaging workflow calls
 #   - K8s plugin deb/rpm packaging on tags and manual dispatch
 #   - Helm chart lint/template/E2E deployment (Minikube)
 #   - Helm chart publish to GitHub Pages on tags and manual dispatch
@@ -17,6 +17,20 @@ name: Kubernetes Packaging & E2E
 
 on:
   workflow_call:
+
+  pull_request:
+    paths:
+      - .github/actions/install-mise/**
+      - .github/actions/setup-nix-mise/**
+      - .github/workflows/packaging-kubernetes.yml
+      - .mise/lib/k8s.sh
+      - .mise/tasks/build/k8s-*
+      - .mise/tasks/test/k8s/**
+      - charts/cosmian-kms/**
+      - crate/clients/k8s/**
+      - nix/docker.nix
+      - nix/k8s-*.nix
+      - pkg/kubernetes_kms_plugin.service
 
   push:
     tags:
@@ -294,8 +308,7 @@ jobs:
   # ── Publish K8s plugin packages to package.cosmian.com ───────────────────────
   publish-k8s-plugin:
     if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
-      || startsWith(github.ref, 'refs/tags/')
+      startsWith(github.ref, 'refs/tags/')
       || github.event_name == 'workflow_dispatch'
 
     name: Publish k8s-plugin-${{ matrix.cpu-arch }}
@@ -390,8 +403,6 @@ jobs:
           memory: 4096m
 
       - name: Test (lint + template + E2E deployment)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           mise run test:k8s:helm --e2e
 
