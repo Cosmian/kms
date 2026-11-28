@@ -94,10 +94,10 @@ Create a file `CHANGELOG/<your-branch-name-with-slashes-replaced-by-underscores>
 your change. For example, for branch `fix/my-bug` create `CHANGELOG/fix_my-bug.md`.
 
 Use one of these section headers: `Features`, `Bug Fixes`, `Build`, `Refactor`, `Documentation`, `Testing`, `CI`,
-`Security`. Group related entries under a sub-feature or component if applicable. The folder is emptied at each release
-(maintainers run `/kms-changelog consolidate <version>`), so for examples see the entry format in
-[`.github/skills/kms-changelog/SKILL.md`](.github/skills/kms-changelog/SKILL.md) or the released entries in
-[CHANGELOG.md](CHANGELOG.md).
+`Security`. Group related entries under a sub-feature or component if applicable. At each release maintainers run
+`/kms-changelog consolidate <version>`: the files move to `CHANGELOG/<version>/` and the root
+[CHANGELOG.md](CHANGELOG.md) keeps a short summary that links to them, so put the detail in your branch file. For the
+entry format see [`.github/skills/kms-changelog/SKILL.md`](.github/skills/kms-changelog/SKILL.md).
 
 ## Contributing to the UI
 

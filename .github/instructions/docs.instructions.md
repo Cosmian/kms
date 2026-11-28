@@ -104,3 +104,23 @@ Do not rely on training-data recall for spec section numbers or OID values.
 - Mermaid diagrams follow `mermaid.instructions.md`: no literal `\n`, no list markers in labels.
 
 > For deeper guidance on documentation pages, run `/docs-writer`.
+
+## Upgrade pages (one per release)
+
+- Each minor release gets `documentation/docs/installation/upgrading/upgrade_to_<MAJOR>_<MINOR>.md` with the title `# Upgrading to <MAJOR>.<MINOR>`, a row in the `Release pages` table of `upgrading/index.md`, and entries in `SUMMARY.md` and `nav.yml` (newest release first, below Database Migrations).
+- Skeleton:
+
+```text
+# Upgrading to <MAJOR>.<MINOR>
+intro: what the release brings, who needs to act
+## Before you upgrade        (release-specific checks only; generic steps live in index.md)
+## <Area>                    (one per area that has rows, in the fixed order below)
+## Downgrading
+## Verify the upgrade
+## Tested clients            (optional)
+```
+
+- Areas, in this order: Server configuration and startup, Authentication and identities, Database and storage, KMIP clients, FIPS and HSM, HTTP APIs and integrations, Command-line client (ckms), Packages and installers, Deployment tooling and developers. Each is a table `| From <X.Y> | What to do on an existing installation |`.
+- Rows come from the archived branch files `CHANGELOG/<X.Y.Z>/*.md` (the root `CHANGELOG.md` entry is only a summary): every bullet of their `## Breaking Changes` sections and of the `### ⚠️ Breaking Changes` section of the root entry, and every bullet carrying `**Upgrade action:**`, `Setup action` or `Audit action`, plus the database facts of `database_migrations.md`.
+- The word "breaking" never appears in the page. Write "From <X.Y> the server now requires/checks/enforces/answers ..." and put the consequence in the **What to do** cell; "No action if ..." is a valid cell.
+- Advisory ids come from `SECURITY.md` only; option names are copied from `server_cli.md`, `kms_template.toml` or `main_commands.md`.
