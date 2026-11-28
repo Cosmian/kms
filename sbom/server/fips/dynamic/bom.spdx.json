@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SPDXRef-nix-store-zramjj31w6sa0r637488rk9522bvzgcq-cosmian-kms-server-dynamic-5.30.0.drv",
-  "documentNamespace": "sbomnix://951d1966-2a79-4913-9668-330b1457c24b",
+  "documentNamespace": "sbomnix://2e6af8a9-036b-4627-951d-44ec9a69af1e",
   "creationInfo": {
-    "created": "2026-11-27T23:33:41.280298+00:00",
+    "created": "2026-11-28T01:41:28.922333+00:00",
     "creators": [
       "Tool: sbomnix-1.8.0+g30c95eb"
     ]

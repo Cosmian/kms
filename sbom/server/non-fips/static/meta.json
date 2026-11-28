@@ -5,7 +5,7 @@
     "derivation": "kms-server-non-fips-static-openssl",
     "output_path": "/nix/store/vj4rcss1kv9n2vpb1p910ks37q7nsikh-cosmian-kms-server-5.30.0",
     "sbomnix_target": "/nix/store/vj4rcss1kv9n2vpb1p910ks37q7nsikh-cosmian-kms-server-5.30.0",
-    "timestamp": "2026-11-27T23:32:05Z",
+    "timestamp": "2026-11-28T01:43:05Z",
     "generator": {
       "tool": "sbomnix",
       "version": "v1.8.0"
