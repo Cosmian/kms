@@ -817,6 +817,8 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: audit logging is disabled: KMIP (HTTP and socket) and provider requests are not recorded. Enable it with --audit-enable (KMS_AUDIT_ENABLE) for production deployments.` | `src/start_kms_server.rs` | - | Enable audit logging for production deployments, see [Audit logging](./audit-logs.md). |
 | `debug` | `KACLS migration token validation skipped: {e}` | `src/routes/google_cse/jwt.rs` | `e` | - |
 | `trace` | `authentication token validated for {email}` | `src/routes/google_cse/jwt.rs` | `email` | - |
+| `warn` | `HSM instance '{}': hsm_admin "*" grants HSM administration to every authenticated user` | `src/core/kms/mod.rs` | - | - |
+| `warn` | `secret passed on the command line via {flag}: it is visible in the process list; use the KMS_* environment variable or the config file` | `src/main.rs` | `flag` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -897,9 +899,6 @@ Crate path: `crate/crypto`
 
 | Level   | Message                                                                                                                                                                                                                                | File                                                | Variables                                                                         | Notes           |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- |
-| `error` | `Error verifying ({:?}) signature: {:?}, data: {:?}, error: {err:?}`                                                                                                                                                                   | `src/crypto/rsa/verify.rs`                          | `err`: error detail                                                               | -               |
-| `error` | `Error verifying digest ({:?}) signature: {:?}, data: {:?}, error: {err:?}`                                                                                                                                                            | `src/crypto/rsa/verify.rs`                          | `err`: error detail                                                               | ×2 in this file |
-| `error` | `Error verifying raw ({:?}) signature: {:?}, data: {:?}, error: {err:?}`                                                                                                                                                               | `src/crypto/rsa/verify.rs`                          | `err`: error detail                                                               | -               |
 | `warn`  | `test_openssl_cli_compat: openssl CLI call failed, skipping test: {output:#?}`                                                                                                                                                         | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs`            | `output`: output                                                                  | -               |
 | `warn`  | `test_openssl_cli_compat: openssl CLI not found, skipping test`                                                                                                                                                                        | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs`            | -                                                                                 | -               |
 | `warn`  | `test_openssl_cli_compat: openssl CLI output is not valid UTF-8`                                                                                                                                                                       | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs`            | -                                                                                 | -               |
@@ -957,6 +956,9 @@ Crate path: `crate/crypto`
 | `debug` | `Encrypted data with auth data {}, len (Plain/Enc): {}/{}` | `src/crypto/cover_crypt/encryption.rs` | - | - |
 | `trace` | `authenticated_encryption_additional_data: {}` | `src/crypto/cover_crypt/encryption.rs` | - | - |
 | `trace` | `decrypt: ad: {}` | `src/crypto/cover_crypt/decryption.rs` | - | - |
+| `error` | `Error verifying ({:?}) signature: {} bytes, data: {} bytes, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err` | - |
+| `error` | `Error verifying digest ({:?}) signature: {} bytes, data: {} bytes, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err` | ×2 in this file |
+| `error` | `Error verifying raw ({:?}) signature: {} bytes, data: {} bytes, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err` | - |
 
 ### `cosmian_kmip`
 
