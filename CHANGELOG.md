@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.30.0/`](CHANGELOG/5.30.0/) that hold the full detail (behaviour, options, client actions, tests). Operator procedure per area: [Upgrading to 5.30](documentation/docs/installation/upgrading/upgrade_to_5_30.md).
 
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.30.0/release_notes.md); use it when a linked file does not cover an item.
+
 ### ⚠️ Breaking Changes
 
 - `vault_auth_verifier_url` receives standard Vault paths: the KMS calls `GET <url>/v1/auth/token/lookup-self` and forwards `/v1/auth/*` unchanged. **Upgrade action:** point it at an OpenBao/Vault server or at a Cosmian Auth Verifier that serves `/v1/auth/*`; upgrade an older Auth Verifier together with the KMS ([#863](https://github.com/Cosmian/kms/issues/863), [feat_kv-secret-store](CHANGELOG/5.30.0/feat_kv-secret-store.md))
@@ -98,6 +100,8 @@ Advisories fixed in 5.30.0; see [SECURITY.md](SECURITY.md) for scope, affected v
 ## [5.29.0] - 2026-10-28
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.29.0/`](CHANGELOG/5.29.0/) that hold the full detail (behaviour, options, client actions, tests).
+
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.29.0/release_notes.md); use it when a linked file does not cover an item.
 
 ### 🔒 Security
 
@@ -200,6 +204,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.28.0/`](CHANGELOG/5.28.0/) that hold the full detail.
 
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.28.0/release_notes.md); use it when a linked file does not cover an item.
+
 ### 🔒 Security
 
 - `Extractable` / `NeverExtractable` not enforced on key export paths ([GHSA-8mmx-f92q-2gq8](https://github.com/Cosmian/kms/security/advisories/GHSA-8mmx-f92q-2gq8), [#1198](https://github.com/Cosmian/kms/pull/1198))
@@ -264,6 +270,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.27.1/`](CHANGELOG/5.27.1/) that hold the full detail.
 
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.27.1/release_notes.md); use it when a linked file does not cover an item.
+
 ### ⚡ Performance & Internal Optimizations
 
 - **HSM & PKCS#11 Layer**: long-lived per-slot PKCS#11 session pooling, blocking PKCS#11 FFI calls moved to `spawn_blocking`, redundant key-metadata lookups removed, concurrent-sign scaling regression test; see the branch files below.
@@ -285,6 +293,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 ## [5.27.0] - 2026-09-05
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.27.0/`](CHANGELOG/5.27.0/) that hold the full detail.
+
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.27.0/release_notes.md); use it when a linked file does not cover an item.
 
 ### 🔒 Security
 
@@ -327,6 +337,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.26.0/`](CHANGELOG/5.26.0/) that hold the full detail.
 
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.26.0/release_notes.md); use it when a linked file does not cover an item.
+
 ### 🔒 Security
 
 - Resolve 8 Dependabot security alerts ([#1083](https://github.com/Cosmian/kms/pull/1083), [fix_dependabot-alerts-2026-07-31](CHANGELOG/5.26.0/fix_dependabot-alerts-2026-07-31.md), [cve](CHANGELOG/5.26.0/cve.md))
@@ -363,6 +375,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.25.0/`](CHANGELOG/5.25.0/) that hold the full detail.
 
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.25.0/release_notes.md); use it when a linked file does not cover an item.
+
 ### 🚀 Features
 
 - **Key Rotation**: KMIP `ReKey`, `ReKeyKeyPair` and `ReCertify`, keyset resolution (`name@latest`, `name@first`, `name@N`) with try-each-key decryption, state-based key selection and auto-deactivation, HSM keysets, `--keyset-warn-depth`, `ckms` re-key and rotation-policy subcommands, Web UI **Rotation Policy** section ([#968](https://github.com/Cosmian/kms/pull/968)); [feat_key-rotation-ckms-ui](CHANGELOG/5.25.0/feat_key-rotation-ckms-ui.md), [feat_automate_key_rotation](CHANGELOG/5.25.0/feat_automate_key_rotation.md)
@@ -389,6 +403,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 ## [5.24.0] - 2026-06-18
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.24.0/`](CHANGELOG/5.24.0/) that hold the full detail.
+
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.24.0/release_notes.md); use it when a linked file does not cover an item.
 
 ### 🔒 Security
 
@@ -431,6 +447,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.23.0/`](CHANGELOG/5.23.0/) that hold the full detail; this entry is a follow-up to the 2026-05-25 entry below and its items come from release commits, not from branch files.
 
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.23.0/release_notes.md); use it when a linked file does not cover an item.
+
 ### 🚀 Features
 
 - **FPE and anonymization**: FPE support and anonymization endpoints (#907)
@@ -461,6 +479,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 ## [5.23.0] - 2026-05-25
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.23.0/`](CHANGELOG/5.23.0/) that hold the full detail.
+
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.23.0/release_notes.md); use it when a linked file does not cover an item.
 
 ### 🔒 Security
 
@@ -547,6 +567,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.22.0/`](CHANGELOG/5.22.0/) that hold the full detail.
 
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.22.0/release_notes.md); use it when a linked file does not cover an item.
+
 ### 🚀 Features
 
 - **HSM Linux aarch64**: softhsm2, smartcardhsm and `other` model on Linux aarch64; proprietary HSMs stay x86_64-only ([#902](https://github.com/Cosmian/kms/issues/902))
@@ -583,6 +605,8 @@ Summary release entry. Every item names the archived branch files under [`CHANGE
 ## [5.21.0] - 2026-04-21
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.21.0/`](CHANGELOG/5.21.0/) that hold the full detail.
+
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.21.0/release_notes.md); use it when a linked file does not cover an item.
 
 ### 🚀 Features
 
@@ -650,6 +674,8 @@ Findings from the OWASP/external audits, without COSMIAN advisory ids; detail in
 ## [5.19.0] - 2026-04-01
 
 Summary release entry. Every item names the archived branch files under [`CHANGELOG/5.19.0/`](CHANGELOG/5.19.0/) that hold the full detail.
+
+The complete text of this entry before it was summarised is kept in [release_notes](CHANGELOG/5.19.0/release_notes.md); use it when a linked file does not cover an item.
 
 ### 🚀 Features
 

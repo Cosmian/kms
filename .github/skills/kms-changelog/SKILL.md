@@ -214,6 +214,8 @@ In `CHANGELOG.md`, merge into the existing draft for `X.Y.Z`, preserving its not
 
 The entry starts with one sentence saying that it is a summary and that the detail is in `CHANGELOG/X.Y.Z/`, with a link to the upgrade page.
 
+Before condensing the draft, save its full consolidated text verbatim as `CHANGELOG/X.Y.Z/release_notes.md` (title `# X.Y.Z release notes (full text)`) and link it right after the summary sentence ("use it when a linked file does not cover an item"). Detail that came from commits and has no branch file stays reachable this way, and a loosely mapped link never hides it. Never link a branch file to a bullet without having read it.
+
 ## Step C5 — Verify coverage, then archive
 
 1. Walk the checklist from Step C1: every breaking change, security item, feature and fix for this release is covered by a theme bullet of the new entry (or by the branch file that bullet links to), including notes merged from the draft and `Unreleased`. Check that every file is linked from the new entry only: `for f in CHANGELOG/*.md; do sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | grep -qF "CHANGELOG/X.Y.Z/$(basename "$f")" || echo "NOT LINKED $f"; done`. After coverage and the security cross-check pass, remove only the notes carried forward from `Unreleased`; leave its heading and any remaining notes intact.
