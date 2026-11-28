@@ -9,7 +9,6 @@
 # Provides:
 #   audit_ckms_json <args...>       — ckms with JSON output; exits (set -e) on failure
 #   audit_ckms <args...>            — ckms; exits (set -e) on failure
-#   audit_ckms_fail <args...>       — ckms; fails the script if it unexpectedly succeeds
 #   audit_extract_uid               — pipe JSON output through this for unique_identifier
 #   audit_exercise_kmip_ops         — Create/Encrypt/Decrypt/Revoke/Destroy + 1 deliberate
 #                                      Failure; sets AUDIT_SYM_UID
@@ -23,6 +22,10 @@ _AUDIT_E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -z "${_MISE_COMMON_SH_LOADED:-}" ]; then
   # shellcheck source=.mise/lib/common.sh
   source "${_AUDIT_E2E_DIR}/common.sh"
+fi
+if [ -z "${_MISE_CKMS_SH_LOADED:-}" ]; then
+  # shellcheck source=.mise/lib/ckms.sh
+  source "${_AUDIT_E2E_DIR}/ckms.sh"
 fi
 
 # Used by both audit_exercise_kmip_ops (to trigger the deliberate Failure) and
@@ -40,12 +43,6 @@ audit_ckms_json() {
 
 audit_ckms() {
   "${ckms_bin}" --conf-path "${ckms_conf}" "$@"
-}
-
-audit_ckms_fail() {
-  if "${ckms_bin}" --conf-path "${ckms_conf}" "$@" 2>/dev/null; then
-    print_error "expected ckms command to fail: $*"
-  fi
 }
 
 audit_extract_uid() {
@@ -84,7 +81,7 @@ audit_exercise_kmip_ops() {
   echo "    Destroyed key."
   rm -rf "${tmpdir}"
 
-  audit_ckms_fail sym keys export /dev/null --key-id "${AUDIT_NONEXISTENT_UID}"
+  ckms_run_fail sym keys export /dev/null --key-id "${AUDIT_NONEXISTENT_UID}"
   echo "    Triggered deliberate Failure event (non-existent key)."
 }
 

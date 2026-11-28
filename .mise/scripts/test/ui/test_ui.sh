@@ -31,15 +31,6 @@ run_ui() {
   (cd "${UI_DIR}" && "$@")
 }
 
-# Run pnpm with FIPS OpenSSL env vars stripped.
-# pnpm uses MD4 in createBase32Hash (depPathToFilename) which is blocked
-# by the FIPS provider loaded via LD_PRELOAD in the Nix CI shell.
-# Stripping LD_PRELOAD/OPENSSL_CONF/OPENSSL_MODULES lets pnpm use the default
-# OpenSSL provider; cargo/KMS builds are unaffected.
-run_pnpm() {
-  env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm "$@"
-}
-
 # ── SoftHSM2 detection ──────────────────────────────────────────────────────
 # softhsm2-util is required; abort early with a clear message if not found.
 SOFTHSM2_LIB_DIR=""

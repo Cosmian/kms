@@ -64,12 +64,6 @@ generate_keys() {
     -keyout "${SAML_SSO_DIR}/saml-sp.key.pem" -out "${SAML_SSO_DIR}/saml-sp.cert.pem" 2>/dev/null
 }
 
-# Set the value of a key that already exists in a copied fixture; fails when the key is absent.
-set_toml_value() { # <file> <key> <already-quoted-value>
-  grep -qE "^$2 *= " "$1" || print_error "key '$2' missing in $1"
-  sed -E "s|^($2 *= *).*|\1$3|" "$1" >"$1.tmp" && mv "$1.tmp" "$1"
-}
-
 # Auth Verifier and KMS configs: copies of the test_data fixtures with this run's host and paths.
 # Keycloak realm: rendered from its template.
 write_configs() {
