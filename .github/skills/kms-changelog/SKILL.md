@@ -216,7 +216,7 @@ The entry starts with one sentence saying that it is a summary and that the deta
 
 ## Step C5 — Verify coverage, then archive
 
-1. Walk the checklist from Step C1: every breaking change, security item, feature and fix for this release is covered by a theme bullet of the new entry (or by the branch file that bullet links to), including notes merged from the draft and `Unreleased`. Check that every file is linked: `for f in CHANGELOG/*.md; do grep -q "$(basename "$f")" CHANGELOG.md || echo "NOT LINKED $f"; done`. After coverage and the security cross-check pass, remove only the notes carried forward from `Unreleased`; leave its heading and any remaining notes intact.
+1. Walk the checklist from Step C1: every breaking change, security item, feature and fix for this release is covered by a theme bullet of the new entry (or by the branch file that bullet links to), including notes merged from the draft and `Unreleased`. Check that every file is linked from the new entry only: `for f in CHANGELOG/*.md; do sed -n '/^## \[X.Y.Z\]/,/^## \[/p' CHANGELOG.md | grep -qF "CHANGELOG/X.Y.Z/$(basename "$f")" || echo "NOT LINKED $f"; done`. After coverage and the security cross-check pass, remove only the notes carried forward from `Unreleased`; leave its heading and any remaining notes intact.
 2. Find references to the files about to be archived and repoint them to `CHANGELOG/X.Y.Z/<file>.md`:
 
    ```bash
