@@ -128,6 +128,9 @@ cp "${REPO_ROOT}/test_data/configs/server/auth/cert_roles.toml" "${KMS_CONFIG_FI
 set_toml_value "${KMS_CONFIG_FILE}" port "${KMS_PORT}"
 set_toml_value "${KMS_CONFIG_FILE}" hostname '"127.0.0.1"'
 set_toml_value "${KMS_CONFIG_FILE}" kms_public_url "\"https://localhost:${KMS_PORT}/google_cse\""
+# Google CSE is not exercised here; its fixture bypass (disable_tokens_validation) is refused by a
+# KMS built without the `insecure` feature.
+set_toml_value "${KMS_CONFIG_FILE}" google_cse_enable false
 set_toml_value "${KMS_CONFIG_FILE}" sqlite_path "\"${WORK_DIR}/kms-data\""
 set_toml_value "${KMS_CONFIG_FILE}" root_data_path "\"${WORK_DIR}/workspace\""
 set_toml_value "${KMS_CONFIG_FILE}" tmp_path "\"${WORK_DIR}/tmp\""
